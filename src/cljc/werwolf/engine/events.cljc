@@ -86,13 +86,16 @@
 ;; ---- lifecycle ----
 
 (defmethod apply-event :game/created
-  [_ {:keys [room-id host seed]}]
+  [_ {:keys [room-id host seed min-players]}]
   {:room-id        room-id
    :phase          :lobby
    :night          0
    :players        {}
    :host           host
    :seed           seed
+   ;; Kept in state rather than read from config, so the engine stays pure and
+   ;; a replayed game uses the same threshold it was created with.
+   :min-players    (or min-players 5)
    :lovers         nil
    :reactions      []
    :pending-deaths []
@@ -139,7 +142,7 @@
   (assoc-in state [:players player :locale] locale))
 
 (defmethod apply-event :game/started
-  [state {:keys [assignments]}]
+  [state {:keys [assignments seed]}]
   (-> (reduce (fn [s [pid role-id]]
                 (-> s
                     (assoc-in [:players pid :role] role-id)
@@ -151,15 +154,21 @@
               state
               assignments)
       (assoc :night 0 :winner nil)
+      ;; Carry the advanced seed so any later randomness stays reproducible.
+      (cond-> seed (assoc :seed seed))
       (publish {:type :game/started :players (count assignments)})))
 
 ;; ---- phase plumbing ----
 
 (defmethod apply-event :phase/changed
-  [state {:keys [phase deadline]}]
+  [state {:keys [phase deadline resume]}]
   (-> state
       (assoc :phase phase)
-      (assoc :deadline deadline)))
+      (assoc :deadline deadline)
+      ;; Entering :reaction records where to go once the stack drains, so an
+      ;; interrupt can fire from day OR night without deadlocking.
+      (cond-> resume (assoc :resume-phase resume)
+              (not resume) (dissoc :resume-phase))))
 
 (defmethod apply-event :night/began
   [state {:keys [night]}]
@@ -175,6 +184,21 @@
   [state {:keys [role]}]
   (assoc state :night-cursor role))
 
+(defmethod apply-event :night/role-completed
+  [state {:keys [role]}]
+  (-> state
+      (update-in [:night-actions :completed] (fnil conj #{}) role)
+      (assoc :night-cursor nil)))
+
+;; Removes a pending death that has now been applied. Separate from :player/died
+;; because a death can be a no-op (already dead) yet must still leave the queue.
+(defmethod apply-event :deaths/consumed
+  [state {:keys [player]}]
+  (update state :pending-deaths
+          (fn [ds]
+            (let [[before after] (split-with #(not= player (:player %)) ds)]
+              (vec (concat before (rest after)))))))
+
 (defmethod apply-event :night/ended
   [state _]
   (-> state
@@ -186,7 +210,8 @@
   (-> state
       (assoc :phase :discussion
              :votes {}
-             :nominations #{})
+             :nominations #{}
+             :vote-resolved? false)
       (publish {:type :day/began :day (:night state)})))
 
 ;; ---- night actions ----
@@ -254,6 +279,14 @@
                   :role (get-in state [:players player :role])})
         (death-reactions player))))
 
+;; GM-only. Deliberately does NOT undo reactions the death already triggered —
+;; reviving is an escape hatch for a mistake, not a rules rewind.
+(defmethod apply-event :player/revived
+  [state {:keys [player]}]
+  (-> state
+      (assoc-in [:players player :alive?] true)
+      (publish {:type :player/revived :player player})))
+
 (defmethod apply-event :reaction/popped
   [state _]
   ;; `pop` throws on an empty vector; a replay must never die on that.
@@ -282,7 +315,9 @@
 
 (defmethod apply-event :vote/resolved
   [state {:keys [target tie?]}]
-  (cond-> (publish state {:type :vote/resolved :target target :tie? tie?})
+  (cond-> (-> state
+              (assoc :vote-resolved? true)
+              (publish {:type :vote/resolved :target target :tie? tie?}))
     target (update :pending-deaths (fnil conj []) {:player target :cause :lynch})))
 
 (defmethod apply-event :game/ended
