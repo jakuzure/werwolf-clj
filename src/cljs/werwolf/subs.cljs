@@ -32,6 +32,35 @@
 (rf/reg-sub ::targets :<- [::view] (fn [v _] (or (:targets v) {})))
 
 (rf/reg-sub
+ ::arity
+ :<- [::view]
+ ;; How many players each action wants picked. Read from the server so the UI
+ ;; never has to know that Amor is the two-target one.
+ (fn [v _] (or (:arity v) {})))
+
+(rf/reg-sub
+ ::waiting-for
+ :<- [::view]
+ (fn [{:keys [phase players ready nomination-done votes]} _]
+   ;; Whose turn it still is, by name, for the phases where the answer is
+   ;; public. Silence is the thing players find most confusing, so say who it
+   ;; belongs to. Night is absent on purpose: naming the players still to act
+   ;; would leak which roles are alive.
+   (let [living (keep (fn [[id p]] (when (:alive? p) id)) players)
+         done (case phase
+                :discussion (set ready)
+                :nomination (set nomination-done)
+                :vote (set (keys votes))
+                nil)]
+     (when done
+       (->> living
+            (remove done)
+            (map #(get-in players [% :name]))
+            (remove nil?)
+            sort
+            vec)))))
+
+(rf/reg-sub
  ::seconds-left
  :<- [::view]
  :<- [::now]

@@ -33,7 +33,8 @@
   #{:leave :set-locale :start-game
     :amor-link :seherin-inspect :werewolf-vote
     :hexe-heal :hexe-poison :hexe-pass
-    :jaeger-shoot :nominate :vote :advance-phase
+    :jaeger-shoot :jaeger-pass
+    :ready :nominate :nominate-pass :vote :vote-abstain :advance-phase
     :gm/force-kill :gm/revive :gm/skip-role :gm/set-phase})
 
 (def client-message-types
@@ -67,6 +68,13 @@
   [:map {:closed true}
    [:type (into [:enum] (sort-by str command-types))]
    [:target {:optional true} :int]
+   ;; Amor points at two players at once. These were missing once, and because
+   ;; the map is closed that did not degrade Amor — it made the role unplayable,
+   ;; with every link rejected as malformed. See `commands-are-expressible` in
+   ;; the protocol tests, which now derives its cases from the simulation rather
+   ;; than from anyone's memory of which keys exist.
+   [:a      {:optional true} :int]
+   [:b      {:optional true} :int]
    [:locale {:optional true} Locale]
    [:role   {:optional true} :keyword]
    [:phase  {:optional true} :keyword]])

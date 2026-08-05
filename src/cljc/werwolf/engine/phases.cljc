@@ -83,6 +83,32 @@
                    (zero? (get r :gifttrank 0)))))
           (e/living-with-role state :hexe)))
 
+;; ------------------------------------------------------- day bookkeeping ---
+
+(defn- ready-done?
+  "Every living player has said they are finished talking."
+  [state]
+  (let [living (e/living-ids state)
+        ready (:ready state #{})]
+    (and (seq living) (every? ready living))))
+
+(defn- nominations-done?
+  "Has every living player either named someone or explicitly declined?
+
+   Requires an explicit decline rather than treating silence as one: a table
+   where two people have not clicked yet is not a finished nomination, and
+   guessing otherwise would rush the fastest players' choice through."
+  [state]
+  (let [living (e/living-ids state)
+        done (:nomination-done state #{})]
+    (and (seq living) (every? done living))))
+
+(defn- votes-done?
+  "Every living player has cast a vote or a recorded abstention."
+  [state]
+  (let [living (e/living-ids state)]
+    (and (seq living) (every? #(contains? (:votes state) %) living))))
+
 (defn- wolves-all-voted? [state]
   (let [wolves (e/living-with-role state :werwolf)
         votes  (get-in state [:night-actions :werewolf-votes] {})]
@@ -226,10 +252,29 @@
 
         :day-reveal [{:type :day/began}]
 
-        ;; Human-paced phases: a timer or the host moves these along.
-        :discussion nil
-        :nomination nil
-        :vote       nil
+        ;; Discussion has nothing to resolve, so it ends when everybody says
+        ;; they are finished. Without this the table talks itself out in forty
+        ;; seconds and then watches a five-minute clock.
+        :discussion
+        (when (ready-done? state)
+          [{:type :phase/changed :phase :nomination :deadline nil}])
+
+        ;; The other two end themselves the moment nobody is still being waited
+        ;; for. Sitting out a 90-second timer that everyone has already finished
+        ;; with is the single most tedious thing a digital adaptation can do.
+        :nomination
+        (when (nominations-done? state)
+          (if (seq (filter (set (e/living-ids state)) (:nominations state)))
+            [{:type :phase/changed :phase :vote :deadline nil}]
+            ;; Nobody was accused, so there is nothing to vote on. The village
+            ;; is allowed to condemn no one — `tally` already lets a tie kill
+            ;; nobody, so a day with no lynch is not a new kind of outcome.
+            [{:type :day/no-accusation}
+             {:type :phase/changed :phase :day-resolve :deadline nil}]))
+
+        :vote
+        (when (votes-done? state)
+          [{:type :phase/changed :phase :day-resolve :deadline nil}])
 
         :day-resolve
         (if (:vote-resolved? state)
@@ -362,7 +407,11 @@
           ;; everyone else is chatting; silencing exactly the player being
           ;; waited for is arbitrary. Chat routing still sends him to the dead
           ;; channel, since he is one of them now.
-          #{:jaeger-shoot :chat}
+          ;;
+          ;; And he may decline. The clock already lets him off if he says
+          ;; nothing, so refusing him a button to say the same thing on purpose
+          ;; would only punish the player who is paying attention.
+          #{:jaeger-shoot :jaeger-pass :chat}
           #{:chat}))
 
       ;; Otherwise the dead may watch and talk, never act.
@@ -383,17 +432,55 @@
           #{})
         #{})
 
-      (= :discussion phase) #{:chat}
-      (= :nomination phase) #{:chat :nominate}
-      (= :vote phase)       (cond-> #{:chat}
-                              (not (contains? (:votes state) pid)) (conj :vote))
+      (= :discussion phase)
+      (cond-> #{:chat}
+        (not (contains? (:ready state #{}) pid)) (conj :ready))
+
+      ;; One accusation each, and declining is one of the two answers. Having
+      ;; had your say removes both buttons, which is also what makes the phase
+      ;; able to end itself.
+      (= :nomination phase)
+      (if (contains? (:nomination-done state #{}) pid)
+        #{:chat}
+        #{:chat :nominate :nominate-pass})
+
+      ;; Abstaining is a real answer, not the absence of one. Without a button
+      ;; for it the only way to condemn nobody is to say nothing, which is
+      ;; indistinguishable from having lost your connection.
+      (= :vote phase)
+      (cond-> #{:chat}
+        (not (contains? (:votes state) pid)) (conj :vote :vote-abstain))
 
       :else #{:chat})))
+
+(def target-arity
+  "How many players an action needs the client to pick. Default 1.
+
+   Amor is the only role that points at two people at once, and this map exists
+   so the UI can learn that from the server instead of hard-coding a special
+   case for one role — the next two-target role then needs no client change at
+   all. It is also why `:amor-link` carries :a and :b rather than :target."
+  {:amor-link 2})
+
+(def dead-permitted-actions
+  "The only actions a dead player may legitimately still hold.
+
+   Public for the same reason `host-actions` is: the simulation asserts that the
+   dead cannot act, and it must exempt exactly these rather than keep its own
+   copy of the list. It kept one once, and adding `:jaeger-pass` then looked
+   like 274 invariant violations.
+
+   The Jäger is the whole reason this set is not empty — he fires, or declines
+   to fire, while already dead."
+  #{:chat :jaeger-shoot :jaeger-pass})
 
 (def no-target-actions
   "Commands that carry no :target. Everything else needs at least one legal
    target to be offerable at all."
-  #{:start-game :leave :set-locale :chat :hexe-pass :advance-phase})
+  #{:start-game :leave :set-locale :chat :advance-phase :ready
+    ;; The four ways to decline. Each is a deliberate 'no', which is why they
+    ;; are commands at all rather than the absence of one.
+    :hexe-pass :nominate-pass :vote-abstain :jaeger-pass})
 
 (declare legal-targets)
 

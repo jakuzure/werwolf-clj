@@ -248,6 +248,8 @@
       (assoc :phase :discussion
              :votes {}
              :nominations #{}
+             :nomination-done #{}
+             :ready #{}
              :vote-resolved? false)
       (publish {:type :day/began :day (:night state)})))
 
@@ -338,14 +340,49 @@
 ;; ---- day: nomination, voting, lynch ----
 
 (defmethod apply-event :player/nominated
+  ;; Two sets, two different questions. :nominations is who stands accused (it
+  ;; becomes the ballot); :nomination-done is who has had their say. One
+  ;; accusation each, so naming somebody also ends your turn to name anybody.
   [state {:keys [by target]}]
   (-> state
       (update :nominations (fnil conj #{}) target)
+      (update :nomination-done (fnil conj #{}) by)
       (publish {:type :player/nominated :by by :target target})))
+
+(defmethod apply-event :nominate/passed
+  ;; "I accuse nobody" is a decision and is recorded as one. Left implicit, a
+  ;; player who has decided would be indistinguishable from one who has not
+  ;; clicked yet, and the day would always have to run its clock down.
+  [state {:keys [player]}]
+  (-> state
+      (update :nomination-done (fnil conj #{}) player)
+      (publish {:type :nominate/passed :player player})))
+
+(defmethod apply-event :player/ready
+  ;; "I have said what I wanted to say." Public, because seeing who is still
+  ;; thinking is half of why a discussion phase has a length at all.
+  [state {:keys [player]}]
+  (-> state
+      (update :ready (fnil conj #{}) player)
+      (publish {:type :player/ready :player player})))
+
+(defmethod apply-event :day/no-accusation
+  ;; Log-only. Worth saying out loud: a day where the village accuses nobody
+  ;; looks identical in the state to a day that has not happened yet, and
+  ;; players deserve to be told which one they are living through.
+  [state _]
+  (publish state {:type :day/no-accusation :day (:night state)}))
+
+(defmethod apply-event :jaeger/held-fire
+  [state {:keys [player]}]
+  (publish state {:type :jaeger/held-fire :player player}))
 
 (defmethod apply-event :vote/cast
   [state {:keys [voter target]}]
   ;; Votes are public in classic Werwolf — that is the whole social game.
+  ;; A nil target is an abstention, recorded rather than dropped: `tally`
+  ;; ignores it when counting, but its presence is what tells the phase machine
+  ;; this player has spoken.
   (-> state
       (assoc-in [:votes voter] target)
       (publish {:type :vote/cast :voter voter :target target})))

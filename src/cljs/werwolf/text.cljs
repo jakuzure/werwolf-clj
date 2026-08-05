@@ -53,6 +53,22 @@
    :role/jaeger       "Jäger"
    :role/amor         "Amor"
 
+   ;; What your role actually does, shown on your own card. "Unclear who is who"
+   ;; is mostly this being missing: a role name alone tells a new player nothing.
+   :role-desc/werwolf      "Du reißt jede Nacht mit den anderen Wölfen ein Opfer."
+   :role-desc/dorfbewohner "Du hast keine Nachtaktion — nur deine Stimme am Tag."
+   :role-desc/seherin      "Jede Nacht darfst du die Rolle eines Mitspielers sehen."
+   :role-desc/hexe         "Einmal im Spiel heilen, einmal vergiften."
+   :role-desc/jaeger       "Stirbst du, nimmst du einen Mitspieler mit."
+   :role-desc/amor         "In der ersten Nacht bestimmst du zwei Verliebte."
+
+   :role-icon/werwolf      "🐺"
+   :role-icon/dorfbewohner "🏠"
+   :role-icon/seherin      "🔮"
+   :role-icon/hexe         "🧪"
+   :role-icon/jaeger       "🎯"
+   :role-icon/amor         "💘"
+
    ;; --- actions ---
    :action/start-game      "Spiel starten"
    :action/leave           "Verlassen"
@@ -63,11 +79,15 @@
    :action/werewolf-vote   "Opfer wählen"
    :action/hexe-heal       "Heiltrank benutzen"
    :action/hexe-poison     "Gifttrank benutzen"
-   :action/hexe-pass       "Nichts tun"
+   :action/hexe-pass       "Keinen Trank benutzen"
    :action/jaeger-shoot    "Schuss abgeben"
+   :action/jaeger-pass     "Nicht schießen"
+   :action/ready           "Ich bin fertig"
    :action/nominate        "Anklagen"
-   :action/vote            "Stimme abgeben"
-   :action/advance-phase   "Weiter"
+   :action/nominate-pass   "Niemanden anklagen"
+   :action/vote            "Verurteilen"
+   :action/vote-abstain    "Enthalten"
+   :action/advance-phase   "Phase weiter (SL)"
    :action/gm-force-kill   "Töten (SL)"
    :action/gm-revive       "Wiederbeleben (SL)"
    :action/gm-skip-role    "Rolle überspringen (SL)"
@@ -94,6 +114,24 @@
    :game/winner-werewolf "Die Werwölfe haben gewonnen"
    :game/winner-lovers  "Die Verliebten haben gewonnen"
 
+   ;; --- targeting ---
+   :target/pick-one   "Wähle ein Ziel"
+   :target/pick-two   "Wähle zwei Ziele"
+   :target/chosen-one "Erster gewählt — jetzt den zweiten"
+   :target/cancel     "Abbrechen"
+   :target/hint       "Klicke unten auf einen Mitspieler"
+
+   ;; --- badges ---
+   :badge/accused  "angeklagt"
+   :badge/votes    "Stimmen"
+   :badge/vote     "Stimme"
+   :badge/ready    "fertig"
+   :badge/decided  "hat gewählt"
+   :badge/host     "SL"
+   :badge/lover    "verliebt"
+   :badge/selected "gewählt"
+   :badge/waiting-for "Es fehlen noch"
+
    ;; --- errors ---
    :error/no-such-room     "Diesen Raum gibt es nicht"
    :error/game-in-progress "Die Runde läuft schon"
@@ -119,6 +157,8 @@
 
 (defn phase-name [phase] (t (keyword "phase" (name (or phase :lobby)))))
 (defn role-name [role] (if role (t (keyword "role" (name role))) "?"))
+(defn role-desc [role] (when role (t (keyword "role-desc" (name role)))))
+(defn role-icon [role] (if role (t (keyword "role-icon" (name role))) "❓"))
 
 (defn action-name [action]
   (t (keyword "action" (str/replace (subs (str action) 1) "/" "-"))))
@@ -128,11 +168,44 @@
 (defn- who [players pid]
   (or (get-in players [pid :name]) (str "#" pid)))
 
+(def log-tone
+  "How prominent each kind of entry is in the Chronik. A log where a death and a
+   reconnect look identical is a log nobody reads."
+  {:player/died      :death
+   :jaeger/shot      :death
+   :vote/resolved    :verdict
+   :day/no-accusation :verdict
+   :game/ended       :verdict
+   :night/began      :night
+   :night/ended      :day
+   :day/began        :day
+   :game/started     :night
+   :role/revealed    :reveal
+   :player/nominated :vote
+   :vote/cast        :vote
+   :gm/forced        :gm
+   :host/changed     :gm
+   :phase/timed-out  :muted
+   :player/ready     :muted
+   :nominate/passed  :muted
+   :player/joined    :muted
+   :player/left      :muted
+   :player/disconnected :muted
+   :player/reconnected  :muted
+   :jaeger/held-fire :muted})
+
 (defn log-line
   "Render one public log entry. `players` supplies names, because the log holds
    ids — a name change must not rewrite history."
-  [players {:keys [type player target role winner phase host cause]}]
+  [players {:keys [type player target role winner phase host cause day voter]}]
   (case type
+    :player/ready        (str (who players player) " ist fertig")
+    :nominate/passed     (str (who players player) " klagt niemanden an")
+    :day/no-accusation   "Das Dorf klagt niemanden an — heute stirbt keiner"
+    :jaeger/held-fire    (str (who players player) " senkt das Gewehr")
+    :vote/cast           (if target
+                           (str (who players voter) " → " (who players target))
+                           (str (who players voter) " enthält sich"))
     :player/joined       (str (who players player) " ist beigetreten")
     :player/left         (str (who players player) " hat die Runde verlassen")
     :player/disconnected (str (who players player) " ist abwesend")

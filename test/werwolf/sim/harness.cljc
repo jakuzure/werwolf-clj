@@ -37,8 +37,13 @@
     [(e/replay evs) evs]))
 
 (def ^:private no-target-actions
-  "Commands that carry no :target at all."
-  #{:start-game :hexe-pass :advance-phase})
+  "Commands that carry no :target at all.
+
+   Taken from the engine rather than restated here: this was a private copy
+   once, and the day `:nominate-pass` was added the simulation started reporting
+   a legal action as a bug in itself. A test that keeps its own duplicate of a
+   rule eventually tests the duplicate."
+  phases/no-target-actions)
 
 (defn- build-command
   "Turn (player, action) into a full command, drawing any target from
@@ -118,13 +123,13 @@
       ;; GM powers (we reuse phases/host-actions so this can't drift).
       (some (fn [pid]
               (and (not (contains? living pid))
-                   (seq (remove (into #{:chat :jaeger-shoot}
+                   (seq (remove (into phases/dead-permitted-actions
                                       (phases/host-actions state pid))
                                 (phases/legal-actions state pid)))))
             (keys players))
       (conj {:violation :dead-player-can-act
              :detail (into {} (keep (fn [pid]
-                                      (let [extra (remove (into #{:chat :jaeger-shoot}
+                                      (let [extra (remove (into phases/dead-permitted-actions
                                                                 (phases/host-actions state pid))
                                                           (phases/legal-actions state pid))]
                                         (when (seq extra) [pid (vec extra)])))
@@ -168,8 +173,12 @@
            :history (vec (take-last 20 history)) :log log}
 
           (engine/over? state)
+          ;; The FULL history, untruncated, on success too: it is the complete
+          ;; set of commands the engine considered legal in a real game, which
+          ;; makes it the natural corpus for testing the wire protocol against.
           {:ok? true :winner (:winner state) :seed seed :players n
            :turns turns :events (count log) :log log :state state
+           :history history
            :survivors (e/living-ids state)}
 
           (> turns max-turns)

@@ -64,8 +64,17 @@
    ;; night bookkeeping, cleared at dawn
    [:night-actions {:optional true} [:map-of :keyword :any]]
    [:night-cursor {:optional true} [:maybe RoleId]] ; which role is acting now
+   ;; A nil vote is a recorded ABSTENTION, which is not the same thing as an
+   ;; absent key: one is a decision, the other is a player we are still waiting
+   ;; for. The phase machine needs to tell them apart to know when a vote is done.
    [:votes {:optional true} [:map-of PlayerId [:maybe PlayerId]]]
    [:nominations {:optional true} [:set PlayerId]]
+   ;; Players who have finished nominating — whether they named someone or
+   ;; explicitly declined. Same distinction as above: "I accuse nobody" is an
+   ;; answer, silence is not. Holds ACCUSERS, where :nominations holds accused.
+   [:nomination-done {:optional true} [:set PlayerId]]
+   ;; Players who have finished talking, so the discussion can end early.
+   [:ready {:optional true} [:set PlayerId]]
    [:deadline {:optional true} [:maybe :int]] ; epoch ms, server-authoritative
    [:winner {:optional true} [:maybe Team]]
    ;; set by :vote/resolved so :day-resolve knows the lynch has been counted

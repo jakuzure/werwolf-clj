@@ -145,6 +145,11 @@
      :log         (vec (:log state))
      :votes       (or (:votes state) {})
      :nominations (or (:nominations state) #{})
+     ;; Who has already spoken. Public — seeing that the table is waiting on two
+     ;; specific people is most of what makes a timed phase bearable — and safe:
+     ;; these are player ids, and no role can be inferred from having decided.
+     :ready           (or (:ready state) #{})
+     :nomination-done (or (:nomination-done state) #{})
      :min-players (:min-players state)
      :players     (into {} (map (fn [[id p]] [id (public-player p)])) (:players state))
      ;; Which ROLE is currently being called is public — the human narrator says
@@ -172,6 +177,10 @@
      ;; ---- affordances, so the client need not re-derive the rules ----
      :actions     (phases/legal-actions state pid)
      :targets     (into {} (map (fn [a] [a (phases/legal-targets state pid a)]))
+                        (phases/legal-actions state pid))
+     ;; How many players each offered action wants the client to pick. Sent so
+     ;; the UI can handle Amor's pair without hard-coding a rule about Amor.
+     :arity       (into {} (keep (fn [a] (when-let [n (phases/target-arity a)] [a n])))
                         (phases/legal-actions state pid))
 
      ;; Only surfaced when this player is the one who owes a reaction.

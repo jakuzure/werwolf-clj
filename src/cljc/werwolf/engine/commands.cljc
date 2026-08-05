@@ -144,6 +144,13 @@
     :else [{:type :reaction/popped}
            {:type :jaeger/shot :player player :target target}]))
 
+(defmethod handle :jaeger-pass
+  [state {:keys [player]}]
+  (if-not (allowed? state player :jaeger-pass)
+    (err :not-allowed {:action :jaeger-pass})
+    [{:type :reaction/popped}
+     {:type :jaeger/held-fire :player player}]))
+
 ;; ---- day ----
 
 (defmethod handle :nominate
@@ -153,14 +160,37 @@
     (not (valid-target? state player :nominate target)) (err :invalid-target {:target target})
     :else [{:type :player/nominated :by player :target target}]))
 
+(defmethod handle :ready
+  [state {:keys [player]}]
+  (if-not (allowed? state player :ready)
+    (err :not-allowed {:action :ready})
+    [{:type :player/ready :player player}]))
+
+(defmethod handle :nominate-pass
+  [state {:keys [player]}]
+  (if-not (allowed? state player :nominate-pass)
+    (err :not-allowed {:action :nominate-pass})
+    [{:type :nominate/passed :player player}]))
+
 (defmethod handle :vote
   [state {:keys [player target]}]
   (cond
     (not (allowed? state player :vote)) (err :not-allowed {:action :vote})
-    ;; nil target == deliberate abstention, always permitted.
+    ;; A nil target reaching here is an abstention and is allowed, but
+    ;; :vote-abstain is the honest way to say it — see that handler.
     (and (some? target)
          (not (valid-target? state player :vote target))) (err :invalid-target {:target target})
     :else [{:type :vote/cast :voter player :target target}]))
+
+(defmethod handle :vote-abstain
+  ;; A separate command rather than "send :vote with no target", so that
+  ;; abstaining is something `legal-actions` can advertise. The client renders
+  ;; the affordances it is given and invents none — an abstain button the UI
+  ;; synthesised itself would be the client deciding a rule.
+  [state {:keys [player]}]
+  (if-not (allowed? state player :vote-abstain)
+    (err :not-allowed {:action :vote-abstain})
+    [{:type :vote/cast :voter player :target nil}]))
 
 (defmethod handle :advance-phase
   [state {:keys [player]}]

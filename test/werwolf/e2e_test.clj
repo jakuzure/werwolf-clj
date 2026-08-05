@@ -205,6 +205,54 @@
             (finally (doseq [c all] (close! c))))))
       (finally (cleanup! path)))))
 
+(deftest amor-can-actually-link-a-couple
+  (testing "the bug a playtest found and the whole suite missed: :amor-link
+            carries :a and :b, the wire schema is closed, and it listed neither.
+            The engine was right, the room layer was right, the protocol layer
+            correctly rejected the message — and Amor was unplayable.
+
+            Note what this asserts beyond 'no error': that the client can learn
+            the action needs two targets from :arity, without knowing that Amor
+            is the role which needs it."
+    (let [path (tmp-path)]
+      (try
+        (with-server [srv path]
+          (let [host (client (:port srv))
+                _ (await-type host :server/hello)
+                _ (send! host {:type :client/create :name "P0"})
+                code (:room-id (await-type host :server/welcome))
+                guests (doall (for [i (range 1 9)]
+                                (let [c (client (:port srv))]
+                                  (await-type c :server/hello)
+                                  (send! c {:type :client/join :room-id code :name (str "P" i)})
+                                  {:pid (:player-id (await-type c :server/welcome)) :client c})))
+                all (cons {:pid 0 :client host} guests)]
+            (try
+              (send! host {:type :client/command :cmd {:type :start-game}})
+              (doseq [{:keys [client]} all] (await-phase client :night))
+              (let [amor (first (filter #(= :amor (:role (:me (latest-view (:client %))))) all))]
+                (is (some? amor) "a nine-player deck contains Amor")
+                (let [v (latest-view (:client amor))
+                      [a b] (take 2 (get-in v [:targets :amor-link]))]
+                  (is (= 2 (get-in v [:arity :amor-link]))
+                      "the server tells the client how many to pick")
+                  (send! (:client amor) {:type :client/command
+                                         :cmd {:type :amor-link :a a :b b}})
+                  ;; The linked player learning who they love is the proof it took.
+                  (let [lover-client (:client (first (filter #(= a (:pid %)) all)))]
+                    (is (some? (await-msg lover-client
+                                          #(and (= :room/view (:type %))
+                                                (= b (get-in % [:view :me :lover])))))))
+                  (is (empty? (filter #(= :server/error (:type %)) (msgs (:client amor))))
+                      "and no rejection anywhere")
+                  (testing "while a third party learns only that lovers exist"
+                    (let [other (first (remove #(#{(:pid amor) a b} (:pid %)) all))
+                          ov (latest-view (:client other))]
+                      (is (true? (:lovers-exist? ov)))
+                      (is (nil? (:lover (:me ov))))))))
+              (finally (doseq [{:keys [client]} all] (close! client))))))
+        (finally (cleanup! path))))))
+
 (deftest killing-the-server-mid-game-loses-nothing
   (testing "verification step 5: kill the server mid-game and restart. Clients
             reconnect from their tokens and land in the correct phase with the

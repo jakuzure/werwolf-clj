@@ -62,6 +62,14 @@
                       (some? target) (assoc :target target))}}))
 
 (rf/reg-event-fx
+ ::act-pair
+ ;; Two targets in one command. Amor is the only role that needs it today, but
+ ;; the UI reaches here because the view said the action's arity was 2 — not
+ ;; because anything in the client knows what Amor is.
+ (fn [_ [_ action a b]]
+   {::ws/send {:type :client/command :cmd {:type action :a a :b b}}}))
+
+(rf/reg-event-fx
  ::set-locale
  (fn [_ [_ locale]]
    {::ws/send {:type :client/command :cmd {:type :set-locale :locale locale}}}))

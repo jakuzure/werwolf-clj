@@ -1,0 +1,72 @@
+(ns werwolf.proto-test
+  "The wire contract, checked against the engine rather than against memory.
+
+   This file exists because of a specific failure. `proto/Command` is a closed
+   map, and it was written with `:target` but not Amor's `:a`/`:b`. Every other
+   test passed: the engine was correct, the room layer was correct, the protocol
+   layer dutifully rejected the message as malformed. The only symptom was that
+   Amor could not be played, and nothing in the suite was looking at the seam
+   between 'what the engine will accept' and 'what the wire will carry'.
+
+   So the corpus here is generated: play real games, take every command the
+   engine considered legal, and require that each one can cross the wire. Adding
+   a role or an action cannot silently fail to be expressible again."
+  (:require [clojure.test :refer [deftest is testing]]
+            [werwolf.engine.commands :as commands]
+            [werwolf.engine.phases :as phases]
+            [werwolf.proto :as proto]
+            [werwolf.sim.harness :as h]))
+
+(defn- as-wire
+  "Wrap an engine command the way a client must send it. `:player` is dropped
+   because the server overwrites it with the authenticated seat, and the schema
+   rejects it rather than ignore it."
+  [cmd]
+  {:type :client/command :cmd (dissoc cmd :player)})
+
+(deftest every-command-a-real-game-produces-is-expressible-on-the-wire
+  (let [cmds (into []
+                   (comp (mapcat :history)
+                         (remove :no-target)
+                         (remove :rejected))
+                   (for [[n seed] [[5 11] [7 22] [9 33] [12 44] [18 55]]]
+                     (h/play-game n seed)))]
+    (is (> (count cmds) 200) "the corpus is real games, not a handful of moves")
+    (doseq [cmd cmds]
+      (is (proto/valid-client-message? (as-wire cmd))
+          (str "the engine accepts this but the wire cannot carry it: "
+               (pr-str cmd))))
+    (testing "and the corpus actually covers the awkward shapes"
+      (let [types (set (map :type cmds))]
+        (is (contains? types :amor-link) "including Amor's two-target link")
+        (is (some #(and (= :amor-link (:type %)) (:a %) (:b %)) cmds))))))
+
+(deftest the-whitelist-covers-everything-the-engine-can-offer
+  (testing "an action legal-actions can hand a player must be one the protocol
+            will carry, or the UI shows a button whose click is rejected"
+    (let [offered (into #{}
+                        (comp (mapcat :history) (map :type))
+                        (for [[n seed] [[5 11] [9 33] [18 55]]]
+                          (h/play-game n seed)))
+          unlisted (remove proto/command-types offered)]
+      (is (empty? unlisted) (str "not in the whitelist: " (pr-str unlisted))))))
+
+(deftest the-whitelist-has-no-dead-entries
+  (testing "every listed command is one the engine actually implements —
+            a whitelist that names commands nobody handles is a lie about the
+            protocol's surface"
+    (let [handled (set (keys (methods commands/handle)))]
+      (doseq [c proto/command-types]
+        (is (contains? handled c) (str c " is on the whitelist but unhandled"))))))
+
+(deftest declining-is-always-targetless
+  (testing "every 'no' action must be sendable without a target, or the UI has
+            to invent one to say no"
+    (doseq [a [:hexe-pass :nominate-pass :vote-abstain :jaeger-pass :ready]]
+      (is (contains? phases/no-target-actions a))
+      (is (proto/valid-client-message? (as-wire {:type a}))))))
+
+(deftest amor-is-the-only-two-target-action
+  (testing "if that stops being true, the client needs no change — it reads
+            arity from the view — but this test should say so out loud"
+    (is (= {:amor-link 2} phases/target-arity))))
