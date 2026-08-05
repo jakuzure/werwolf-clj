@@ -1,10 +1,15 @@
 (ns werwolf.ws
   "Client WebSocket transport: transit framing, a re-frame effect for sending,
-   and reconnect with exponential backoff.
+   reconnect with exponential backoff, and the seat token in localStorage.
 
-   Messages arriving from the server are dispatched as [::werwolf.core/server-message msg].
-   The server is authoritative — this namespace never interprets game state."
-  (:require [cognitect.transit :as transit]
+   The token lives here rather than in app-db because it must survive a page
+   reload, and because it is the one piece of client state the server actually
+   trusts. Everything else the client holds is a copy of what the server sent.
+
+   This namespace never interprets game state. It moves bytes and re-establishes
+   identity; the server is authoritative about everything else."
+  (:require [cljs.reader]
+            [cognitect.transit :as transit]
             [re-frame.core :as rf]))
 
 (def ^:private reader (transit/reader :json))
@@ -16,15 +21,42 @@
 (defonce ^:private outbox (atom []))
 
 (def ^:private max-backoff-ms 15000)
+(def ^:private storage-key "werwolf/seat")
 
 (defn- backoff-ms [n]
   (min max-backoff-ms (* 500 (js/Math.pow 2 n))))
 
 (defn- open? [] (some-> @socket .-readyState (= js/WebSocket.OPEN)))
 
+;; ------------------------------------------------------------------- seat ---
+
+(defn save-seat!
+  "Remember which seat this browser holds. Written on every welcome, because a
+   resume hands back a refreshed token and keeping the old one would mean the
+   session still expires at the original time."
+  [{:keys [room-id token]}]
+  (when (and room-id token)
+    (.setItem js/localStorage storage-key (pr-str {:room-id room-id :token token}))))
+
+(defn seat
+  "The stored seat, or nil. Read defensively: a half-written or stale value must
+   land the player on the landing screen, never on a blank page."
+  []
+  (try
+    (some-> (.getItem js/localStorage storage-key)
+            cljs.reader/read-string
+            (select-keys [:room-id :token])
+            not-empty)
+    (catch :default _ nil)))
+
+(defn forget-seat! []
+  (.removeItem js/localStorage storage-key))
+
+;; --------------------------------------------------------------- transport ---
+
 (defn send!
-  "Send a Clojure value. If the socket isn't open yet, queue it and flush on open —
-   avoids losing the initial join command during a reconnect race."
+  "Send a Clojure value. If the socket is not open yet, queue it and flush on
+   open — otherwise the first command after a reconnect race is simply lost."
   [value]
   (if (open?)
     (.send @socket (transit/write writer value))
@@ -41,7 +73,6 @@
   (let [n @retry
         ms (backoff-ms n)]
     (swap! retry inc)
-    (js/console.warn (str "ws: reconnecting in " ms "ms (attempt " (inc n) ")"))
     (js/setTimeout #(connect! @url*) ms)))
 
 (defn connect! [url]
@@ -51,19 +82,27 @@
     (set! (.-onopen sock)
           (fn [_]
             (reset! retry 0)
-            (rf/dispatch [:werwolf.core/connected])
+            (rf/dispatch [:werwolf.events/connected])
+            ;; Re-claim the seat BEFORE anything queued goes out: a command sent
+            ;; on an unbound socket is answered with :not-in-room.
+            (when-let [{:keys [room-id token]} (seat)]
+              (.send sock (transit/write writer {:type :client/resume
+                                                 :room-id room-id
+                                                 :token token})))
             (flush-outbox!)))
     (set! (.-onmessage sock)
           (fn [e]
-            (let [msg (transit/read reader (.-data e))]
-              (rf/dispatch [:werwolf.core/server-message msg]))))
+            (rf/dispatch [:werwolf.events/server-message
+                          (transit/read reader (.-data e))])))
     (set! (.-onclose sock)
           (fn [_]
-            (rf/dispatch [:werwolf.core/disconnected])
+            (rf/dispatch [:werwolf.events/disconnected])
             (schedule-reconnect!)))
     (set! (.-onerror sock)
           (fn [_] (js/console.error "ws: error")))
     sock))
 
-;; re-frame effect: {::send {...}}
+;; re-frame effects
 (rf/reg-fx ::send (fn [value] (send! value)))
+(rf/reg-fx ::save-seat (fn [s] (save-seat! s)))
+(rf/reg-fx ::forget-seat (fn [_] (forget-seat!)))
