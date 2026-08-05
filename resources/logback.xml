@@ -1,0 +1,14 @@
+<configuration>
+  <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+    <encoder>
+      <pattern>%d{HH:mm:ss.SSS} %-5level %logger{20} - %msg%n</pattern>
+    </encoder>
+  </appender>
+
+  <!-- http-kit and jetty are chatty at DEBUG -->
+  <logger name="org.httpkit" level="INFO"/>
+
+  <root level="INFO">
+    <appender-ref ref="STDOUT"/>
+  </root>
+</configuration>

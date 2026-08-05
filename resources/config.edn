@@ -1,0 +1,22 @@
+{:server  {:port     #long #or [#env PORT 3000]
+           :host     #or [#env HOST "0.0.0.0"]}
+
+ :db      {:dbtype   "sqlite"
+           :dbname   #or [#env DB_PATH "data/werwolf.db"]}
+
+ ;; HS256 secret for reconnect tokens. MUST be overridden in production.
+ :tokens  {:secret   #or [#env TOKEN_SECRET "dev-only-insecure-secret-change-me"]
+           :ttl-mins #long #or [#env TOKEN_TTL_MINS 720]}
+
+ ;; Media provider: :noop for v1 (text chat only), :livekit at M7.
+ :media   {:provider   #keyword #or [#env MEDIA_PROVIDER "noop"]
+           :url        #or [#env LIVEKIT_URL ""]
+           :api-key    #or [#env LIVEKIT_API_KEY ""]
+           :api-secret #or [#env LIVEKIT_API_SECRET ""]}
+
+ :game    {;; Server-authoritative phase durations, seconds.
+           :discussion-secs #long #or [#env DISCUSSION_SECS 300]
+           :vote-secs       #long #or [#env VOTE_SECS 60]
+           :night-secs      #long #or [#env NIGHT_SECS 45]
+           :min-players     #long #or [#env MIN_PLAYERS 5]
+           :max-players     #long #or [#env MAX_PLAYERS 18]}}

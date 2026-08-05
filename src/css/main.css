@@ -1,0 +1,6 @@
+@import "tailwindcss";
+
+/* Tailwind 4 is CSS-first: content sources are auto-detected, but shadow-cljs
+   output lives outside the default scan roots, so declare them explicitly. */
+@source "../cljs/**/*.cljs";
+@source "../../resources/public/index.html";

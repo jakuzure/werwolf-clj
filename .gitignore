@@ -1,0 +1,16 @@
+/target/
+/.cpcache/
+/.shadow-cljs/
+/node_modules/
+/resources/public/js/
+/resources/public/css/main.css
+/data/
+*.db
+*.db-shm
+*.db-wal
+.nrepl-port
+.DS_Store
+/.jj/
+/.env
+/.lsp/
+/.clj-kondo/.cache/

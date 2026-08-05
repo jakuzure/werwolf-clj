@@ -1,0 +1,26 @@
+;; Dependencies come from deps.edn (:cljs alias) — do not duplicate them here.
+{:deps      {:aliases [:cljs]}
+ :nrepl     {:port 7002}
+
+ ;; Static files are served from :root; anything not found on disk (i.e. /api/*)
+ ;; is proxied to the Clojure server. The WebSocket dials :3000 directly via the
+ ;; closure-define below, so we don't depend on WS proxying behaviour.
+ :dev-http  {8080 {:root      "resources/public"
+                   :proxy-url "http://localhost:3000"}}
+
+ :builds
+ {:app
+  {:target     :browser
+   :output-dir "resources/public/js"
+   :asset-path "/js"
+   :modules    {:main {:init-fn werwolf.core/init}}
+
+   :dev        {:devtools  {:after-load werwolf.core/reload!
+                            :preloads   [day8.re-frame-10x.preload]}
+                :compiler-options
+                {:closure-defines
+                 {re-frame.trace/trace-enabled?  true
+                  werwolf.config/ws-url          "ws://localhost:3000/api/ws"}}}
+
+   :release    {:compiler-options {:optimizations :advanced
+                                   :infer-externs :auto}}}}}

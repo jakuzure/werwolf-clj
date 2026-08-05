@@ -1,0 +1,68 @@
+{:min-bb-version "1.3.0"
+
+ :tasks
+ {:requires ([babashka.fs :as fs])
+
+  ;; ---------- setup ----------
+  npm-install
+  {:doc "Install JS deps (React, Tailwind, shadow-cljs runtime)"
+   :task (when (seq (fs/modified-since "node_modules" "package.json"))
+           (shell "npm install"))}
+
+  ;; ---------- dev ----------
+  dev:cljs
+  {:doc     "Watch + hot-reload the frontend on :8080 (shadow-cljs dev server)"
+   :depends [npm-install]
+   :task    (shell "npx shadow-cljs watch app")}
+
+  dev:css
+  {:doc     "Watch Tailwind"
+   :depends [npm-install]
+   :task    (shell "npx @tailwindcss/cli -i ./src/css/main.css -o ./resources/public/css/main.css --watch")}
+
+  dev:server
+  {:doc  "Start the Clojure server + nREPL. In the REPL: (dev/go)"
+   :task (clojure "-M:dev:cljs:test")}
+
+  dev
+  {:doc  "How to run the full dev stack"
+   :task (println (str "Run these in three terminals:\n"
+                       "  bb dev:server   # nREPL, then (require 'dev) (dev/go)\n"
+                       "  bb dev:cljs     # shadow-cljs watch\n"
+                       "  bb dev:css      # tailwind watch\n"
+                       "\nThen open http://localhost:8080"))}
+
+  ;; ---------- quality ----------
+  test
+  {:doc  "Run the Clojure test suite (engine + sim harness)"
+   :task (clojure "-M:test")}
+
+  test:watch
+  {:doc  "Re-run tests on change"
+   :task (clojure "-M:test --watch --fail-fast")}
+
+  ;; ---------- build ----------
+  clean
+  {:doc  "Remove build artifacts"
+   :task (doseq [d ["target" "resources/public/js" ".shadow-cljs" ".cpcache"]]
+           (fs/delete-tree d))}
+
+  build:cljs
+  {:doc     "Compile optimized frontend"
+   :depends [npm-install]
+   :task    (shell "npx shadow-cljs release app")}
+
+  build:css
+  {:doc     "Compile minified CSS"
+   :depends [npm-install]
+   :task    (shell "npx @tailwindcss/cli -i ./src/css/main.css -o ./resources/public/css/main.css --minify")}
+
+  uberjar
+  {:doc     "Build the deployable uberjar"
+   :depends [build:cljs build:css]
+   :task    (clojure "-T:build uber")}
+
+  docker
+  {:doc     "Build the container image"
+   :depends [uberjar]
+   :task    (shell "docker build -t werwolf-clj:latest -f deploy/Dockerfile .")}}}
