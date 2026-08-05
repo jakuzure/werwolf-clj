@@ -47,13 +47,17 @@
    [:cause {:optional true} :keyword]])
 
 (def GameState
-  [:map
+  "DELIBERATELY :closed. An open map would silently accept any new key, which
+   defeats the point — the schema exists to catch state drift, and every key the
+   engine writes should have to be declared here on purpose."
+  [:map {:closed true}
    [:room-id :string]
    [:phase Phase]
    [:night :int]                              ; 0 in lobby, 1-based thereafter
    [:players [:map-of PlayerId Player]]
    [:host PlayerId]
    [:seed :int]                               ; RNG seed — replay determinism
+   [:min-players :int]
    [:lovers {:optional true} [:maybe [:set PlayerId]]]
    [:reactions [:vector Reaction]]            ; stack, drained LIFO
    [:pending-deaths [:vector [:map [:player PlayerId] [:cause :keyword]]]]
@@ -64,6 +68,12 @@
    [:nominations {:optional true} [:set PlayerId]]
    [:deadline {:optional true} [:maybe :int]] ; epoch ms, server-authoritative
    [:winner {:optional true} [:maybe Team]]
+   ;; set by :vote/resolved so :day-resolve knows the lynch has been counted
+   [:vote-resolved? {:optional true} :boolean]
+   ;; where to return to once the reaction stack drains
+   [:resume-phase {:optional true} [:maybe Phase]]
+   ;; opt-in ghost view for the dead — see werwolf.engine.view
+   [:reveal-to-dead? {:optional true} :boolean]
    ;; public, localisable event log — structured, never prose
    [:log [:vector [:map [:type :keyword]]]]])
 

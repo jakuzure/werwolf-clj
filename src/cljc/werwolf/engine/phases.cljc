@@ -124,6 +124,22 @@
   (filterv #(get-in state [:players (:player %) :alive?])
            (:pending-deaths state)))
 
+(declare legal-actions)
+
+(defn- nobody-can-act?
+  "True when no living holder of `role-id` has any usable action.
+
+   This is the general safety net behind the night: ANY role whose turn can
+   become impossible would otherwise stall the game forever. Relying on a
+   per-role special case is what let the exhausted-Seherin deadlock through."
+  [state role-id]
+  (let [holders (e/living-with-role state role-id)]
+    (or (empty? holders)
+        (every? (fn [pid]
+                  (empty? (remove #(or (= :chat %) (= "gm" (namespace %)))
+                                  (legal-actions state pid))))
+                holders))))
+
 (defn- night-auto [state]
   (let [q (night-queue state)]
     (cond
@@ -137,20 +153,27 @@
 
       :else
       (let [cursor (first q)]
-        (case cursor
-          ;; Collective decision: once every living wolf has voted, resolve it.
-          :werwolf
-          (when (wolves-all-voted? state)
-            (let [target (wolf-tally (get-in state [:night-actions :werewolf-votes]))]
-              (cond-> [{:type :night/role-completed :role :werwolf}]
-                target (conj {:type :werewolf/chose :target target}))))
+        (or
+         ;; Role-specific resolution first, because these produce a decision
+         ;; (a victim) and not merely the end of a turn.
+         (case cursor
+           ;; Collective decision: once every living wolf has voted, resolve it.
+           :werwolf
+           (when (wolves-all-voted? state)
+             (let [target (wolf-tally (get-in state [:night-actions :werewolf-votes]))]
+               (cond-> [{:type :night/role-completed :role :werwolf}]
+                 target (conj {:type :werewolf/chose :target target}))))
 
-          ;; Nothing to decide with no potions — skip her rather than deadlock.
-          :hexe
-          (when (hexe-exhausted? state)
-            [{:type :night/role-completed :role :hexe}])
+           ;; Nothing to decide with no potions — skip her rather than deadlock.
+           :hexe
+           (when (hexe-exhausted? state)
+             [{:type :night/role-completed :role :hexe}])
 
-          nil)))))
+           nil)
+
+         ;; General fallback: nobody can act, so end the turn.
+         (when (nobody-can-act? state cursor)
+           [{:type :night/role-completed :role cursor}]))))))
 
 (defn auto-events
   "The narrator's move: events that must fire without human input.
@@ -247,8 +270,11 @@
          (= cursor (get-in state [:players pid :role]))
          (get-in state [:players pid :alive?]))))
 
-(defn- host-actions
+(defn host-actions
   "GM powers, which belong to the room's host and are NOT lost on death.
+
+   Public so tests can exempt exactly these when asserting that dead players
+   cannot act, rather than duplicating the list and drifting from it.
 
    A dead host must keep them: they are the fallback narrator, and stripping
    the powers on death would deadlock any phase that only the host can advance."
@@ -308,13 +334,30 @@
 
       :else #{:chat})))
 
+(def no-target-actions
+  "Commands that carry no :target. Everything else needs at least one legal
+   target to be offerable at all."
+  #{:start-game :leave :set-locale :chat :hexe-pass :advance-phase})
+
+(declare legal-targets)
+
 (defn legal-actions
   "What pid may do right now. Drives both the UI's affordances and the
-   simulation harness, so it must be exhaustive and honest."
+   simulation harness, so it must be exhaustive and honest.
+
+   'Honest' specifically means: an action is never offered when it has no legal
+   target. Otherwise the UI shows a dead button and, worse, the night can
+   deadlock — the Seherin who has already inspected everyone still being offered
+   :seherin-inspect was a real bug the simulation harness caught."
   [state pid]
   (if-not (get-in state [:players pid])
     #{}
-    (into (player-actions state pid) (host-actions state pid))))
+    (let [candidates (into (player-actions state pid) (host-actions state pid))]
+      (into #{}
+            (remove (fn [action]
+                      (and (not (contains? no-target-actions action))
+                           (empty? (legal-targets state pid action)))))
+            candidates))))
 
 (defn legal-targets
   "Valid targets for an action, so the UI never offers an illegal click and the
@@ -333,7 +376,11 @@
       :jaeger-shoot    others
       :amor-link       (vec living)
       :nominate        others
-      :vote            (let [noms (filter (set living) (:nominations state))]
+      ;; MUST be sorted: :nominations is a set, and set iteration order differs
+      ;; between Clojure and ClojureScript. Returning it unsorted made the
+      ;; target list platform-dependent, which in turn made replay
+      ;; platform-dependent — the same seed played out differently on Node.
+      :vote            (let [noms (sort (filter (set living) (:nominations state)))]
                          (vec (if (seq noms) noms others)))
 
       ;; GM overrides need targets too, or the host's UI has nothing to offer.

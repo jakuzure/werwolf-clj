@@ -42,11 +42,19 @@
        vec))
 
 (defn team-of-player
-  "The team a player wins with. Lovers overrides the dealt team."
+  "The player's DEALT team: :village or :werewolf.
+
+   Deliberately NOT overridden to :lovers when Amor has linked them. Being in
+   love does not stop a werewolf being a werewolf:
+
+   * for the win check, a wolf in love must still count as a surviving wolf —
+     overriding it let the village win the moment Amor linked the last wolf;
+   * for targeting, wolves must still not be able to eat their own.
+
+   The lovers' alternate victory is a separate condition (exactly the two lovers
+   left alive) and is evaluated in phases/winner, not here."
   [state pid]
-  (if (contains? (set (:lovers state)) pid)
-    :lovers
-    (roles/team-of (get-in state [:players pid :role]))))
+  (roles/team-of (get-in state [:players pid :role])))
 
 (defn- other-lover [state pid]
   (when-let [ls (:lovers state)]
