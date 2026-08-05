@@ -1,5 +1,7 @@
 ;; Dependencies come from deps.edn (:cljs alias) — do not duplicate them here.
-{:deps      {:aliases [:cljs]}
+;; :cljs-test (paths-only, no :main-opts) puts test/ on the classpath so the
+;; :test-node build can run the .cljc engine tests on ClojureScript too.
+{:deps      {:aliases [:cljs :cljs-test]}
  :nrepl     {:port 7002}
 
  ;; Static files are served from :root; anything not found on disk (i.e. /api/*)
@@ -23,4 +25,11 @@
                   werwolf.config/ws-url          "ws://localhost:3000/api/ws"}}}
 
    :release    {:compiler-options {:optimizations :advanced
-                                   :infer-externs :auto}}}}}
+                                   :infer-externs :auto}}}
+
+  ;; Runs the .cljc engine tests on ClojureScript, so cross-platform claims
+  ;; (notably werwolf.engine.rng producing identical numbers) are enforced.
+  :test-node
+  {:target    :node-test
+   :output-to "target/node-tests.js"
+   :ns-regexp "-test$"}}}

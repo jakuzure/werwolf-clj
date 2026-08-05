@@ -37,6 +37,17 @@
   {:doc  "Run the Clojure test suite (engine + sim harness)"
    :task (clojure "-M:test")}
 
+  test:cljs
+  {:doc     "Run the .cljc engine tests on ClojureScript/Node.
+             Guards cross-platform claims (e.g. rng producing identical numbers)."
+   :depends [npm-install]
+   :task    (do (shell "npx shadow-cljs compile test-node")
+                (shell "node target/node-tests.js"))}
+
+  test:all
+  {:doc     "Run the suite on both platforms"
+   :depends [test test:cljs]}
+
   test:watch
   {:doc  "Re-run tests on change"
    :task (clojure "-M:test --watch --fail-fast")}
@@ -58,9 +69,10 @@
    :task    (shell "npx @tailwindcss/cli -i ./src/css/main.css -o ./resources/public/css/main.css --minify")}
 
   uberjar
-  {:doc     "Build the deployable uberjar"
-   :depends [build:cljs build:css]
-   :task    (clojure "-T:build uber")}
+  {:doc              "Build the deployable uberjar"
+   :override-builtin true
+   :depends          [build:cljs build:css]
+   :task             (clojure "-T:build uber")}
 
   docker
   {:doc     "Build the container image"

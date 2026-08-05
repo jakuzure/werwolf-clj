@@ -60,6 +60,13 @@
                  org.clojure/test.check  {:mvn/version "1.1.1"}}
    :main-opts   ["-m" "kaocha.runner"]}
 
+  ;; Paths-only test alias. shadow-cljs launches `clojure` with its :aliases,
+  ;; so any alias it uses must NOT carry :main-opts — kaocha's would hijack the
+  ;; process. Used by the :test-node build.
+  :cljs-test
+  {:extra-paths ["test"]
+   :extra-deps  {org.clojure/test.check {:mvn/version "1.1.1"}}}
+
   :build
   {:extra-paths ["build"]
    :deps        {io.github.clojure/tools.build {:mvn/version "0.10.7"}}
