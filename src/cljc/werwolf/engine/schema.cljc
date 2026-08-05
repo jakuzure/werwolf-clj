@@ -58,6 +58,7 @@
    [:host PlayerId]
    [:seed :int]                               ; RNG seed — replay determinism
    [:min-players :int]
+   [:max-players {:optional true} :int]
    [:lovers {:optional true} [:maybe [:set PlayerId]]]
    [:reactions [:vector Reaction]]            ; stack, drained LIFO
    [:pending-deaths [:vector [:map [:player PlayerId] [:cause :keyword]]]]

@@ -94,7 +94,7 @@
 ;; ---- lifecycle ----
 
 (defmethod apply-event :game/created
-  [_ {:keys [room-id host seed min-players]}]
+  [_ {:keys [room-id host seed min-players max-players]}]
   {:room-id        room-id
    :phase          :lobby
    :night          0
@@ -102,8 +102,10 @@
    :host           host
    :seed           seed
    ;; Kept in state rather than read from config, so the engine stays pure and
-   ;; a replayed game uses the same threshold it was created with.
+   ;; a replayed game uses the same thresholds it was created with. A config
+   ;; change must never be able to make a game in progress unstartable.
    :min-players    (or min-players 5)
+   :max-players    (or max-players 18)
    :lovers         nil
    :reactions      []
    :pending-deaths []

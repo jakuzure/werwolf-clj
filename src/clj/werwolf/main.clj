@@ -38,6 +38,8 @@
 (defmethod ig/init-key ::rooms [_ {:keys [db game]}]
   (let [ctx (room/registry {:ds db
                             :send! ws/send!
+                            ;; Table-size limits for newly opened rooms.
+                            :game game
                             ;; Installing the clock's hook here is what makes
                             ;; deadlines exist at all — see werwolf.timer.
                             :after-commit (timer/hook game)})

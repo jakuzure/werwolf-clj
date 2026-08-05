@@ -56,7 +56,9 @@
   (cond
     (not= :lobby (:phase state))          (err :game-in-progress {})
     (contains? (:players state) player)   (err :already-joined {:player player})
-    (>= (count (:players state)) 18)      (err :room-full {})
+    ;; From state, not a literal: the room keeps the limit it was opened with.
+    (>= (count (:players state))
+        (:max-players state 18))          (err :room-full {})
     (str/blank? (str name))               (err :name-required {})
     :else [{:type :player/joined
             :player player

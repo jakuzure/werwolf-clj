@@ -7,6 +7,7 @@
             [werwolf.engine.core :as engine]
             [werwolf.engine.events :as e]
             [werwolf.engine.phases :as phases]
+            [werwolf.engine.roles :as roles]
             [werwolf.test-util :as tu :refer [exec! try-exec alive]]))
 
 ;; ------------------------------------------------------- night ordering ---
@@ -254,6 +255,32 @@
               :when (not (contains? phases/no-target-actions action))]
         (is (seq (phases/legal-targets s pid action))
             (str "player " pid " offered " action " with no targets"))))))
+
+(deftest small-tables-still-compose-a-real-deck
+  (testing "MIN_PLAYERS can be lowered for a quick test game, so the deck has
+            to hold up below the documented sizes rather than merely not throw"
+    (are [n deck] (= deck (roles/compose-roles n))
+      3 [:werwolf :seherin :dorfbewohner]
+      4 [:werwolf :seherin :hexe :dorfbewohner]
+      5 [:werwolf :seherin :hexe :jaeger :dorfbewohner])
+    (testing "every small table has exactly one wolf and at least one villager"
+      (doseq [n [3 4]]
+        (let [deck (roles/compose-roles n)]
+          (is (= 1 (count (filter #{:werwolf} deck))))
+          (is (< 1 (count (remove #{:werwolf} deck)))
+              "a lone villager against a wolf is over before it starts"))))))
+
+(deftest table-limits-live-in-state-not-in-a-literal
+  (testing "a room keeps the limits it was opened with, so a config change
+            cannot retroactively lock people out of a game in progress"
+    (let [s (e/apply-event nil {:type :game/created :room-id "R" :host 0 :seed 1
+                                :min-players 3 :max-players 4})
+          s (reduce (fn [s i] (e/apply-event s {:type :player/joined :player i
+                                                :name (str "P" i) :locale :de}))
+                    s (range 4))]
+      (is (= 3 (:min-players s)))
+      (is (= 4 (:max-players s)))
+      (is (= :room-full (:error (engine/execute s {:type :join :player 9 :name "Late"})))))))
 
 (deftest chat-is-allowed-in-the-lobby
   (testing "people arrange the game before it starts; a silent lobby was a bug"

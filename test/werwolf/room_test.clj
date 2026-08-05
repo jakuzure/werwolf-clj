@@ -98,6 +98,72 @@
       (testing "and it is on disk immediately, not only in memory"
         (is (store/room-exists? (:ds ctx) room-id))))))
 
+(deftest table-size-limits-come-from-config
+  (testing "MIN_PLAYERS was read into config and then never plumbed to
+            create!, so the threshold was silently always 5 whatever you set"
+    (let [path (tmp-path)]
+      (try
+        (let [ctx (room/registry {:ds (store/open {:dbtype "sqlite" :dbname path})
+                                  :send! (fn [s m] (swap! s conj m))
+                                  :game {:min-players 3 :max-players 4}})
+              {:keys [room-id]} (room/create! ctx {:name "Anna"})]
+          (is (= 3 (:min-players (room/state-of ctx room-id))))
+          (room/join! ctx room-id {:name "Bob"})
+          (testing "and the host can start as soon as the configured minimum is met"
+            (is (not (contains? (engine/legal-actions (room/state-of ctx room-id) 0)
+                                :start-game))
+                "two is still short")
+            (room/join! ctx room-id {:name "Cem"})
+            (is (contains? (engine/legal-actions (room/state-of ctx room-id) 0)
+                           :start-game)))
+          (testing "and the maximum is enforced too, also from config"
+            (room/join! ctx room-id {:name "Dana"})
+            (is (= :room-full (:error (room/join! ctx room-id {:name "Eve"}))))))
+        (finally (cleanup! path))))))
+
+(deftest a-nonsensical-minimum-is-clamped-not-obeyed
+  (testing "below three the roles cannot make a game that is not already decided"
+    (with-ctx [ctx]
+      (let [ctx' (assoc ctx :game {:min-players 1})
+            {:keys [room-id]} (room/create! ctx' {:name "Anna"})]
+        (is (= 3 (:min-players (room/state-of ctx' room-id))))))))
+
+(deftest the-room-keeps-the-limits-it-was-opened-with
+  (testing "a config change must never make a game in progress unstartable"
+    (let [path (tmp-path)]
+      (try
+        (let [ds (store/open {:dbtype "sqlite" :dbname path})
+              ctx (room/registry {:ds ds :send! (fn [s m] (swap! s conj m))
+                                  :game {:min-players 3}})
+              {:keys [room-id]} (room/create! ctx {:name "Anna"})
+              ;; The operator raises the minimum and restarts.
+              ctx2 (room/registry {:ds ds :send! (fn [s m] (swap! s conj m))
+                                   :game {:min-players 12}})]
+          (room/rehydrate! ctx2)
+          (is (= 3 (:min-players (room/state-of ctx2 room-id)))
+              "the rehydrated room still has its own threshold"))
+        (finally (cleanup! path))))))
+
+(deftest a-three-player-game-is-playable
+  (testing "the smallest table the deck composes: one wolf, a Seherin and a
+            villager. This is what MIN_PLAYERS=3 is for, so it had better work"
+    (let [path (tmp-path)]
+      (try
+        (let [ctx (room/registry {:ds (store/open {:dbtype "sqlite" :dbname path})
+                                  :send! (fn [s m] (swap! s conj m))
+                                  :game {:min-players 3}})
+              {:keys [room-id]} (room/create! ctx {:name "P0"})]
+          (room/join! ctx room-id {:name "P1"})
+          (room/join! ctx room-id {:name "P2"})
+          (is (:ok? (room/submit! ctx room-id 0 {:type :start-game})))
+          (let [st (room/state-of ctx room-id)]
+            (is (= :night (:phase st)))
+            (is (= #{:werwolf :seherin :dorfbewohner}
+                   (set (map :role (vals (:players st)))))
+                "one of each — no duplicate wolves at this size")
+            (is (= 1 (count (wolves-in st))))))
+        (finally (cleanup! path))))))
+
 (deftest joining-allocates-fresh-seats-and-never-recycles-them
   (with-ctx [ctx]
     (let [{:keys [room-id]} (room/create! ctx {:name "Anna"})]

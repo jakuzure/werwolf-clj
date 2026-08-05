@@ -69,11 +69,16 @@
    deadline in step with its phase without room.clj having to know that timers
    exist. It may itself commit — Java monitors are reentrant — and must
    converge, i.e. eventually make no further change."
-  [{:keys [ds send! max-chat after-commit]}]
+  [{:keys [ds send! max-chat after-commit game]}]
   {:ds           ds
    :send!        send!
    :max-chat     (or max-chat 200)
    :after-commit after-commit
+   ;; Table-size limits from config. They live here rather than being read at
+   ;; the point of use because they are baked into :game/created — a room keeps
+   ;; the limits it was opened with, so changing config cannot retroactively
+   ;; make a game in progress unstartable.
+   :game         (or game {})
    :rooms        (atom {})
    ;; sink -> [room-id player-id], so a socket closing knows who it was
    ;; without the transport having to remember.
@@ -220,11 +225,25 @@
             (recur (inc attempt))
             code))))))
 
+(def ^:private absolute-min-players
+  "Three is the smallest table the role composition produces a real game for:
+   one wolf, a Seherin and a villager. Below that a 'game' is decided before it
+   starts, so a misconfigured MIN_PLAYERS is clamped rather than obeyed."
+  3)
+
 (defn create!
   "Open a room and seat its creator as host (player 0).
-   Returns {:room-id .. :player-id 0} or {:error ..}."
-  [ctx {:keys [name locale min-players seed]}]
-  (let [room-id (reserve-code! ctx)]
+   Returns {:room-id .. :player-id 0} or {:error ..}.
+
+   `min-players`/`max-players` default to the registry's config, which is what
+   makes MIN_PLAYERS actually mean something — it was read into config and then
+   never plumbed here, so the limit was silently always 5."
+  [ctx {:keys [name locale min-players max-players seed]}]
+  (let [room-id (reserve-code! ctx)
+        cfg (:game ctx)
+        min* (max absolute-min-players
+                  (or min-players (:min-players cfg) 5))
+        max* (max min* (or max-players (:max-players cfg) 18))]
     (with-room ctx room-id
       (fn [r]
         ;; The genesis event is built once and both applied and persisted, so
@@ -233,7 +252,8 @@
                        :room-id     room-id
                        :host        0
                        :seed        (or seed (random-seed))
-                       :min-players (or min-players 5)}
+                       :min-players min*
+                       :max-players max*}
               joined  (engine/execute (engine/apply-event nil genesis)
                                       {:type :join :player 0
                                        :name name :locale locale})]
