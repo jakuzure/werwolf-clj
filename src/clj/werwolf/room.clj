@@ -261,6 +261,14 @@
   [ctx room-id pid]
   (boolean (get-in (state-of ctx room-id) [:players pid])))
 
+(defn whereis
+  "Which [room-id player-id] a socket is bound to, or nil.
+
+   The registry's own index is the single source of truth for this, so the
+   transport keeps no per-connection state of its own and the two cannot drift."
+  [ctx sink]
+  (get @(:index ctx) sink))
+
 ;; ------------------------------------------------------------ attach/detach ---
 
 (defn- visible-chat

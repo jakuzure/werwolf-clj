@@ -1,0 +1,123 @@
+(ns werwolf.proto
+  "The wire contract, shared by server and client.
+
+   Two properties this file exists to protect:
+
+   **Nothing prose ever crosses the wire.** Messages carry structured facts —
+   `{:type :player/died :player 3 :cause :werwolf}` — and each client renders
+   them through its own dictionary. That is the entire reason a German and an
+   English player can sit in the same room, and it only stays true if the
+   protocol never grows a `:message` string.
+
+   **Client input is validated before it reaches the engine.** Every inbound
+   message is checked against a schema here, so a hand-crafted frame is rejected
+   at the door rather than probed against `handle` for interesting failures. The
+   command whitelist below is the load-bearing part: it is a list of what a
+   player may ask for, not a filter of what they may not.
+
+   Being `.cljc` is the point — the client validates outgoing messages against
+   the same schemas, so a protocol mistake is a compile-time-ish error during
+   development rather than a mystery at runtime."
+  (:require [malli.core :as m]))
+
+(def protocol-version 1)
+
+;; --------------------------------------------------------------- vocabulary ---
+
+(def command-types
+  "Everything a player may ask the engine to do, as a WHITELIST.
+
+   Deliberately enumerated rather than derived from the engine's `handle`
+   multimethod: what is reachable from a socket is a protocol decision, and
+   adding an engine command should not silently expose it to the network."
+  #{:leave :set-locale :start-game
+    :amor-link :seherin-inspect :werewolf-vote
+    :hexe-heal :hexe-poison :hexe-pass
+    :jaeger-shoot :nominate :vote :advance-phase
+    :gm/force-kill :gm/revive :gm/skip-role :gm/set-phase})
+
+(def client-message-types
+  #{:client/create :client/join :client/resume :client/command :client/chat :client/ping})
+
+(def server-message-types
+  #{:server/hello :server/welcome :server/error :server/pong
+    :room/view :room/chat :room/chat-history})
+
+;; ------------------------------------------------------------------ schemas ---
+
+(def Locale [:enum :de :en])
+
+(def PlayerName
+  ;; Bounded because it is rendered in everyone else's UI, and trimmed by the
+  ;; engine. 24 is long enough for a real name and short enough not to be a
+  ;; layout attack.
+  [:string {:min 1 :max 24}])
+
+(def RoomId
+  ;; Case-sensitive on the wire; the transport upper-cases before it gets here,
+  ;; because nobody types a room code the way it was printed.
+  [:re #"^[A-Z2-9]{4}$"])
+
+(def Command
+  "A player's intent. Closed, and notably WITHOUT :player.
+
+   The server overwrites the actor with the authenticated seat anyway, so
+   accepting the key would mean quietly ignoring something the client believes
+   it said. Rejecting it is the honest answer."
+  [:map {:closed true}
+   [:type (into [:enum] (sort-by str command-types))]
+   [:target {:optional true} :int]
+   [:locale {:optional true} Locale]
+   [:role   {:optional true} :keyword]
+   [:phase  {:optional true} :keyword]])
+
+(def ClientMessage
+  [:multi {:dispatch :type}
+   [:client/create
+    [:map {:closed true}
+     [:type [:= :client/create]]
+     [:name PlayerName]
+     [:locale {:optional true} Locale]]]
+
+   [:client/join
+    [:map {:closed true}
+     [:type [:= :client/join]]
+     [:room-id RoomId]
+     [:name PlayerName]
+     [:locale {:optional true} Locale]]]
+
+   ;; The reconnect path: a token names the seat, the room names the game.
+   [:client/resume
+    [:map {:closed true}
+     [:type [:= :client/resume]]
+     [:room-id RoomId]
+     [:token [:string {:min 1 :max 4096}]]]]
+
+   [:client/command
+    [:map {:closed true}
+     [:type [:= :client/command]]
+     [:cmd Command]]]
+
+   [:client/chat
+    [:map {:closed true}
+     [:type [:= :client/chat]]
+     [:text [:string {:min 1 :max 2000}]]]]
+
+   [:client/ping
+    [:map {:closed true}
+     [:type [:= :client/ping]]]]])
+
+(def ^:private client-validator (m/validator ClientMessage))
+(def ^:private client-explainer (m/explainer ClientMessage))
+
+(defn valid-client-message? [msg]
+  (and (map? msg) (client-validator msg)))
+
+(defn explain-client-message
+  "Why a message was rejected. Sent back to the client, so it must not echo the
+   payload — a token could be in there."
+  [msg]
+  (when (map? msg)
+    (some-> (client-explainer msg)
+            :errors
+            (->> (mapv (fn [e] {:in (vec (:in e)) :schema (pr-str (m/form (:schema e)))}))))))

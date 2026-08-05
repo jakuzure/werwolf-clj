@@ -1,0 +1,165 @@
+(ns werwolf.protocol
+  "The server side of the wire protocol: one function per inbound message.
+
+   This is the only place that turns a socket into a player. It does three
+   things and delegates everything else:
+
+   1. **Validate.** Every message is checked against `werwolf.proto` before it
+      reaches a room. A frame that does not typecheck never touches game state.
+   2. **Authenticate.** A socket's identity comes from a signed token or from
+      the create/join that seated it — never from a field in the payload.
+   3. **Answer the one socket.** State broadcasts belong to the room layer;
+      what happens here is the reply to the sender.
+
+   Deliberately free of transport details: `send!` arrives in `deps`, and the
+   socket is an opaque value. That is what lets the whole protocol be tested
+   with atoms for sockets, asserting exactly what a client would have received."
+  (:require [clojure.string :as str]
+            [clojure.tools.logging :as log]
+            [werwolf.proto :as proto]
+            [werwolf.room :as room]
+            [werwolf.token :as token]))
+
+(defn- reply! [{:keys [send!]} sock msg]
+  (send! sock msg))
+
+(defn- error! [deps sock code detail]
+  (reply! deps sock (cond-> {:type :server/error :code code}
+                      (seq detail) (assoc :detail detail))))
+
+(defn- issue-token [{:keys [tokens]} room-id player-id host? now-ms]
+  (token/issue tokens {:room-id room-id :player-id player-id
+                       :host? host? :now-ms now-ms}))
+
+(defn- welcome!
+  "Confirm a seat and hand over the reconnect token.
+
+   Sent BEFORE the socket is attached, so the client knows which player it is
+   before the first view arrives and never has to guess from the payload."
+  [deps sock room-id player-id]
+  (let [host? (= player-id (:host (room/state-of (:rooms deps) room-id)))]
+    (reply! deps sock {:type      :server/welcome
+                       :protocol  proto/protocol-version
+                       :room-id   room-id
+                       :player-id player-id
+                       :host?     host?
+                       :token     (issue-token deps room-id player-id host?
+                                               (System/currentTimeMillis))})))
+
+;; ---------------------------------------------------------------- dispatch ---
+
+(defmulti ^:private handle
+  "Handle one validated message. Dispatches on :type."
+  (fn [_deps _sock msg] (:type msg)))
+
+(defmethod handle :default
+  [deps sock msg]
+  (error! deps sock :unknown-message {:type (:type msg)}))
+
+(defmethod handle :client/ping
+  [deps sock _]
+  ;; Application-level, on top of the protocol's own pings: a proxy that idles
+  ;; out an otherwise silent connection is the usual reason a lobby goes quiet.
+  (reply! deps sock {:type :server/pong}))
+
+(defmethod handle :client/create
+  [{:keys [rooms] :as deps} sock {:keys [name locale]}]
+  (let [res (room/create! rooms {:name name :locale (or locale :de)})]
+    (if-let [code (:error res)]
+      (error! deps sock code (:detail res))
+      (let [{:keys [room-id player-id]} res]
+        (welcome! deps sock room-id player-id)
+        (room/attach! rooms room-id player-id sock)))))
+
+(defmethod handle :client/join
+  [{:keys [rooms] :as deps} sock {:keys [room-id name locale]}]
+  (let [res (room/join! rooms room-id {:name name :locale (or locale :de)})]
+    (if-let [code (:error res)]
+      (error! deps sock code (:detail res))
+      (let [pid (:player-id res)]
+        (welcome! deps sock room-id pid)
+        (room/attach! rooms room-id pid sock)))))
+
+(defmethod handle :client/resume
+  [{:keys [rooms tokens] :as deps} sock {:keys [room-id token]}]
+  (let [claim (token/verify tokens token {:expect-room room-id
+                                          :now-ms (System/currentTimeMillis)})]
+    (cond
+      (:error claim)
+      (error! deps sock (:error claim) {})
+
+      ;; The token is genuine but the game it names is gone — finished and
+      ;; swept, or from a previous life of this database.
+      (not (room/seated? rooms room-id (:player-id claim)))
+      (error! deps sock :seat-gone {:room-id room-id})
+
+      :else
+      (let [pid (:player-id claim)]
+        ;; A fresh token, so a long game does not end with everyone holding an
+        ;; expired one at the moment their wifi drops.
+        (welcome! deps sock room-id pid)
+        (room/attach! rooms room-id pid sock)))))
+
+(defmethod handle :client/command
+  [{:keys [rooms] :as deps} sock {:keys [cmd]}]
+  (if-let [[room-id pid] (room/whereis rooms sock)]
+    (let [res (room/submit! rooms room-id pid cmd)]
+      (when-let [code (:error res)]
+        ;; Rejections go to the offender alone. Everyone else learns nothing —
+        ;; an illegal action is often an accidental confession of a role.
+        (error! deps sock code (:detail res))))
+    (error! deps sock :not-in-room {})))
+
+(defmethod handle :client/chat
+  [{:keys [rooms] :as deps} sock {:keys [text]}]
+  (if-let [[room-id pid] (room/whereis rooms sock)]
+    (let [res (room/chat! rooms room-id pid text)]
+      (when-let [code (:error res)]
+        (error! deps sock code (:detail res))))
+    (error! deps sock :not-in-room {})))
+
+;; ------------------------------------------------------------- entry points ---
+
+(defn on-open
+  "Greet the socket. The client needs the protocol version before it decides
+   whether it can talk to this server at all."
+  [deps sock]
+  (reply! deps sock {:type :server/hello :protocol proto/protocol-version}))
+
+(defn- normalise
+  "Nobody types a room code the way it was printed. Done BEFORE validation, so
+   the schema can insist on the canonical form without punishing a human."
+  [msg]
+  (cond-> msg
+    (string? (:room-id msg)) (update :room-id str/upper-case)))
+
+(defn dispatch
+  "Handle one decoded message. Total: nil, junk and hostile input all produce a
+   reply rather than an exception, because this runs on the socket's read loop
+   and a throw there takes the connection with it.
+
+   A socket that is already seated may not create or join again. Without that
+   check one connection could seat itself repeatedly, and every seat but the
+   last would be a ghost nothing can ever reconnect to."
+  [{:keys [rooms] :as deps} sock raw-msg]
+  (try
+    (let [msg (when (map? raw-msg) (normalise raw-msg))]
+      (cond
+        (not (proto/valid-client-message? msg))
+        (error! deps sock :malformed {:errors (proto/explain-client-message msg)})
+
+        (and (#{:client/create :client/join :client/resume} (:type msg))
+             (room/whereis rooms sock))
+        (error! deps sock :already-in-room {})
+
+        :else (handle deps sock msg)))
+    (catch Throwable t
+      ;; A rule bug must cost one client its message, not the whole room its
+      ;; server. `locking` releases the room's lock on the way out.
+      (log/error t "protocol failure handling" (:type raw-msg))
+      (error! deps sock :internal-error {}))))
+
+(defn on-close
+  "The socket is gone. The room decides what that means for the player."
+  [{:keys [rooms]} sock]
+  (room/detach! rooms sock))

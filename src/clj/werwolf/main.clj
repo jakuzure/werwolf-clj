@@ -1,29 +1,79 @@
 (ns werwolf.main
-  "Integrant system definition and production entry point."
-  (:require [integrant.core :as ig]
+  "Integrant system definition and production entry point.
+
+   The dependency order is the whole design in miniature:
+
+     db -> rooms -> timer
+                 -> handler -> server
+
+   The log comes first because it is the truth; rooms are a fold over it; the
+   clock and the sockets are both merely things that poke at rooms."
+  (:require [clojure.tools.logging :as log]
+            [integrant.core :as ig]
             [org.httpkit.server :as hk]
             [werwolf.config :as config]
-            [werwolf.http :as http])
+            [werwolf.http :as http]
+            [werwolf.room :as room]
+            [werwolf.store :as store]
+            [werwolf.timer :as timer]
+            [werwolf.token :as token]
+            [werwolf.ws :as ws])
   (:gen-class))
 
 (defn system-config
   "Build the integrant config from the loaded application config."
-  [{:keys [server] :as cfg}]
-  {::handler {:config cfg}
+  [{:keys [server db tokens game]}]
+  {::db      {:config db}
+   ::rooms   {:db (ig/ref ::db) :game game}
+   ::timer   {:rooms (ig/ref ::rooms)}
+   ::handler {:rooms (ig/ref ::rooms) :tokens tokens}
    ::server  {:handler (ig/ref ::handler)
               :port    (:port server)
               :host    (:host server)}})
 
-(defmethod ig/init-key ::handler [_ {:keys [config]}]
-  (http/handler {:config config}))
+(defmethod ig/init-key ::db [_ {:keys [config]}]
+  (log/info "opening event log at" (:dbname config))
+  (store/open config))
+
+(defmethod ig/init-key ::rooms [_ {:keys [db game]}]
+  (let [ctx (room/registry {:ds db
+                            :send! ws/send!
+                            ;; Installing the clock's hook here is what makes
+                            ;; deadlines exist at all — see werwolf.timer.
+                            :after-commit (timer/hook game)})
+        restored (room/rehydrate! ctx)]
+    (when (seq restored)
+      (log/info "rehydrated" (count restored) "unfinished room(s):" restored)
+      ;; A game that was mid-phase when the process died gets a full fresh clock
+      ;; rather than an instantly-expired one.
+      (timer/rearm-all! ctx game (System/currentTimeMillis)))
+    ctx))
+
+(defmethod ig/init-key ::timer [_ {:keys [rooms]}]
+  (timer/start! rooms {}))
+
+(defmethod ig/halt-key! ::timer [_ handle]
+  (timer/stop! handle))
+
+(defmethod ig/init-key ::handler [_ {:keys [rooms tokens]}]
+  (when (token/insecure-secret? tokens)
+    ;; Loud, but not fatal: refusing to boot would mean a typo'd env var locks
+    ;; you out of your own server, and the threat model here is a friend group,
+    ;; not the internet. This becomes fatal the day the room list goes public.
+    (log/error (str "TOKEN_SECRET is unset or insecure — reconnect tokens are "
+                    "forgeable. Set TOKEN_SECRET before exposing this server.")))
+  (http/handler {:rooms rooms
+                 :tokens tokens
+                 :send! ws/send!}))
 
 (defmethod ig/init-key ::server [_ {:keys [handler port host]}]
-  (println (str "werwolf-clj listening on http://" host ":" port))
-  ;; :legacy-return-value? false gives us a stoppable server object rather
-  ;; than a bare stop function.
-  (hk/run-server handler {:port port
-                          :ip host
-                          :legacy-return-value? false}))
+  (let [srv (hk/run-server handler {:port port
+                                    :ip host
+                                    ;; A stoppable server object rather than a
+                                    ;; bare stop function.
+                                    :legacy-return-value? false})]
+    (log/info (str "werwolf-clj listening on http://" host ":" (hk/server-port srv)))
+    srv))
 
 (defmethod ig/halt-key! ::server [_ server]
   (hk/server-stop! server {:timeout 1000}))
