@@ -296,8 +296,9 @@
     (cond
       (= :game-over phase) #{}
 
+      ;; The lobby is where people arrange the game, so of course they may talk.
       (= :lobby phase)
-      (cond-> #{:leave :set-locale}
+      (cond-> #{:chat :leave :set-locale}
         (and host? (>= (count (:players state)) (:min-players state 5)))
         (conj :start-game))
 
@@ -306,7 +307,11 @@
       (= :reaction phase)
       (let [r (peek (:reactions state))]
         (if (and (= :reaction/jaeger-shot (:type r)) (= pid (:player r)))
-          #{:jaeger-shoot}
+          ;; He may talk while he aims. The whole table is waiting on him and
+          ;; everyone else is chatting; silencing exactly the player being
+          ;; waited for is arbitrary. Chat routing still sends him to the dead
+          ;; channel, since he is one of them now.
+          #{:jaeger-shoot :chat}
           #{:chat}))
 
       ;; Otherwise the dead may watch and talk, never act.

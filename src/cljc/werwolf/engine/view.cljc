@@ -222,10 +222,15 @@
    Returns the offending pairs, or nil when the view is clean.
 
    This is the assertion the property test drives over generated games. It must
-   never be allowed to fail."
-  [state pid]
-  (let [view      (view-for state pid)
-        permitted (set (revealed-roles state pid))
-        actual    (foreign-roles-in-view view pid)
-        leaked    (into #{} (remove permitted) actual)]
-    (when (seq leaked) leaked)))
+   never be allowed to fail.
+
+   The 3-arity takes an explicit `view`, which lets the server audit what it
+   actually put on a socket rather than re-deriving what it should have put
+   there. A check that only ever inspects `view-for`'s own output cannot catch a
+   transport layer that sends something else."
+  ([state pid] (redaction-leaks? state pid (view-for state pid)))
+  ([state pid view]
+   (let [permitted (set (revealed-roles state pid))
+         actual    (foreign-roles-in-view view pid)
+         leaked    (into #{} (remove permitted) actual)]
+     (when (seq leaked) leaked))))

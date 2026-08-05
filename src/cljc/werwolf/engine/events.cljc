@@ -149,6 +149,18 @@
   [state {:keys [player locale]}]
   (assoc-in state [:players player :locale] locale))
 
+(defmethod apply-event :host/changed
+  ;; Succession. The host is the fallback narrator and the only player who can
+  ;; start a game, so a room whose host walks out of the lobby would otherwise
+  ;; be unstartable — a dead end with no command that can escape it.
+  ;;
+  ;; Public on purpose: everyone must know who holds the GM powers, and the
+  ;; whole point of logging overrides is that they are auditable.
+  [state {:keys [host]}]
+  (-> state
+      (assoc :host host)
+      (publish {:type :host/changed :host host})))
+
 (defmethod apply-event :game/started
   [state {:keys [assignments seed]}]
   (-> (reduce (fn [s [pid role-id]]

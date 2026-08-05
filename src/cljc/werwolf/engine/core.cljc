@@ -41,6 +41,13 @@
   view/view-for)
 
 (def legal-actions phases/legal-actions)
+
+(def team-of-player
+  "A player's dealt team. SERVER-SIDE ONLY — this is exactly the information
+   `view-for` exists to withhold. The room layer needs it to route werewolf
+   chat; nothing that touches a socket payload may use it."
+  events/team-of-player)
+
 (def legal-targets phases/legal-targets)
 (def winner phases/winner)
 (def living-ids events/living-ids)

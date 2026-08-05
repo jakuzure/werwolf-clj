@@ -252,6 +252,39 @@
         (is (seq (phases/legal-targets s pid action))
             (str "player " pid " offered " action " with no targets"))))))
 
+(deftest chat-is-allowed-in-the-lobby
+  (testing "people arrange the game before it starts; a silent lobby was a bug"
+    (let [s (e/replay [{:type :game/created :room-id "R" :host 0 :seed 1 :min-players 5}
+                       {:type :player/joined :player 0 :name "A" :locale :de}
+                       {:type :player/joined :player 1 :name "B" :locale :de}])]
+      (is (contains? (phases/legal-actions s 1) :chat)))))
+
+(deftest the-jaeger-may-speak-while-he-aims
+  (testing "the whole table is waiting on him and everyone else is chatting"
+    (let [s (tu/game-with {0 :dorfbewohner 1 :werwolf 2 :hexe 3 :seherin 4 :jaeger})
+          s (exec! s {:type :seherin-inspect :player 3 :target 1})
+          s (exec! s {:type :werewolf-vote :player 1 :target 4})
+          s (exec! s {:type :hexe-pass :player 2})]
+      (is (= :reaction (:phase s)))
+      (is (false? (get-in s [:players 4 :alive?])) "the Jäger is dead")
+      (is (= #{:jaeger-shoot :chat} (phases/legal-actions s 4))))))
+
+;; ------------------------------------------------- succession -------------
+
+(deftest host-succession-is-a-logged-public-fact
+  (testing "the host is the fallback narrator, so who holds the powers can
+            never be a private detail"
+    (let [log [{:type :game/created :room-id "R" :host 0 :seed 1 :min-players 5}
+               {:type :player/joined :player 0 :name "A" :locale :de}
+               {:type :player/joined :player 1 :name "B" :locale :de}
+               {:type :player/left :player 0}
+               {:type :host/changed :host 1}]
+          s (e/replay log)]
+      (is (= 1 (:host s)))
+      (is (= 1 (tu/count-log s :host/changed)) "public, so the override is auditable")
+      (testing "and it folds like any other event"
+        (is (= s (e/apply-event (e/replay (butlast log)) (last log))))))))
+
 ;; ------------------------------------------------------------- replay ---
 
 (deftest replay-reproduces-state-exactly
