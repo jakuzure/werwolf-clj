@@ -335,4 +335,11 @@
       :nominate        others
       :vote            (let [noms (filter (set living) (:nominations state))]
                          (vec (if (seq noms) noms others)))
+
+      ;; GM overrides need targets too, or the host's UI has nothing to offer.
+      :gm/force-kill   (vec living)
+      :gm/revive       (vec (sort (keep (fn [[id p]] (when-not (:alive? p) id))
+                                       (:players state))))
+      :gm/skip-role    (if-let [c (:night-cursor state)] [c] [])
+      :gm/set-phase    (vec (sort (keys next-phase)))
       [])))
