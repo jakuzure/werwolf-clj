@@ -3,7 +3,7 @@
 
    The simulation harness covers breadth; these cover the specific rule
    collisions that a random walk hits rarely or reports unhelpfully."
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [clojure.test :refer [are deftest is testing]]
             [werwolf.engine.core :as engine]
             [werwolf.engine.events :as e]
             [werwolf.engine.phases :as phases]
@@ -268,6 +268,88 @@
       (is (= :reaction (:phase s)))
       (is (false? (get-in s [:players 4 :alive?])) "the Jäger is dead")
       (is (= #{:jaeger-shoot :chat} (phases/legal-actions s 4))))))
+
+;; --------------------------------------------------------- the clock ------
+
+(deftest which-phases-have-a-clock-is-a-rule-not-a-config-value
+  (testing "config decides how long a phase lasts; the engine decides whether it
+            is timed at all"
+    (is (= #{:night :discussion :nomination :vote :reaction}
+           (set (keys phases/timed-phases))))
+    (doseq [p [:lobby :day-reveal :day-resolve :game-over]]
+      (is (nil? (phases/timeout-events {:phase p}))
+          (str p " must have no timeout behaviour")))))
+
+(deftest a-timeout-is-always-a-public-fact
+  (testing "a player has to be able to see why the vote closed"
+    (doseq [p [:night :discussion :nomination :vote :reaction]]
+      (is (= :phase/timed-out
+             (:type (first (phases/timeout-events {:phase p
+                                                   :night-cursor :seherin
+                                                   :reactions [{}]}))))
+          (str p " timed out silently")))))
+
+(deftest an-expired-day-phase-simply-advances
+  (are [phase next*] (= next*
+                        (:phase (second (phases/timeout-events {:phase phase}))))
+    :discussion :nomination
+    :nomination :vote
+    :vote       :day-resolve))
+
+(deftest an-expired-night-turn-ends-that-role-and-nothing-else
+  (let [s (tu/game-with {0 :dorfbewohner 1 :werwolf 2 :hexe 3 :seherin 4 :jaeger})]
+    (is (= :seherin (:night-cursor s)))
+    (let [evs (phases/timeout-events s)]
+      (is (= [:phase/timed-out :night/role-completed] (mapv :type evs)))
+      (is (= :seherin (:role (second evs))))
+      (testing "and nobody dies just because the Seherin fell asleep"
+        (let [s' (e/apply-all s evs)]
+          (is (= (alive s) (alive (first (phases/settle s'))))))))))
+
+(deftest wolves-who-run-out-of-time-still-eat
+  (testing "deciding nothing would hand the village a free night for stalling"
+    (let [s (tu/game-with {0 :dorfbewohner 1 :werwolf 2 :werwolf 3 :seherin 4 :jaeger})
+          s (exec! s {:type :seherin-inspect :player 3 :target 1})
+          ;; Only ONE of the two wolves votes, then the clock runs out.
+          s (exec! s {:type :werewolf-vote :player 1 :target 0})]
+      (is (= :werwolf (:night-cursor s)) "still waiting on the other wolf")
+      (let [evs (phases/timeout-events s)]
+        (is (= [:phase/timed-out :night/role-completed :werewolf/chose]
+               (mapv :type evs)))
+        (is (= 0 (:target (last evs))) "the vote that WAS cast decided it")))))
+
+(deftest wolves-who-vote-for-nobody-kill-nobody
+  (let [s (tu/game-with {0 :dorfbewohner 1 :werwolf 2 :werwolf 3 :seherin 4 :jaeger})
+        s (exec! s {:type :seherin-inspect :player 3 :target 1})]
+    (is (= :werwolf (:night-cursor s)))
+    (is (= [:phase/timed-out :night/role-completed]
+           (mapv :type (phases/timeout-events s)))
+        "no votes at all means no victim — the timeout invents nothing")))
+
+(deftest a-jaeger-who-runs-out-of-time-does-not-fire
+  (testing "the shot is his to take, not the server's to guess"
+    (let [s (tu/game-with {0 :dorfbewohner 1 :werwolf 2 :hexe 3 :seherin 4 :jaeger})
+          s (exec! s {:type :seherin-inspect :player 3 :target 4})
+          s (exec! s {:type :werewolf-vote :player 1 :target 4})
+          s (exec! s {:type :hexe-pass :player 2})]
+      (is (= :reaction (:phase s)))
+      (let [evs (phases/timeout-events s)
+            [s' _] (phases/settle (e/apply-all s evs))]
+        (is (= [:phase/timed-out :reaction/popped] (mapv :type evs)))
+        (is (not= :reaction (:phase s')) "the game moved on")
+        (is (empty? (:reactions s')))
+        (is (= [0 1 2 3] (alive s')) "nobody was shot on his behalf")))))
+
+(deftest the-deadline-is-server-authoritative-and-absolute
+  (let [s (tu/game-with {0 :dorfbewohner 1 :werwolf 2 :hexe 3 :seherin 4 :jaeger})
+        s (e/apply-event s {:type :phase/deadline :at 1700000000000})]
+    (is (= 1700000000000 (:deadline s)))
+    (testing "it is not a public fact — it is a fact about the server"
+      (is (not-any? #(= :phase/deadline (:type %)) (:log s))))
+    (testing "and every phase change stops the clock, so a stale deadline can
+              never leak across a transition"
+      (is (nil? (:deadline (e/apply-event s {:type :phase/changed :phase :vote})))))
+    (is (nil? (:deadline (e/apply-event s {:type :phase/deadline :at nil}))))))
 
 ;; ------------------------------------------------- succession -------------
 

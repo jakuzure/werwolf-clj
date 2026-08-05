@@ -149,6 +149,23 @@
   [state {:keys [player locale]}]
   (assoc-in state [:players player :locale] locale))
 
+(defmethod apply-event :phase/deadline
+  ;; The clock is server-authoritative and absolute: an epoch-ms instant, never
+  ;; a duration. Clients count down FROM this number, so a client with a slow
+  ;; frame rate, a backgrounded tab or a wrong clock offset cannot gain or lose
+  ;; time. `:at nil` stops the clock.
+  ;;
+  ;; Not logged: it is not a fact about the game, it is a fact about the server,
+  ;; and the log is what players read.
+  [state {:keys [at]}]
+  (assoc state :deadline at))
+
+(defmethod apply-event :phase/timed-out
+  ;; Logged, unlike the deadline itself: "the time ran out" is exactly the kind
+  ;; of thing a player needs to see to understand why the vote closed.
+  [state {:keys [phase]}]
+  (publish state {:type :phase/timed-out :phase phase}))
+
 (defmethod apply-event :host/changed
   ;; Succession. The host is the fallback narrator and the only player who can
   ;; start a game, so a room whose host walks out of the lobby would otherwise

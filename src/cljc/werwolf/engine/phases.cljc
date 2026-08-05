@@ -262,6 +262,57 @@
    :nomination :vote
    :vote       :day-resolve})
 
+;; ------------------------------------------------------------ the clock ---
+
+(def timed-phases
+  "Phases the clock owns, mapped to the config key holding their length.
+
+   Which phases are timed is a RULE and lives here; how long they last is
+   deployment policy and lives in config. Phases absent from this map have no
+   deadline by design: the lobby waits for the host, :day-reveal and
+   :day-resolve are instantaneous narrator steps, and :game-over waits for
+   nobody."
+  {:night      :night-secs
+   :discussion :discussion-secs
+   :nomination :nomination-secs
+   :vote       :vote-secs
+   :reaction   :reaction-secs})
+
+(defn timeout-events
+  "What it MEANS for the clock to run out here. Pure, so the rule is testable
+   on both platforms and the server only has to decide *when*.
+
+   The principle throughout: a timeout must never stall the game and must never
+   invent a decision nobody made. Silence is an abstention, and an abstention
+   counts as itself — `tally` already treats a tie as killing nobody, so a room
+   that says nothing simply survives the day."
+  [state]
+  (let [phase (:phase state)]
+    (when (contains? timed-phases phase)
+      (into [{:type :phase/timed-out :phase phase}]
+            (case phase
+              ;; End the current role's turn. The wolves are the exception: they
+              ;; are making a collective decision, so a pack that cannot agree
+              ;; in time still eats whoever led the vote. Deciding nothing would
+              ;; hand the village a free night for stalling.
+              :night
+              (let [cursor (:night-cursor state)]
+                (when cursor
+                  (cond-> [{:type :night/role-completed :role cursor}]
+                    (= :werwolf cursor)
+                    (as-> evs
+                          (if-let [t (wolf-tally (get-in state [:night-actions :werewolf-votes]))]
+                            (conj evs {:type :werewolf/chose :target t})
+                            evs)))))
+
+              ;; The Jäger who never fires simply does not fire — the shot is
+              ;; his to take, not the server's to guess.
+              :reaction [{:type :reaction/popped}]
+
+              ;; The day marches on regardless. Uncast votes are abstentions,
+              ;; which is what `tally` already does with them.
+              [{:type :phase/changed :phase (next-phase phase) :deadline nil}])))))
+
 (defn- night-actor?
   "Is pid one of the players whose role is currently on the night cursor?"
   [state pid]

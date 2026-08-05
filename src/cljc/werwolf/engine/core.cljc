@@ -50,6 +50,15 @@
 
 (def legal-targets phases/legal-targets)
 (def winner phases/winner)
+
+(def timed-phases
+  "Which phases the clock owns -> the config key holding their length."
+  phases/timed-phases)
+
+(def timeout-events
+  "What the clock running out means here. The server decides *when*; this
+   decides *what*."
+  phases/timeout-events)
 (def living-ids events/living-ids)
 
 ;; ---- persistence --------------------------------------------------------

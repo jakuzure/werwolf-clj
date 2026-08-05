@@ -62,15 +62,22 @@
   "Create a room registry. `ds` is a store datasource; `send!` is a 2-arity
    fn of [sink message] that the transport supplies.
 
-   `max-chat` bounds the per-room chat backlog kept for reconnecting players."
-  [{:keys [ds send! max-chat]}]
-  {:ds       ds
-   :send!    send!
-   :max-chat (or max-chat 200)
-   :rooms    (atom {})
+   `max-chat` bounds the per-room chat backlog kept for reconnecting players.
+
+   `after-commit` is called as (f ctx room-id) at the end of every committed
+   change, still holding the room's lock. The clock uses it to keep a room's
+   deadline in step with its phase without room.clj having to know that timers
+   exist. It may itself commit — Java monitors are reentrant — and must
+   converge, i.e. eventually make no further change."
+  [{:keys [ds send! max-chat after-commit]}]
+  {:ds           ds
+   :send!        send!
+   :max-chat     (or max-chat 200)
+   :after-commit after-commit
+   :rooms        (atom {})
    ;; sink -> [room-id player-id], so a socket closing knows who it was
    ;; without the transport having to remember.
-   :index    (atom {})})
+   :index        (atom {})})
 
 (defn- rooms [ctx] @(:rooms ctx))
 (defn- room-of [ctx room-id] (get (rooms ctx) room-id))
@@ -135,20 +142,43 @@
                  (update :seq + (count events)))]
       (swap! (:rooms ctx) update room-id merge (select-keys r' [:state :seq]))
       (broadcast! ctx (room-of ctx room-id))
+      ;; Last, and still under the lock: the clock gets to react to the new
+      ;; phase. Doing it here rather than folding the deadline into this same
+      ;; batch costs one extra broadcast per phase change — a few times a game —
+      ;; and in exchange room.clj needs to know nothing about timers.
+      (when-let [f (:after-commit ctx)]
+        (f ctx room-id))
       r')))
 
 (defn- apply-server-events!
-  "Append events the SERVER authors (connection changes, host succession)
-   rather than a player commanding them.
+  "Append events the SERVER authors — connection changes, host succession, the
+   clock running out — rather than a player commanding them, then settle.
 
    These bypass `handle` deliberately: they are not player intent and there is
-   nothing to validate — the socket really did close. They are still logged,
-   because `:connected?` is part of state and a log that omitted them would
-   replay into a state the server never held."
+   nothing to validate. The socket really did close; the clock really did
+   expire. They are still logged, because they are part of state and a log that
+   omitted them would replay into a state the server never held."
   [ctx r events]
   (if (seq events)
-    (commit! ctx r events (engine/apply-all (:state r) events))
+    (let [after (engine/apply-all (:state r) events)
+          [settled auto] (engine/settle after)]
+      (commit! ctx r (into (vec events) auto) settled))
     r))
+
+(defn narrate!
+  "Apply server-authored events computed from the state as seen UNDER the lock.
+
+   `events-fn` is a function of state rather than a ready-made vector on
+   purpose: the clock decides what to do based on a deadline that another thread
+   may have just moved, so reading state outside the lock and acting on it
+   inside would be a race."
+  [ctx room-id events-fn]
+  (with-room ctx room-id
+    (fn [r]
+      (if-let [events (seq (events-fn (:state r)))]
+        (do (apply-server-events! ctx r (vec events))
+            {:ok? true :events (count events)})
+        {:ok? true :noop? true}))))
 
 ;; ------------------------------------------------------------ create/join ---
 
