@@ -1,7 +1,8 @@
 {:min-bb-version "1.3.0"
 
  :tasks
- {:requires ([babashka.fs :as fs])
+ {:requires ([babashka.fs :as fs]
+             [babashka.process :as p])
 
   ;; ---------- setup ----------
   npm-install
@@ -20,17 +21,40 @@
    :depends [npm-install]
    :task    (shell "npx @tailwindcss/cli -i ./src/css/main.css -o ./resources/public/css/main.css --watch")}
 
-  dev:server
-  {:doc  "Start the Clojure server + nREPL. In the REPL: (dev/go)"
+  dev:repl
+  {:doc  "Start an nREPL with the dev alias. The system is NOT running until you
+          evaluate (require 'dev) (dev/go) — use this when you want the REPL
+          workflow, `bb serve` when you just want the game up."
    :task (clojure "-M:dev:cljs:test")}
 
+  serve
+  {:doc  "Run the server directly on :3000, no REPL. Serves resources/public,
+          so whatever shadow-cljs last built is what you get."
+   :task (clojure "-M -m werwolf.main")}
+
   dev
-  {:doc  "How to run the full dev stack"
-   :task (println (str "Run these in three terminals:\n"
-                       "  bb dev:server   # nREPL, then (require 'dev) (dev/go)\n"
-                       "  bb dev:cljs     # shadow-cljs watch\n"
-                       "  bb dev:css      # tailwind watch\n"
-                       "\nThen open http://localhost:8080"))}
+  {:doc     "The whole dev stack in one terminal: server, shadow-cljs watch and
+             tailwind watch. Ctrl-C stops all three.
+
+             Open http://localhost:3000 — the app is served by the Clojure
+             server itself. (http://localhost:8080 also works and adds
+             shadow's live CSS/HTML reload, but it proxies to :3000, so it only
+             works while the server is up.)"
+   :depends [npm-install]
+   :task
+   ;; NOTE: bb.edn is read as plain EDN, so reader macros are unavailable in
+   ;; here — no #() and no @deref. Both fail at load time, not at run time.
+   (let [procs (mapv (fn [cmd] (p/process cmd {:inherit true
+                                               :shutdown p/destroy-tree}))
+                     [["clojure" "-M" "-m" "werwolf.main"]
+                      ["npx" "shadow-cljs" "watch" "app"]
+                      ["npx" "@tailwindcss/cli"
+                       "-i" "./src/css/main.css"
+                       "-o" "./resources/public/css/main.css" "--watch"]])]
+     (println "\n  → http://localhost:3000   (or :8080 for live CSS reload)\n")
+     ;; Wait on all three. If any exits, its status surfaces; the others are
+     ;; torn down by the :shutdown hook rather than left orphaned holding :3000.
+     (doseq [proc procs] (deref proc)))}
 
   ;; ---------- quality ----------
   test
