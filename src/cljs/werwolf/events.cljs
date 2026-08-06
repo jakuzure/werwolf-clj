@@ -34,6 +34,8 @@
 
 (rf/reg-event-db ::dismiss-error (fn [db _] (assoc db :error nil)))
 
+(rf/reg-event-db ::toggle-log (fn [db _] (update db :log/show-all? not)))
+
 ;; ------------------------------------------------------------------ outbound ---
 
 (rf/reg-event-fx

@@ -381,7 +381,11 @@
     #{}
     (cond-> #{:gm/force-kill :gm/revive :gm/set-phase}
       (contains? next-phase (:phase state)) (conj :advance-phase)
-      (= :night (:phase state))             (conj :gm/skip-role))))
+      (= :night (:phase state))             (conj :gm/skip-role)
+      ;; The narrator's oldest privilege: "hang on, let him finish."
+      (:paused? state)                      (conj :gm/resume)
+      (not (:paused? state))                (conj :gm/pause)
+      (:deadline state)                     (conj :gm/add-time))))
 
 (defn- player-actions
   "What pid may do as a *player* (ignoring GM powers)."
@@ -478,6 +482,7 @@
   "Commands that carry no :target. Everything else needs at least one legal
    target to be offerable at all."
   #{:start-game :leave :set-locale :chat :advance-phase :ready
+    :gm/pause :gm/resume :gm/add-time
     ;; The four ways to decline. Each is a deliberate 'no', which is why they
     ;; are commands at all rather than the absence of one.
     :hexe-pass :nominate-pass :vote-abstain :jaeger-pass})

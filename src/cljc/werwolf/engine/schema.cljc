@@ -77,6 +77,9 @@
    ;; Players who have finished talking, so the discussion can end early.
    [:ready {:optional true} [:set PlayerId]]
    [:deadline {:optional true} [:maybe :int]] ; epoch ms, server-authoritative
+   ;; Set by the GM. Suppresses the clock entirely rather than merely clearing
+   ;; the deadline, which the timer would re-arm on its next reconcile.
+   [:paused? {:optional true} :boolean]
    [:winner {:optional true} [:maybe Team]]
    ;; set by :vote/resolved so :day-resolve knows the lynch has been counted
    [:vote-resolved? {:optional true} :boolean]

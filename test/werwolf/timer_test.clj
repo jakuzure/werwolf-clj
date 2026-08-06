@@ -234,6 +234,82 @@
               (is (= living-before (set (engine/living-ids st)))
                   "nobody was shot by the server"))))))))
 
+;; -------------------------------------------------------------- GM control ---
+
+(deftest the-gm-can-stop-and-restart-the-clock
+  (testing "the narrator's oldest privilege: 'hang on, let him finish'"
+    (with-ctx [ctx]
+      (let [room-id (table ctx 5)]
+        (room/submit! ctx room-id 0 {:type :start-game})
+        (is (some? (deadline ctx room-id)))
+
+        (is (:ok? (room/submit! ctx room-id 0 {:type :gm/pause})))
+        (let [st (room/state-of ctx room-id)]
+          (is (true? (:paused? st)))
+          (is (nil? (:deadline st)) "the clock is stopped, not merely hidden"))
+
+        (testing "and reconciliation does not helpfully put it back — without the
+                  :paused? flag the pause would last about one second"
+          (timer/reconcile! ctx game-cfg room-id (System/currentTimeMillis))
+          (is (nil? (deadline ctx room-id))))
+
+        (testing "nor does the ticker fire anything while paused"
+          (is (empty? (timer/tick! ctx (+ (System/currentTimeMillis) 999999)))))
+
+        (testing "resuming arms a fresh clock rather than the expired one"
+          (is (:ok? (room/submit! ctx room-id 0 {:type :gm/resume})))
+          (let [st (room/state-of ctx room-id)]
+            (is (not (:paused? st)))
+            (is (some? (:deadline st)))
+            (is (> (:deadline st) (System/currentTimeMillis)))))))))
+
+(deftest pausing-twice-is-an-error-not-a-no-op
+  (with-ctx [ctx]
+    (let [room-id (table ctx 5)]
+      (room/submit! ctx room-id 0 {:type :start-game})
+      (room/submit! ctx room-id 0 {:type :gm/pause})
+      (is (= :already-paused (:error (room/submit! ctx room-id 0 {:type :gm/pause}))))
+      (room/submit! ctx room-id 0 {:type :gm/resume})
+      (is (= :not-paused (:error (room/submit! ctx room-id 0 {:type :gm/resume})))))))
+
+(deftest the-gm-can-buy-more-time
+  (with-ctx [ctx]
+    (let [room-id (table ctx 5)]
+      (room/submit! ctx room-id 0 {:type :start-game})
+      (let [before (deadline ctx room-id)]
+        (is (:ok? (room/submit! ctx room-id 0 {:type :gm/add-time :secs 90})))
+        (is (= (+ before 90000) (deadline ctx room-id))
+            "extending is arithmetic on an absolute instant, so it needs no clock"))
+      (testing "a slip is clamped rather than obeyed"
+        (let [before (deadline ctx room-id)]
+          (room/submit! ctx room-id 0 {:type :gm/add-time :secs 999999})
+          (is (= (+ before (* 1000 600)) (deadline ctx room-id)))))
+      (testing "and it is refused when there is no clock to extend"
+        (room/submit! ctx room-id 0 {:type :gm/pause})
+        (is (= :no-deadline (:error (room/submit! ctx room-id 0 {:type :gm/add-time}))))))))
+
+(deftest only-the-host-may-touch-the-clock
+  (with-ctx [ctx]
+    (let [room-id (table ctx 5)]
+      (room/submit! ctx room-id 0 {:type :start-game})
+      (doseq [cmd [{:type :gm/pause} {:type :gm/resume} {:type :gm/add-time}]]
+        (is (contains? #{:not-host :not-allowed} (:error (room/submit! ctx room-id 1 cmd)))
+            (str cmd " must not be available to a player"))))))
+
+(deftest clock-overrides-are-logged-like-every-other-override
+  (testing "auditable by design — the whole point of logging GM powers"
+    (with-ctx [ctx]
+      (let [room-id (table ctx 5)]
+        (room/submit! ctx room-id 0 {:type :start-game})
+        (room/submit! ctx room-id 0 {:type :gm/add-time :secs 30})
+        (room/submit! ctx room-id 0 {:type :gm/pause})
+        (let [log (:log (room/state-of ctx room-id))
+              forced (filter #(= :gm/forced (:type %)) log)]
+          (is (= [:add-time :pause] (mapv :action forced)))
+          (is (every? #(= 0 (:actor %)) forced))
+          (is (some #(= :clock/paused (:type %)) log)
+              "and the pause itself is public, so nobody thinks the game froze"))))))
+
 ;; ---------------------------------------------------------------- restart ---
 
 (deftest a-deadline-that-expired-while-the-server-was-down-is-re-armed

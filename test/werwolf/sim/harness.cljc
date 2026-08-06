@@ -18,9 +18,14 @@
 
 ;; Actions the simulation never issues: they would end or distort the game
 ;; rather than play it.
+;;
+;; The clock overrides are here because there is no clock in a headless game —
+;; :deadline is always nil — so pausing and resuming would burn turns and
+;; consume RNG draws while changing nothing about the game being played.
 (def ^:private excluded-actions
   #{:chat :leave :set-locale
-    :gm/force-kill :gm/revive :gm/set-phase :gm/skip-role})
+    :gm/force-kill :gm/revive :gm/set-phase :gm/skip-role
+    :gm/pause :gm/resume :gm/add-time})
 
 (defn sim-genesis
   "The events that create a lobby of n players. Returned as data so the whole

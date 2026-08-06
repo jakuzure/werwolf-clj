@@ -141,6 +141,9 @@
      :night       (:night state)
      :host        (:host state)
      :deadline    (:deadline state)
+     ;; So the countdown can say "PAUSIERT" rather than silently freeze, which
+     ;; reads as a broken client.
+     :paused?     (boolean (:paused? state))
      :winner      (:winner state)
      :log         (vec (:log state))
      :votes       (or (:votes state) {})

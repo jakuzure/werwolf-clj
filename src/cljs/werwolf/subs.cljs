@@ -15,7 +15,30 @@
 (rf/reg-sub ::error       (fn [db _] (:error db)))
 (rf/reg-sub ::now         (fn [db _] (:now db)))
 (rf/reg-sub ::form        (fn [db _] (:form db)))
-(rf/reg-sub ::form-field :<- [::form] (fn [form [_ k]] (get form k "")))
+(rf/reg-sub
+ ::form-field
+ :<- [::form]
+ ;; Defaults to "" because these back controlled text inputs, which must never
+ ;; be handed nil. Do NOT read non-text state through here — see ::pending.
+ (fn [form [_ k]] (get form k "")))
+
+(defn armed-action
+  "The action the player has armed for targeting, or nil.
+
+   Deliberately not read through ::form-field: that defaults to \"\" so it can
+   back controlled text inputs, and \"\" is TRUTHY in ClojureScript. Reading the
+   armed action through it made `when-let` succeed on every render, so the
+   'choose a target' bar appeared before anyone had clicked anything.
+
+   `map?` rather than `some?`, so a stale value of the wrong shape cannot
+   resurrect it either. Pure and public so the guard itself is testable."
+  [form]
+  (let [p (:pending form)]
+    (when (map? p) p)))
+
+(rf/reg-sub ::pending :<- [::form] (fn [form _] (armed-action form)))
+
+(rf/reg-sub ::show-all-log? (fn [db _] (boolean (:log/show-all? db))))
 
 (rf/reg-sub ::phase    :<- [::view] (fn [v _] (:phase v)))
 (rf/reg-sub ::players  :<- [::view] (fn [v _] (:players v)))

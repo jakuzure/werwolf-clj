@@ -35,7 +35,8 @@
     :hexe-heal :hexe-poison :hexe-pass
     :jaeger-shoot :jaeger-pass
     :ready :nominate :nominate-pass :vote :vote-abstain :advance-phase
-    :gm/force-kill :gm/revive :gm/skip-role :gm/set-phase})
+    :gm/force-kill :gm/revive :gm/skip-role :gm/set-phase
+    :gm/pause :gm/resume :gm/add-time})
 
 (def client-message-types
   #{:client/create :client/join :client/resume :client/command :client/chat :client/ping})
@@ -77,7 +78,10 @@
    [:b      {:optional true} :int]
    [:locale {:optional true} Locale]
    [:role   {:optional true} :keyword]
-   [:phase  {:optional true} :keyword]])
+   [:phase  {:optional true} :keyword]
+   ;; Seconds for :gm/add-time. Bounded here and clamped again in the handler:
+   ;; the schema stops nonsense, the handler stops a slip.
+   [:secs   {:optional true} [:int {:min 5 :max 600}]]])
 
 (def ClientMessage
   [:multi {:dispatch :type}

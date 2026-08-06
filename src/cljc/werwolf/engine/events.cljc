@@ -162,6 +162,21 @@
   [state {:keys [at]}]
   (assoc state :deadline at))
 
+(defmethod apply-event :clock/paused
+  ;; The GM stops the clock. Separate from clearing the deadline, because the
+  ;; timer re-arms any timed phase whose deadline is nil — without a flag saying
+  ;; "deliberately stopped", pausing would last about one second.
+  [state _]
+  (-> state
+      (assoc :paused? true)
+      (publish {:type :clock/paused})))
+
+(defmethod apply-event :clock/resumed
+  [state _]
+  (-> state
+      (dissoc :paused?)
+      (publish {:type :clock/resumed})))
+
 (defmethod apply-event :phase/timed-out
   ;; Logged, unlike the deadline itself: "the time ran out" is exactly the kind
   ;; of thing a player needs to see to understand why the vote closed.

@@ -92,6 +92,9 @@
    :action/gm-revive       "Wiederbeleben (SL)"
    :action/gm-skip-role    "Rolle überspringen (SL)"
    :action/gm-set-phase    "Phase setzen (SL)"
+   :action/gm-pause        "Zeit anhalten (SL)"
+   :action/gm-resume       "Zeit weiterlaufen (SL)"
+   :action/gm-add-time     "+60 s (SL)"
 
    ;; --- game ---
    :game/you         "du"
@@ -104,6 +107,11 @@
    :game/gifttrank   "Gifttrank"
    :game/knows       "Aufgedeckt"
    :game/log         "Chronik"
+   :game/paused      "Zeit angehalten"
+   :log/show-all     "Alles zeigen"
+   :log/show-less    "Nur Wichtiges"
+   :log/hidden       "weitere Einträge"
+   :log/times        "×"
    :game/chat        "Gespräch"
    :game/chat-hint   "Nachricht schreiben…"
    :game/waiting     "Warte auf die anderen…"
@@ -168,7 +176,7 @@
 (defn- who [players pid]
   (or (get-in players [pid :name]) (str "#" pid)))
 
-(def log-tone
+(def ^:private tone-by-type
   "How prominent each kind of entry is in the Chronik. A log where a death and a
    reconnect look identical is a log nobody reads."
   {:player/died      :death
@@ -182,7 +190,9 @@
    :game/started     :night
    :role/revealed    :reveal
    :player/nominated :vote
-   :vote/cast        :vote
+   ;; Individual votes are bookkeeping: the tally is already on the player
+   ;; cards, so a line per voter only pushes the verdict off the screen.
+   :vote/cast        :muted
    :gm/forced        :gm
    :host/changed     :gm
    :phase/timed-out  :muted
@@ -192,13 +202,79 @@
    :player/left      :muted
    :player/disconnected :muted
    :player/reconnected  :muted
-   :jaeger/held-fire :muted})
+   :jaeger/held-fire :muted
+   :clock/paused     :gm
+   :clock/resumed    :gm})
+
+(defn log-tone
+  "Tone for one entry. A function rather than a lookup because prominence
+   sometimes depends on the payload: a tie is worth reading, while 'the vote
+   resolved and nothing happened' merely repeats the :day/no-accusation line
+   directly above it."
+  [{:keys [type target tie?]}]
+  (if (and (= :vote/resolved type) (nil? target) (not tie?))
+    :muted
+    (get tone-by-type type :plain)))
+
+(def loud?
+  "Entries worth showing when the Chronik is filtered down to consequences."
+  (complement #{:muted}))
+
+(declare log-line)
+
+(defn- actor-of
+  "Who an entry is about. :vote/cast says :voter, everything else :player."
+  [e]
+  (or (:player e) (:voter e)))
+
+(defn- group-line
+  "One line for a run of same-type entries, naming everyone in it.
+
+   Naming them beats a bare count: '5 × P5 ist fertig' is worse than the noise
+   it replaces, because it reads as the log stuttering on one player."
+  [players run]
+  (let [names (str/join ", " (keep #(some->> (actor-of %) (who players)) run))]
+    (case (:type (first run))
+      :player/ready        (str names " sind fertig")
+      :nominate/passed     (str names " klagen niemanden an")
+      :vote/cast           (str names " haben abgestimmt")
+      :player/joined       (str names " sind beigetreten")
+      :player/disconnected (str names " sind abwesend")
+      :player/reconnected  (str names " sind zurück")
+      ;; No group phrasing for this type: fall back to the single line plus a
+      ;; count rather than inventing grammar.
+      (str (count run) "× " (log-line players (first run))))))
+
+(defn chronicle
+  "Turn the raw log into display rows, newest first: {:text :tone :count}.
+
+   Two jobs, both learned from a playtest. Runs of the same type collapse into
+   one row — a quiet six-player day emits ten near-identical lines, sixteen at
+   nine players, which reads as the log repeating itself. And bookkeeping is
+   filtered out unless asked for, because showing every ready/pass/vote by
+   default buried the one line that said somebody had died."
+  [players log {:keys [show-all?]}]
+  (->> log
+       (map (fn [e] (assoc e ::tone (log-tone e))))
+       (filter (fn [e] (or show-all? (loud? (::tone e)))))
+       (partition-by :type)
+       (mapcat (fn [run]
+                 (if (< (count run) 2)
+                   [{:tone (::tone (first run))
+                     :text (log-line players (first run))}]
+                   [{:tone (::tone (first run))
+                     :text (group-line players run)
+                     :count (count run)}])))
+       reverse
+       vec))
 
 (defn log-line
   "Render one public log entry. `players` supplies names, because the log holds
    ids — a name change must not rewrite history."
   [players {:keys [type player target role winner phase host cause day voter]}]
   (case type
+    :clock/paused        "Die Spielleitung hält die Zeit an"
+    :clock/resumed       "Die Zeit läuft weiter"
     :player/ready        (str (who players player) " ist fertig")
     :nominate/passed     (str (who players player) " klagt niemanden an")
     :day/no-accusation   "Das Dorf klagt niemanden an — heute stirbt keiner"

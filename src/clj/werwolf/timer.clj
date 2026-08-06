@@ -50,6 +50,10 @@
   (let [secs     (secs-for game-cfg (:phase state))
         deadline (:deadline state)]
     (cond
+      ;; A GM pause has to win here. Pausing clears the deadline, and without
+      ;; this clause the very next reconcile would helpfully put it back — the
+      ;; pause would last about one second.
+      (:paused? state)           (when deadline [{:type :phase/deadline :at nil}])
       (and secs (nil? deadline)) [{:type :phase/deadline :at (+ now-ms (* 1000 secs))}]
       (and (not secs) deadline)  [{:type :phase/deadline :at nil}]
       :else nil)))

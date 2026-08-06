@@ -10,6 +10,7 @@
    localStorage."
   (:require [cljs.test :refer [deftest is testing]]
             [werwolf.events :as ev]
+            [werwolf.subs :as sub]
             [werwolf.text :as text]))
 
 (def db ev/initial-db)
@@ -72,6 +73,79 @@
 (deftest an-unknown-message-is-ignored-not-fatal
   (testing "a newer server may say things this client has never heard of"
     (is (= db (apply* db {:type :server/something-from-the-future :payload 42})))))
+
+;; ------------------------------------------------------- the armed action ---
+
+(deftest an-empty-form-field-does-not-look-like-an-armed-action
+  (testing "the phantom target dialog: ::form-field defaults to \"\" so it can
+            back controlled inputs, and \"\" is TRUTHY in ClojureScript. Reading
+            the armed action through it made `when-let` fire on every render, so
+            the amber 'choose a target' bar appeared before anyone had clicked."
+    (is (nil? (sub/armed-action (:form ev/initial-db)))
+        "a fresh form arms nothing")
+    (is (nil? (sub/armed-action {}))
+        "and neither does a missing key")
+    (testing "the exact value that broke it"
+      (is (nil? (sub/armed-action {:pending ""})))
+      (is (some? "") "\"\" is truthy in ClojureScript — that WAS the bug"))
+    (testing "and any other wrong shape"
+      (is (nil? (sub/armed-action {:pending :vote})))
+      (is (nil? (sub/armed-action {:pending [:vote]}))))
+    (testing "while a real armed action comes through untouched"
+      (is (= {:action :vote :picks []}
+             (sub/armed-action {:pending {:action :vote :picks []}}))))))
+
+;; ------------------------------------------------------------- the Chronik ---
+
+(def ^:private quiet-day
+  "What a real six-player day with no accusation actually emits. Taken from a
+   dump of the engine's log, which is where the 'duplicated history' complaint
+   came from: ten near-identical lines around one that matters."
+  [{:type :night/ended :night 1}
+   {:type :player/died :player 3 :cause :werwolf :role :dorfbewohner}
+   {:type :day/began :day 1}
+   {:type :player/ready :player 0} {:type :player/ready :player 1}
+   {:type :player/ready :player 2} {:type :player/ready :player 4}
+   {:type :player/ready :player 5}
+   {:type :nominate/passed :player 0} {:type :nominate/passed :player 1}
+   {:type :nominate/passed :player 2} {:type :nominate/passed :player 4}
+   {:type :nominate/passed :player 5}
+   {:type :day/no-accusation :day 1}
+   {:type :vote/resolved :target nil :tie? false}
+   {:type :night/began :night 2}])
+
+(def ^:private names
+  (into {} (map (fn [i] [i {:name (str "P" i)}])) (range 6)))
+
+(deftest the-chronicle-hides-bookkeeping-by-default
+  (let [rows (text/chronicle names quiet-day {})
+        texts (mapv :text rows)]
+    (is (not-any? #(re-find #"ist fertig|sind fertig" %) texts)
+        "ten ready/pass lines must not bury the one death")
+    (is (some #(re-find #"gestorben" %) texts))
+    (testing "and the redundant verdict is demoted — :day/no-accusation already
+              said nobody died, so :vote/resolved with no target repeats it"
+      (is (= 1 (count (filter #(re-find #"niemanden an|keiner" %) texts)))))))
+
+(deftest the-chronicle-collapses-runs-and-names-them
+  (let [rows (text/chronicle names quiet-day {:show-all? true})
+        ready (first (filter #(re-find #"sind fertig" (:text %)) rows))]
+    (is (some? ready) "the run became one row")
+    (is (= 5 (:count ready)))
+    (is (= "P0, P1, P2, P4, P5 sind fertig" (:text ready))
+        "named rather than counted: '5 × P5 ist fertig' reads as a stutter")
+    (testing "and nothing is lost — every entry is still reachable"
+      (is (some #(re-find #"klagen niemanden an" (:text %)) rows)))))
+
+(deftest the-chronicle-is-newest-first
+  (let [rows (text/chronicle names quiet-day {})]
+    (is (re-find #"Nacht" (:text (first rows))))))
+
+(deftest a-tie-is-loud-but-an-empty-vote-is-not
+  (testing "a tie is a real outcome the table needs to see; 'nobody voted' is not"
+    (is (= :verdict (text/log-tone {:type :vote/resolved :target nil :tie? true})))
+    (is (= :verdict (text/log-tone {:type :vote/resolved :target 2 :tie? false})))
+    (is (= :muted (text/log-tone {:type :vote/resolved :target nil :tie? false})))))
 
 ;; ------------------------------------------------------------------ strings ---
 

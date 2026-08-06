@@ -97,7 +97,7 @@
 ;; A pending action lives in the form map as {:action a :picks [ids]}. Arity
 ;; comes from the view, so this code never mentions a role by name.
 
-(defn- pending [] @(rf/subscribe [::sub/form-field :pending]))
+(defn- pending [] @(rf/subscribe [::sub/pending]))
 
 (defn- arm! [action]
   (rf/dispatch [::ev/form-set :pending {:action action :picks []}]))
@@ -285,38 +285,53 @@
                       (text/role-icon role) " " (text/role-name role))
             :role])]])]))
 
+(defn- log-icon [tone]
+  (case tone
+    :death "☠" :verdict "⚖" :reveal "👁" :night "🌙" :day "☀"
+    :vote "🗳" :gm "🛠" "·"))
+
+(defn- log-classes [tone]
+  (case tone
+    :death   "text-rose-300 font-semibold "
+    :verdict "text-amber-300 font-semibold "
+    :reveal  "text-emerald-300 "
+    :night   "text-indigo-300 "
+    :day     "text-sky-300 "
+    :vote    "text-slate-200 "
+    :gm      "text-violet-300 "
+    :muted   "text-slate-500 "
+    "text-slate-300 "))
+
 (defn log-panel
   "The Chronik. Newest first, colour-coded by consequence, and given a column of
-   its own — it is the only record of what the night did."
+   its own — it is the only record of what the night did.
+
+   Filtered to consequences by default. Every ready/pass/vote is in the log for
+   auditability, and showing all of them by default buried the one line that
+   said somebody died."
   []
   (let [log @(rf/subscribe [::sub/log])
         players @(rf/subscribe [::sub/players])
-        entries (reverse (map-indexed vector log))]
+        show-all? @(rf/subscribe [::sub/show-all-log?])
+        rows (text/chronicle players log {:show-all? show-all?})
+        hidden (count (remove #(text/loud? (text/log-tone %)) log))]
     [:div {:class "rounded-xl border border-slate-700 bg-slate-900/80 overflow-hidden"}
-     [:div {:class "px-4 py-2 bg-slate-800 text-sm font-bold uppercase tracking-wide"}
-      (t :game/log)]
+     [:div {:class "px-4 py-2 bg-slate-800 flex items-center justify-between gap-2"}
+      [:span {:class "text-sm font-bold uppercase tracking-wide"} (t :game/log)]
+      (when (or show-all? (pos? hidden))
+        [:button {:class "text-xs text-slate-400 hover:text-slate-100 underline"
+                  :on-click #(rf/dispatch [::ev/toggle-log])}
+         (if show-all?
+           (t :log/show-less)
+           (str "+" hidden " " (t :log/hidden)))])]
      [:div {:class "max-h-[28rem] overflow-y-auto divide-y divide-slate-800"}
-      (for [[i entry] entries
-            :let [tone (get text/log-tone (:type entry) :plain)
-                  newest? (= i (dec (count log)))]]
+      (for [[i {:keys [text tone]}] (map-indexed vector rows)]
         ^{:key i}
         [:div {:class (str "px-4 py-2 text-sm flex gap-2 "
-                           (when newest? "bg-slate-800/60 ")
-                           (case tone
-                             :death   "text-rose-300 font-semibold "
-                             :verdict "text-amber-300 font-semibold "
-                             :reveal  "text-emerald-300 "
-                             :night   "text-indigo-300 "
-                             :day     "text-sky-300 "
-                             :vote    "text-slate-200 "
-                             :gm      "text-violet-300 "
-                             :muted   "text-slate-500 "
-                             "text-slate-300 "))}
-         [:span {:class "shrink-0 opacity-60"}
-          (case tone
-            :death "☠" :verdict "⚖" :reveal "👁" :night "🌙" :day "☀"
-            :vote "🗳" :gm "🛠" "·")]
-         [:span (text/log-line players entry)]])]]))
+                           (when (zero? i) "bg-slate-800/60 ")
+                           (log-classes tone))}
+         [:span {:class "shrink-0 opacity-60"} (log-icon tone)]
+         [:span text]])]]))
 
 (defn phase-header []
   (let [phase @(rf/subscribe [::sub/phase])
@@ -332,7 +347,13 @@
          [:span {:class "text-slate-500"} (str "· " (t :phase/night) " " (:night view))])]
       [:div {:class "text-xs text-slate-500 font-mono"} (:room-id me)]]
      [:div {:class "text-right"}
-      (when secs
+      (cond
+        ;; A paused clock must SAY it is paused. Simply freezing the digits, or
+        ;; hiding them, both read as a broken client.
+        (:paused? view)
+        [:div {:class "text-lg font-bold text-amber-400"} (str "⏸ " (t :game/paused))]
+
+        secs
         [:div {:class (str "text-3xl font-mono leading-none "
                            (if (< secs 11) "text-rose-400" "text-slate-300"))}
          (str (quot secs 60) ":" (when (< (mod secs 60) 10) "0") (mod secs 60))])

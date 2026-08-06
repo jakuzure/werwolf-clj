@@ -232,6 +232,48 @@
     :else [{:type :gm/forced :actor player :action :skip-role :detail {:role role}}
            {:type :night/role-completed :role (or role (:night-cursor state))}]))
 
+;; ---- GM control of the clock ----
+;;
+;; The narrator's oldest privilege: "hang on, let him finish". A server-owned
+;; timer is right for keeping a game moving and wrong for overriding a room full
+;; of people, so the host can stop it, restart it, and buy more time.
+
+(defmethod handle :gm/pause
+  [state {:keys [player]}]
+  (cond
+    (not (host? state player)) (err :not-host {})
+    (:paused? state)           (err :already-paused {})
+    :else [{:type :gm/forced :actor player :action :pause :detail {}}
+           {:type :clock/paused}
+           {:type :phase/deadline :at nil}]))
+
+(defmethod handle :gm/resume
+  [state {:keys [player]}]
+  (cond
+    (not (host? state player))   (err :not-host {})
+    (not (:paused? state))       (err :not-paused {})
+    ;; No deadline is set here: clearing :paused? is enough, because the timer
+    ;; re-arms any timed phase with no deadline on its next reconcile — which is
+    ;; also the only place that knows what time it is.
+    :else [{:type :gm/forced :actor player :action :resume :detail {}}
+           {:type :clock/resumed}]))
+
+(def ^:const max-added-secs
+  "Cap on a single extension. A GM slip that adds an hour to a night is a worse
+   outcome than one that has to be clicked twice."
+  600)
+
+(defmethod handle :gm/add-time
+  [state {:keys [player secs]}]
+  (let [secs (min max-added-secs (max 5 (or secs 60)))]
+    (cond
+      (not (host? state player))  (err :not-host {})
+      (nil? (:deadline state))    (err :no-deadline {})
+      ;; Computable without a clock: the deadline is already an absolute instant,
+      ;; so extending it is arithmetic on state and stays inside the pure engine.
+      :else [{:type :gm/forced :actor player :action :add-time :detail {:secs secs}}
+             {:type :phase/deadline :at (+ (:deadline state) (* 1000 secs))}])))
+
 (defmethod handle :gm/set-phase
   [state {:keys [player phase]}]
   (if-not (host? state player)
