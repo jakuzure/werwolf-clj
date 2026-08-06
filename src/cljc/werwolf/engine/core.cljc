@@ -13,13 +13,19 @@
 ;; ---- construction -------------------------------------------------------
 
 (defn new-game
-  "Create a fresh game. `seed` makes the whole game reproducible."
-  [{:keys [room-id host seed min-players]}]
+  "Create a fresh game. `seed` makes the whole game reproducible.
+
+   Rule variants and table limits are passed through verbatim rather than
+   defaulted here, so there is exactly one place that decides what a missing
+   value means: `apply-event :game/created`."
+  [{:keys [room-id host seed min-players max-players first-night-kill?]}]
   (events/apply-event nil {:type        :game/created
                            :room-id     room-id
                            :host        host
                            :seed        (or seed 0)
-                           :min-players (or min-players 5)}))
+                           :min-players (or min-players 5)
+                           :max-players max-players
+                           :first-night-kill? first-night-kill?}))
 
 ;; ---- driving the game ---------------------------------------------------
 

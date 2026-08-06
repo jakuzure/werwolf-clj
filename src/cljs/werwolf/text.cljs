@@ -185,6 +185,7 @@
    :day/no-accusation :verdict
    :game/ended       :verdict
    :night/began      :night
+   :night/quiet      :verdict
    :night/ended      :day
    :day/began        :day
    :game/started     :night
@@ -271,7 +272,7 @@
 (defn log-line
   "Render one public log entry. `players` supplies names, because the log holds
    ids — a name change must not rewrite history."
-  [players {:keys [type player target role winner phase host cause day voter]}]
+  [players {:keys [type player target role winner phase host cause day night voter]}]
   (case type
     :clock/paused        "Die Spielleitung hält die Zeit an"
     :clock/resumed       "Die Zeit läuft weiter"
@@ -289,6 +290,9 @@
     :host/changed        (str (who players host) " ist jetzt Spielleiter")
     :game/started        "Die erste Nacht bricht an"
     :night/began         "Die Nacht bricht an"
+    :night/quiet         (if (= 1 night)
+                           "Die erste Nacht bleibt ruhig — niemand stirbt"
+                           "In dieser Nacht ist niemand gestorben")
     :night/ended         "Der Morgen graut"
     :day/began           "Das Dorf versammelt sich"
     :player/died         (str (who players player) " ist gestorben"

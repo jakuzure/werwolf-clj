@@ -65,11 +65,11 @@
            (and (= events (count (:log r)))
                 (= turns (:turns r))
                 (= winner (:winner r))))
-      12 8675309 205 101 :werewolf
-      9  4242    87  39  :village
-      18 777     389 223 :village
-      5  31337   63  21  :werewolf
-      14 90210   216 108 :village)))
+      12 8675309 159 75  :werewolf
+      9  4242    152 65  :werewolf
+      18 777     410 247 :werewolf
+      5  31337   95  39  :werewolf
+      14 90210   317 171 :werewolf)))
 
 (deftest state-matches-its-schema-at-every-step
   (testing "the closed GameState schema holds through a whole game, so state

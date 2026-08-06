@@ -30,6 +30,8 @@
                     :target/collective  the whole team agrees on one target (wolves)
                     :target/optional-two-choice  Hexe: heal and/or poison, or pass
    :first-night-only?  action happens only on night 1 (Amor)
+   :skips-first-night? this role has NO turn on night 1 by default. Re-enabled
+                       per room by the :first-night-kill? rule flag in state.
    :knows-teammates?   at deal time, does this player learn who shares their team?
    :on-death      reaction pushed onto the reaction stack when this role dies
    :resources     per-game one-shot resources, consumed by events
@@ -40,6 +42,16 @@
     :night-order       200
     :night-action      :target/collective
     :knows-teammates?  true
+    ;; No kill on the first night. A player eliminated before they have said a
+    ;; single word has not played a game, they have watched one — and on night 1
+    ;; the wolves would be choosing at random anyway, so the kill costs the
+    ;; village a player and teaches nobody anything.
+    ;;
+    ;; They still recognise each other: teammates are known from the deal
+    ;; (:knows-teammates?), not from meeting at night, so skipping the turn
+    ;; loses only their night-1 whisper. Set FIRST_NIGHT_KILL=true for the
+    ;; classic rule.
+    :skips-first-night? true
     :max-count         nil}
 
    :dorfbewohner

@@ -28,9 +28,17 @@
   "A fake socket: an atom accumulating messages, newest last."
   [] (atom []))
 
-(defn- ctx-on [path]
+(defn- ctx-on
+  "A registry over a fresh database.
+
+   Opts in to the CLASSIC first night, because several tests here walk to the
+   werewolves' turn to check chat routing and would otherwise have to play
+   through a whole day first. The shipped default (no night-1 kill) is covered
+   by `the-first-night-is-peaceful-by-default` below."
+  [path]
   (room/registry {:ds (store/open {:dbtype "sqlite" :dbname path})
-                  :send! (fn [s msg] (swap! s conj msg))}))
+                  :send! (fn [s msg] (swap! s conj msg))
+                  :game {:first-night-kill? true}}))
 
 (defn- msgs [s] @s)
 (defn- views [s] (filter #(= :room/view (:type %)) (msgs s)))
@@ -162,6 +170,30 @@
                    (set (map :role (vals (:players st)))))
                 "one of each — no duplicate wolves at this size")
             (is (= 1 (count (wolves-in st))))))
+        (finally (cleanup! path))))))
+
+(deftest the-first-night-is-peaceful-by-default
+  (testing "the shipped rule, end to end through the room layer: nobody is
+            eliminated before they have said a word"
+    (let [path (tmp-path)]
+      (try
+        (let [ctx (room/registry {:ds (store/open {:dbtype "sqlite" :dbname path})
+                                  :send! (fn [s m] (swap! s conj m))})
+              {:keys [room-id]} (room/create! ctx {:name "P0"})]
+          (doseq [i (range 1 7)] (room/join! ctx room-id {:name (str "P" i)}))
+          (room/submit! ctx room-id 0 {:type :start-game})
+          (is (false? (:first-night-kill? (room/state-of ctx room-id)))
+              "no config, so the variant is the default")
+          ;; Let the night run itself out with GM skips.
+          (loop [guard 0]
+            (when (and (= :night (:phase (room/state-of ctx room-id))) (< guard 12))
+              (room/submit! ctx room-id 0 {:type :gm/skip-role})
+              (recur (inc guard))))
+          (let [st (room/state-of ctx room-id)]
+            (is (= 7 (count (engine/living-ids st)))
+                "the whole village saw the first day")
+            (is (some #(= :night/quiet (:type %)) (:log st))
+                "and the Chronik says the night was quiet")))
         (finally (cleanup! path))))))
 
 (deftest joining-allocates-fresh-seats-and-never-recycles-them

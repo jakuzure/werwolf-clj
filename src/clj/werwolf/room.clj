@@ -243,7 +243,8 @@
         cfg (:game ctx)
         min* (max absolute-min-players
                   (or min-players (:min-players cfg) 5))
-        max* (max min* (or max-players (:max-players cfg) 18))]
+        max* (max min* (or max-players (:max-players cfg) 18))
+        first-kill? (boolean (:first-night-kill? cfg))]
     (with-room ctx room-id
       (fn [r]
         ;; The genesis event is built once and both applied and persisted, so
@@ -253,7 +254,8 @@
                        :host        0
                        :seed        (or seed (random-seed))
                        :min-players min*
-                       :max-players max*}
+                       :max-players max*
+                       :first-night-kill? first-kill?}
               joined  (engine/execute (engine/apply-event nil genesis)
                                       {:type :join :player 0
                                        :name name :locale locale})]

@@ -8,12 +8,10 @@
             [werwolf.engine.events :as e]
             [werwolf.engine.phases :as phases]))
 
-(defn game-with
-  "A started game at night 1 with the given {player-id role-id} assignment.
-   Player 0 is the host. Returns settled state, so :night-cursor is live."
-  [assignments]
+(defn- game-with* [assignments first-night-kill?]
   (let [n (count assignments)
-        s (engine/new-game {:room-id "TEST" :host 0 :seed 1 :min-players 5})
+        s (engine/new-game {:room-id "TEST" :host 0 :seed 1 :min-players 5
+                            :first-night-kill? first-night-kill?})
         s (reduce (fn [s i]
                     (e/apply-event s {:type :player/joined
                                       :player i :name (str "P" i) :locale :de}))
@@ -23,6 +21,21 @@
       (-> s
           (e/apply-event {:type :game/started :assignments assignments})
           (e/apply-event {:type :night/began :night 1}))))))
+
+(defn game-with
+  "A started game at night 1 with the given {player-id role-id} assignment.
+   Player 0 is the host. Returns settled state, so :night-cursor is live.
+
+   Defaults to the CLASSIC first night (`:first-night-kill? true`), i.e. the
+   wolves do have a turn. The product default is the opposite, but almost every
+   test in this suite is about night mechanics — the Hexe's heal, the Jäger's
+   chain, the wolf tally — and under the variant it would have to walk a whole
+   day to reach a night where anything happens.
+
+   Pass `{:first-night-kill? false}` to exercise the shipped rule."
+  ([assignments] (game-with assignments {}))
+  ([assignments {:keys [first-night-kill?] :or {first-night-kill? true}}]
+   (game-with* assignments first-night-kill?)))
 
 (defn exec!
   "Run a command, THROWING on rejection. Tests must not silently no-op — that is

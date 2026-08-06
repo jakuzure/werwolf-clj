@@ -24,5 +24,9 @@
            ;; Generous: the Jäger has just been told he is dead and the whole
            ;; table is waiting on him.
            :reaction-secs   #long #or [#env REACTION_SECS 30]
+           ;; Rule variant. false (default): the werewolves have no turn on the
+           ;; first night, so nobody is eliminated before they have said a word.
+           ;; true restores the classic Düsterwald rule.
+           :first-night-kill? #boolean #or [#env FIRST_NIGHT_KILL "false"]
            :min-players     #long #or [#env MIN_PLAYERS 5]
            :max-players     #long #or [#env MAX_PLAYERS 18]}}

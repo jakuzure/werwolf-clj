@@ -302,6 +302,69 @@
            nothing, so refusing a button for the same choice would only punish
            the player who is paying attention"))))
 
+;; --------------------------------------------- the peaceful first night ---
+
+(deftest the-wolves-have-no-turn-on-the-first-night
+  (testing "a player eliminated before they have said a word has watched a game,
+            not played one — and on night 1 the wolves choose at random anyway"
+    (let [s (tu/game-with {0 :dorfbewohner 1 :werwolf 2 :hexe 3 :seherin 4 :jaeger}
+                          {:first-night-kill? false})]
+      (is (= 1 (:night s)))
+      (is (not (contains? (set (phases/night-queue s)) :werwolf))
+          "the wolves are not in the first night's queue")
+      (is (empty? (phases/legal-actions s 1))
+          "so the wolf has nothing to do — not even a vote to cast"))))
+
+(deftest the-first-night-passes-with-everyone-alive
+  (let [s (tu/game-with {0 :dorfbewohner 1 :werwolf 2 :hexe 3 :seherin 4 :jaeger}
+                        {:first-night-kill? false})
+        s (exec! s {:type :seherin-inspect :player 3 :target 1})
+        ;; The Hexe has nothing to heal, because nobody is dying.
+        _ (is (empty? (phases/legal-targets s 2 :hexe-heal)))
+        _ (is (not (contains? (phases/legal-actions s 2) :hexe-heal)))
+        s (exec! s {:type :hexe-pass :player 2})]
+    (is (= :discussion (:phase s)) "the day begins")
+    (is (= [0 1 2 3 4] (alive s)) "with the whole village intact")
+    (is (= 1 (tu/count-log s :night/quiet))
+        "and the Chronik says so — otherwise a peaceful night is
+         indistinguishable from a missing entry")))
+
+(deftest the-wolves-do-kill-from-the-second-night
+  (let [s (tu/game-with {0 :dorfbewohner 1 :werwolf 2 :hexe 3 :seherin 4 :jaeger}
+                        {:first-night-kill? false})
+        s (exec! s {:type :seherin-inspect :player 3 :target 1})
+        s (exec! s {:type :hexe-pass :player 2})
+        ;; Straight through day 1 with no lynch.
+        s (reduce (fn [s p] (exec! s {:type :ready :player p})) s (alive s))
+        s (reduce (fn [s p] (exec! s {:type :nominate-pass :player p})) s (alive s))]
+    (is (= 2 (:night s)))
+    (is (contains? (set (phases/night-queue s)) :werwolf)
+        "night two is business as usual")
+    (let [s (exec! s {:type :seherin-inspect :player 3 :target 0})
+          s (exec! s {:type :werewolf-vote :player 1 :target 0})
+          s (exec! s {:type :hexe-pass :player 2})]
+      (is (false? (get-in s [:players 0 :alive?])) "and somebody dies"))))
+
+(deftest the-classic-rule-can-be-restored
+  (testing "the variant is a per-room flag stamped into :game/created, so a
+            replay plays the game it actually was"
+    (let [log [{:type :game/created :room-id "R" :host 0 :seed 1 :min-players 5
+                :first-night-kill? true}
+               {:type :player/joined :player 0 :name "A" :locale :de}
+               {:type :player/joined :player 1 :name "B" :locale :de}
+               {:type :player/joined :player 2 :name "C" :locale :de}
+               {:type :player/joined :player 3 :name "D" :locale :de}
+               {:type :player/joined :player 4 :name "E" :locale :de}
+               {:type :game/started :assignments {0 :dorfbewohner 1 :werwolf
+                                                  2 :hexe 3 :seherin 4 :jaeger}}
+               {:type :night/began :night 1}]
+          s (first (phases/settle (e/replay log)))]
+      (is (true? (:first-night-kill? s)))
+      (is (contains? (set (phases/night-queue s)) :werwolf))
+      (testing "and the wolf really can act on night 1 under it"
+        (let [s (exec! s {:type :seherin-inspect :player 3 :target 1})]
+          (is (contains? (phases/legal-actions s 1) :werewolf-vote)))))))
+
 ;; ------------------------------------------------- saying no --------------
 ;;
 ;; Every one of these is a deliberate "no". They exist because the only other

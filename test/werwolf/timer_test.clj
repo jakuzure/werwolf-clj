@@ -29,6 +29,9 @@
   [path]
   (room/registry {:ds (store/open {:dbtype "sqlite" :dbname path})
                   :send! (fn [s msg] (swap! s conj msg))
+                  ;; Classic first night: one test walks to the wolves' turn to
+                  ;; check that a timed-out pack still eats.
+                  :game {:first-night-kill? true}
                   :after-commit (timer/hook game-cfg)}))
 
 (defmacro with-ctx [[binding] & body]

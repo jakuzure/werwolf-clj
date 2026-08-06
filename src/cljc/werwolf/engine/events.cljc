@@ -94,7 +94,7 @@
 ;; ---- lifecycle ----
 
 (defmethod apply-event :game/created
-  [_ {:keys [room-id host seed min-players max-players]}]
+  [_ {:keys [room-id host seed min-players max-players first-night-kill?]}]
   {:room-id        room-id
    :phase          :lobby
    :night          0
@@ -106,6 +106,9 @@
    ;; change must never be able to make a game in progress unstartable.
    :min-players    (or min-players 5)
    :max-players    (or max-players 18)
+   ;; Rule variant, stamped in at creation so a replay plays the game it was:
+   ;; false (the default) means the werewolves have no turn on night 1.
+   :first-night-kill? (boolean first-night-kill?)
    :lovers         nil
    :reactions      []
    :pending-deaths []
@@ -252,6 +255,11 @@
           (fn [ds]
             (let [[before after] (split-with #(not= player (:player %)) ds)]
               (vec (concat before (rest after)))))))
+
+(defmethod apply-event :night/quiet
+  ;; Log-only: nobody died. See the note in phases/night-auto.
+  [state {:keys [night]}]
+  (publish state {:type :night/quiet :night night}))
 
 (defmethod apply-event :night/ended
   [state _]

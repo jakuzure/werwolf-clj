@@ -61,9 +61,16 @@
 ;; ------------------------------------------------- night turn ordering ---
 
 (defn- role-can-act? [state role-id]
-  (let [{:keys [first-night-only?]} (roles/role role-id)]
+  (let [{:keys [first-night-only? skips-first-night?]} (roles/role role-id)
+        first-night? (= 1 (:night state))]
     (and (seq (e/living-with-role state role-id))
-         (or (not first-night-only?) (= 1 (:night state))))))
+         (or (not first-night-only?) first-night?)
+         ;; Roles that sleep through night 1, unless this room opted back into
+         ;; the classic rule. No role is named here on purpose — the fact that
+         ;; the wolves are the ones who sleep lives in the registry.
+         (not (and skips-first-night?
+                   first-night?
+                   (not (:first-night-kill? state)))))))
 
 (defn night-queue
   "Roles still to act tonight, in night-order."
@@ -170,8 +177,16 @@
   (let [q (night-queue state)]
     (cond
       (empty? q)
-      [{:type :night/ended}
-       {:type :phase/changed :phase :day-reveal :deadline nil}]
+      (into [{:type :night/ended}]
+            ;; A night where nobody died has to say so. Otherwise the Chronik
+            ;; jumps from "the night falls" to "the village gathers" and players
+            ;; cannot tell a peaceful night from a missing entry. True on the
+            ;; first night by default, and whenever the Hexe's heal cancels the
+            ;; only death.
+            (if (empty? (pending-alive state))
+              [{:type :night/quiet :night (:night state)}
+               {:type :phase/changed :phase :day-reveal :deadline nil}]
+              [{:type :phase/changed :phase :day-reveal :deadline nil}]))
 
       ;; Point the cursor at whoever is next.
       (not= (:night-cursor state) (first q))

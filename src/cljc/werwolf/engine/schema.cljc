@@ -59,6 +59,8 @@
    [:seed :int]                               ; RNG seed — replay determinism
    [:min-players :int]
    [:max-players {:optional true} :int]
+   ;; Rule variant: false (default) means no werewolf turn on night 1.
+   [:first-night-kill? {:optional true} :boolean]
    [:lovers {:optional true} [:maybe [:set PlayerId]]]
    [:reactions [:vector Reaction]]            ; stack, drained LIFO
    [:pending-deaths [:vector [:map [:player PlayerId] [:cause :keyword]]]]
