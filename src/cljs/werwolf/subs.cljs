@@ -48,6 +48,17 @@
 (rf/reg-sub ::nominations :<- [::view] (fn [v _] (or (:nominations v) #{})))
 (rf/reg-sub ::known-roles :<- [::view] (fn [v _] (or (:known-roles v) {})))
 
+(rf/reg-sub ::db-locale (fn [db _] (:locale db)))
+
+(rf/reg-sub
+ ::locale
+ :<- [::me-view]
+ :<- [::db-locale]
+ ;; The server's copy wins once seated: locale is per-player game state, set by
+ ;; a logged command, so it survives a reload and follows you to another device.
+ ;; The db value only covers the landing screen, before there is a seat.
+ (fn [[me local] _] (or (:locale me) local :de)))
+
 ;; The affordances. These come straight from the engine's legal-actions /
 ;; legal-targets, which is why the UI needs no rules of its own: a button that
 ;; should not exist cannot be drawn, and one that is drawn will be accepted.

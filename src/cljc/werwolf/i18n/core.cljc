@@ -1,0 +1,209 @@
+(ns werwolf.i18n.core
+  "Rendering: structured events in, sentences out, in the reader's own language.
+
+   This is where the protocol's central decision pays off. The server sends
+   `{:type :player/died :player 3 :cause :werwolf}` and never a string, so two
+   people in the same room can read the same game in different languages — and a
+   German and an English player at one table is the reason any of this exists.
+
+   `.cljc` because the dictionaries are data worth testing on both platforms,
+   even though only the client renders today. The one guarantee that matters is
+   that the two dictionaries have identical key sets; there is a test.
+
+   Icons and tones live here rather than in the dictionaries: an emoji and a
+   colour are not language."
+  (:require [clojure.string :as str]
+            [tongue.core :as tongue]
+            [werwolf.i18n.de :as de]
+            [werwolf.i18n.en :as en]))
+
+(def locales [:de :en])
+
+(def dicts
+  {:de de/dict
+   :en en/dict
+   ;; German is the fallback, not English: the terminology is Düsterwald's and a
+   ;; missing key is likelier to be a German string somebody forgot to translate.
+   :tongue/fallback :de})
+
+(def translate (tongue/build-translate dicts))
+
+(defn t
+  "Look up a key in `locale`, applying any arguments.
+
+   An unknown locale falls back rather than blowing up: it arrives from a client
+   and from a database, and neither is trustworthy enough to index a map with."
+  [locale k & args]
+  (apply translate (if (some #{locale} locales) locale :de) k args))
+
+(defn locale-name [locale] (t locale (keyword "locale" (name (or locale :de)))))
+
+;; ------------------------------------------------------------------- names ---
+
+(defn phase-name [locale phase] (t locale (keyword "phase" (name (or phase :lobby)))))
+(defn role-name  [locale role]  (if role (t locale (keyword "role" (name role))) "?"))
+(defn role-desc  [locale role]  (when role (t locale (keyword "role-desc" (name role)))))
+
+(defn action-name
+  "Label for an action. `:gm/force-kill` reads as `:action/gm-force-kill`, so a
+   namespaced command needs no special case in the dictionaries."
+  [locale action]
+  (t locale (keyword "action" (str/replace (subs (str action) 1) "/" "-"))))
+
+(def role-icon
+  "Not language. Kept out of the dictionaries so they cannot drift apart on it."
+  {:werwolf "🐺" :dorfbewohner "🏠" :seherin "🔮"
+   :hexe "🧪" :jaeger "🎯" :amor "💘"})
+
+(defn icon-of [role] (get role-icon role "❓"))
+
+;; ------------------------------------------------------------------- tones ---
+
+(def ^:private tone-by-type
+  "How prominent each kind of entry is. A log where a death and a reconnect look
+   identical is a log nobody reads."
+  {:player/died      :death
+   :jaeger/shot      :death
+   :vote/resolved    :verdict
+   :day/no-accusation :verdict
+   :night/quiet      :verdict
+   :game/ended       :verdict
+   :night/began      :night
+   :game/started     :night
+   :night/ended      :day
+   :day/began        :day
+   :role/revealed    :reveal
+   :player/nominated :vote
+   :gm/forced        :gm
+   :host/changed     :gm
+   :clock/paused     :gm
+   :clock/resumed    :gm
+   ;; Bookkeeping. Real, auditable, and not what anyone opens the Chronik for.
+   :phase/timed-out  :muted
+   :player/ready     :muted
+   :nominate/passed  :muted
+   :vote/cast        :muted
+   :player/joined    :muted
+   :player/left      :muted
+   :player/disconnected :muted
+   :player/reconnected  :muted
+   :jaeger/held-fire :muted})
+
+(defn log-tone
+  "Tone for one entry. A function rather than a lookup, because prominence
+   sometimes depends on the payload: a tie is worth reading, while 'the vote
+   resolved and nothing happened' merely repeats the line above it."
+  [{:keys [type target tie?]}]
+  (if (and (= :vote/resolved type) (nil? target) (not tie?))
+    :muted
+    (get tone-by-type type :plain)))
+
+(def loud?
+  "Entries worth showing when the Chronicle is filtered to consequences."
+  (complement #{:muted}))
+
+;; ---------------------------------------------------------------- log lines ---
+
+(defn- who [players pid]
+  (or (get-in players [pid :name]) (str "#" pid)))
+
+(def ^:private death-keys
+  {:werwolf :log/died-werwolf
+   :gift    :log/died-gift
+   :liebe   :log/died-liebe
+   :lynch   :log/died-lynch
+   :jaeger  :log/died-jaeger
+   :gm      :log/died-gm})
+
+(defn log-line
+  "Render one public log entry. `players` supplies names, because the log holds
+   ids — renaming yourself must not rewrite history."
+  [locale players {:keys [type player target role winner phase host cause night voter tie?]}]
+  (let [nm #(who players %)]
+    (case type
+      :player/joined       (t locale :log/joined (nm player))
+      :player/left         (t locale :log/left (nm player))
+      :player/disconnected (t locale :log/disconnected (nm player))
+      :player/reconnected  (t locale :log/reconnected (nm player))
+      :host/changed        (t locale :log/host-changed (nm host))
+      :game/started        (t locale :log/game-started)
+      :night/began         (t locale :log/night-began)
+      ;; Published without the ids on purpose: THAT there are lovers is public,
+      ;; WHO they are is not. See apply-event :amor/linked.
+      :amor/linked         (t locale :log/amor-linked)
+      :night/quiet         (t locale (if (= 1 night) :log/night-quiet-first :log/night-quiet))
+      :night/ended         (t locale :log/night-ended)
+      :day/began           (t locale :log/day-began)
+      :player/ready        (t locale :log/ready (nm player))
+      :nominate/passed     (t locale :log/nominate-passed (nm player))
+      :day/no-accusation   (t locale :log/no-accusation)
+      :jaeger/held-fire    (t locale :log/jaeger-held-fire (nm player))
+      :vote/cast           (if target
+                             (t locale :log/vote-cast (nm voter) (nm target))
+                             (t locale :log/vote-abstained (nm voter)))
+      :player/died         (t locale (get death-keys cause :log/died) (nm player))
+      :player/revived      (t locale :log/revived (nm player))
+      :role/revealed       (t locale :log/role-revealed (nm player) (role-name locale role))
+      :jaeger/shot         (t locale :log/jaeger-shot (nm player) (nm target))
+      :vote/resolved       (if target
+                             (t locale :log/lynched (nm target))
+                             (t locale :log/tie))
+      :player/nominated    (t locale :log/nominated (nm target))
+      :phase/timed-out     (t locale :log/timed-out (phase-name locale phase))
+      :gm/forced           (t locale :log/gm-forced)
+      :clock/paused        (t locale :log/clock-paused)
+      :clock/resumed       (t locale :log/clock-resumed)
+      :game/ended          (t locale (case winner
+                                       :werewolf :log/win-werewolf
+                                       :lovers   :log/win-lovers
+                                       :log/win-village))
+      ;; A newer server may log something this client has never heard of. Show
+      ;; the raw type rather than a blank line: visible is debuggable.
+      (str type))))
+
+;; ---------------------------------------------------------------- chronicle ---
+
+(def ^:private group-keys
+  {:player/ready        :log/group-ready
+   :nominate/passed     :log/group-passed
+   :vote/cast           :log/group-voted
+   :player/joined       :log/group-joined
+   :player/disconnected :log/group-disconnected
+   :player/reconnected  :log/group-reconnected})
+
+(defn- actor-of [e] (or (:player e) (:voter e)))
+
+(defn- group-line
+  "One line for a run of same-type entries, naming everyone in it.
+
+   Naming beats counting: '5 × P5 is done' is worse than the noise it replaces,
+   because it reads as the log stuttering on one player. Where no plural phrasing
+   exists, fall back to the singular with a count rather than invent grammar."
+  [locale players run]
+  (let [names (str/join ", " (keep #(some->> (actor-of %) (who players)) run))]
+    (if-let [k (group-keys (:type (first run)))]
+      (t locale k names)
+      (str (count run) "× " (log-line locale players (first run))))))
+
+(defn chronicle
+  "The raw log as display rows, newest first: {:text :tone :count}.
+
+   Two jobs, both learned from a playtest. Runs of the same type collapse into
+   one row — a quiet six-player day emits ten near-identical lines, sixteen at
+   nine players, which reads as the log repeating itself. And bookkeeping is
+   filtered out unless asked for, because showing every ready/pass/vote by
+   default buried the one line that said somebody had died."
+  [locale players log {:keys [show-all?]}]
+  (->> log
+       (map (fn [e] (assoc e ::tone (log-tone e))))
+       (filter (fn [e] (or show-all? (loud? (::tone e)))))
+       (partition-by :type)
+       (mapcat (fn [run]
+                 (if (< (count run) 2)
+                   [{:tone (::tone (first run))
+                     :text (log-line locale players (first run))}]
+                   [{:tone (::tone (first run))
+                     :text (group-line locale players run)
+                     :count (count run)}])))
+       reverse
+       vec))

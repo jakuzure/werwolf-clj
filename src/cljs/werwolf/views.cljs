@@ -22,8 +22,21 @@
   (:require [clojure.string :as str]
             [re-frame.core :as rf]
             [werwolf.events :as ev]
-            [werwolf.subs :as sub]
-            [werwolf.text :as text :refer [t]]))
+            [werwolf.i18n.core :as i18n]
+            [werwolf.subs :as sub]))
+
+;; --------------------------------------------------------------- language ---
+;;
+;; Each of these derefs the locale subscription, so a component that renders text
+;; re-renders when the player switches language. That is the whole reason they
+;; are functions rather than a value threaded down from `app`.
+
+(defn- lc [] @(rf/subscribe [::sub/locale]))
+(defn- t [k & args] (apply i18n/t (lc) k args))
+(defn- phase-name [p] (i18n/phase-name (lc) p))
+(defn- role-name [r] (i18n/role-name (lc) r))
+(defn- role-desc [r] (i18n/role-desc (lc) r))
+(defn- action-name [a] (i18n/action-name (lc) a))
 
 ;; ------------------------------------------------------------------ pieces ---
 
@@ -66,6 +79,26 @@
                         "bg-slate-700 text-slate-200 "))}
    label])
 
+(defn- language-switch
+  "Switch language at any time, in or out of a game.
+
+   Sent as a command once seated, so the locale is per-player game state on the
+   server — it survives a reload, follows you to another device, and is what
+   makes a mixed-locale room work: two people reading the same room in different
+   languages, which is the entire reason the wire carries structured events
+   instead of sentences."
+  []
+  (let [current (lc)]
+    [:div {:class "flex gap-1"}
+     (for [loc i18n/locales]
+       ^{:key (str loc)}
+       [:button {:class (str "px-2 py-1 rounded text-xs font-semibold transition "
+                             (if (= loc current)
+                               "bg-indigo-600 text-white "
+                               "bg-slate-800 text-slate-400 hover:text-slate-100 "))
+                 :on-click #(rf/dispatch [::ev/set-locale loc])}
+        (i18n/locale-name loc)])]))
+
 (defn- connection-banner []
   (let [status @(rf/subscribe [::sub/conn-status])]
     (when (not= :connected status)
@@ -83,6 +116,7 @@
 
 (defn landing []
   [:div {:class "max-w-sm mx-auto mt-16 space-y-8"}
+   [:div {:class "flex justify-center"} [language-switch]]
    [:h1 {:class "text-3xl font-bold text-center"} (t :app/title)]
    [:div {:class "space-y-3"}
     [field :name (t :landing/name)]
@@ -131,7 +165,7 @@
       [:div {:class "sticky top-0 z-10 flex items-center justify-between gap-3
                      rounded-lg bg-amber-500 text-slate-900 px-4 py-3 shadow-lg"}
        [:div
-        [:div {:class "font-bold"} (text/action-name action)]
+        [:div {:class "font-bold"} (action-name action)]
         [:div {:class "text-xs"}
          (cond
            (and (= 2 arity) (= 1 (count picks))) (t :target/chosen-one)
@@ -182,7 +216,7 @@
         (when (= id (:host view)) [pill (t :badge/host) :host])
         (when-not alive? [pill (t :game/dead) :dead])
         (when (false? connected?) [pill (t :game/absent) :absent])
-        (when role [pill (str (text/role-icon role) " " (text/role-name role)) :role])
+        (when role [pill (str (i18n/icon-of role) " " (role-name role)) :role])
         (when (= id (:lover me)) [pill (t :badge/lover) :lover])
         (when (contains? (set (:nominations view)) id) [pill (t :badge/accused) :accused])
         (when (pos? n-votes)
@@ -218,7 +252,7 @@
        [:div {:class "flex flex-wrap gap-2"}
         (for [a plain]
           ^{:key (str a)}
-          [btn (text/action-name a)
+          [btn (action-name a)
            (if (needs-target? a)
              #(if (= armed a) (disarm!) (arm! a))
              #(rf/dispatch [::ev/act a]))
@@ -229,7 +263,7 @@
        [:div {:class "flex flex-wrap gap-2 pt-1 border-t border-slate-800"}
         (for [a gm]
           ^{:key (str a)}
-          [btn (text/action-name a)
+          [btn (action-name a)
            (if (needs-target? a)
              #(if (= armed a) (disarm!) (arm! a))
              #(rf/dispatch [::ev/act a]))
@@ -250,13 +284,13 @@
                          "border-emerald-700 bg-emerald-950/40"
                          "border-rose-800 bg-rose-950/30"))}
      [:div {:class "flex items-center gap-3"}
-      [:div {:class "text-4xl"} (text/role-icon role)]
+      [:div {:class "text-4xl"} (i18n/icon-of role)]
       [:div {:class "min-w-0"}
        [:div {:class "text-xs uppercase tracking-wide text-slate-400"} (t :game/your-role)]
-       [:div {:class "text-2xl font-bold leading-tight"} (text/role-name role)]]
+       [:div {:class "text-2xl font-bold leading-tight"} (role-name role)]]
       (when-not (:alive? me)
         [:div {:class "ml-auto"} [pill (t :game/dead) :dead]])]
-     [:p {:class "text-sm text-slate-300 mt-2"} (text/role-desc role)]
+     [:p {:class "text-sm text-slate-300 mt-2"} (role-desc role)]
 
      (when (:lover me)
        [:div {:class "mt-2 text-sm"}
@@ -282,7 +316,7 @@
          (for [[pid role] (sort-by key (:knows me))]
            ^{:key pid}
            [pill (str (get-in players [pid :name]) " · "
-                      (text/role-icon role) " " (text/role-name role))
+                      (i18n/icon-of role) " " (role-name role))
             :role])]])]))
 
 (defn- log-icon [tone]
@@ -313,8 +347,8 @@
   (let [log @(rf/subscribe [::sub/log])
         players @(rf/subscribe [::sub/players])
         show-all? @(rf/subscribe [::sub/show-all-log?])
-        rows (text/chronicle players log {:show-all? show-all?})
-        hidden (count (remove #(text/loud? (text/log-tone %)) log))]
+        rows (i18n/chronicle (lc) players log {:show-all? show-all?})
+        hidden (count (remove #(i18n/loud? (i18n/log-tone %)) log))]
     [:div {:class "rounded-xl border border-slate-700 bg-slate-900/80 overflow-hidden"}
      [:div {:class "px-4 py-2 bg-slate-800 flex items-center justify-between gap-2"}
       [:span {:class "text-sm font-bold uppercase tracking-wide"} (t :game/log)]
@@ -342,10 +376,12 @@
     [:div {:class "flex flex-wrap items-center justify-between gap-3"}
      [:div
       [:div {:class "flex items-baseline gap-2"}
-       [:h2 {:class "text-2xl font-bold"} (text/phase-name phase)]
+       [:h2 {:class "text-2xl font-bold"} (phase-name phase)]
        (when (pos? (:night view 0))
          [:span {:class "text-slate-500"} (str "· " (t :phase/night) " " (:night view))])]
-      [:div {:class "text-xs text-slate-500 font-mono"} (:room-id me)]]
+      [:div {:class "flex items-center gap-2"}
+       [:span {:class "text-xs text-slate-500 font-mono"} (:room-id me)]
+       [language-switch]]]
      [:div {:class "text-right"}
       (cond
         ;; A paused clock must SAY it is paused. Simply freezing the digits, or
@@ -406,7 +442,8 @@
       [:h2 {:class "text-2xl font-bold"} (t :lobby/title)]
       [:div {:class "text-right"}
        [:div {:class "text-xs uppercase tracking-wide text-slate-400"} (t :lobby/share)]
-       [:div {:class "font-mono text-3xl tracking-[0.3em] text-indigo-300"} (:room-id me)]]]
+       [:div {:class "font-mono text-3xl tracking-[0.3em] text-indigo-300"} (:room-id me)]
+       [:div {:class "flex justify-end mt-1"} [language-switch]]]]
      [:div {:class "text-sm text-slate-400"}
       (str (count (:players view)) " / " (:min-players view) " " (t :lobby/players))]
      [player-grid]

@@ -9,8 +9,17 @@
    redacted for this player. The client is structurally incapable of knowing more
    than it was told, which is what makes the redaction boundary real rather than
    a convention."
-  (:require [re-frame.core :as rf]
+  (:require [clojure.string :as str]
+            [re-frame.core :as rf]
             [werwolf.ws :as ws]))
+
+(defn browser-locale
+  "The language to open in, from the browser. Anything that is not clearly
+   English gets German: this is a German group's game, and Düsterwald
+   terminology is the default rather than the translation."
+  []
+  (let [tag (some-> js/navigator .-language str .toLowerCase)]
+    (if (and tag (str/starts-with? tag "en")) :en :de)))
 
 (def initial-db
   {:conn/status :connecting
@@ -19,11 +28,11 @@
    :view        nil          ; the server's redacted state — the only game truth
    :chat        []
    :error       nil
-   :locale      :de
+   :locale      nil        ; filled in by ::init from the browser
    :now         (.getTime (js/Date.))
    :form        {:name "" :code "" :text ""}})
 
-(rf/reg-event-db ::init (fn [_ _] initial-db))
+(rf/reg-event-db ::init (fn [_ _] (assoc initial-db :locale (browser-locale))))
 
 (rf/reg-event-db ::connected    (fn [db _] (assoc db :conn/status :connected)))
 (rf/reg-event-db ::disconnected (fn [db _] (assoc db :conn/status :disconnected)))
@@ -73,8 +82,12 @@
 
 (rf/reg-event-fx
  ::set-locale
- (fn [_ [_ locale]]
-   {::ws/send {:type :client/command :cmd {:type :set-locale :locale locale}}}))
+ ;; Both: locally so the landing screen switches before there is a seat to
+ ;; record it against, and as a command so the server holds it as per-player
+ ;; state that survives a reload. The server's copy wins once seated.
+ (fn [{:keys [db]} [_ locale]]
+   {:db (assoc db :locale locale)
+    ::ws/send {:type :client/command :cmd {:type :set-locale :locale locale}}}))
 
 (rf/reg-event-fx
  ::send-chat

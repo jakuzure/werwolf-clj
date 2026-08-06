@@ -5,7 +5,9 @@
    assertion below is 'what would this client actually have received', which is
    the only question a hidden-role game cares about."
   (:require [clojure.java.io :as io]
+            [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]
+            [werwolf.i18n.core :as i18n]
             [werwolf.proto :as proto]
             [werwolf.protocol :as protocol]
             [werwolf.room :as room]
@@ -266,6 +268,66 @@
         (is (= "hallo" (:text (last-of s :room/chat))) "trimmed and delivered"))
       (testing "recipient sets are never sent to clients"
         (is (not-any? :to (of-type host :room/chat)))))))
+
+;; ------------------------------------------------------------ mixed locale ---
+
+(deftest two-players-can-read-the-same-room-in-different-languages
+  (testing "the reason the wire carries structured events and never sentences.
+            Each player's locale is their own game state, and the identical log
+            renders differently for each of them."
+    (with-deps [deps]
+      (let [de (seat! deps {:type :client/create :name "Anna" :locale :de})
+            code (:room-id (last-of de :server/welcome))
+            en (seat! deps {:type :client/join :room-id code :name "Bob" :locale :en})]
+        (testing "each view carries its OWN locale, not the room's"
+          (is (= :de (:locale (:me (:view (last-of de :room/view))))))
+          (is (= :en (:locale (:me (:view (last-of en :room/view)))))))
+
+        (testing "and both received the very same public log"
+          (is (= (:log (:view (last-of de :room/view)))
+                 (:log (:view (last-of en :room/view))))))
+
+        (let [log (:log (:view (last-of de :room/view)))
+              players (:players (room/state-of (:rooms deps) code))]
+          (testing "which renders as different sentences"
+            (is (not= (i18n/chronicle :de players log {:show-all? true})
+                      (i18n/chronicle :en players log {:show-all? true}))))
+          (testing "while names are identical, because a name is data not language"
+            (doseq [locale [:de :en]]
+              (is (str/includes?
+                   (str/join " " (map :text (i18n/chronicle locale players log
+                                                            {:show-all? true})))
+                   "Anna")))))
+
+        (testing "and switching language mid-game is a command like any other"
+          (is (:ok? (room/submit! (:rooms deps) code 1
+                                  {:type :set-locale :locale :de})))
+          (is (= :de (:locale (:me (:view (last-of en :room/view)))))
+              "the change comes back in that player's own view"))))))
+
+(deftest language-can-be-changed-in-any-phase
+  (testing "it was lobby-only, which meant a player who joined in English was
+            stuck in it for the whole game"
+    (with-deps [deps]
+      (let [host (seat! deps {:type :client/create :name "P0"})
+            code (:room-id (last-of host :server/welcome))
+            guests (mapv #(seat! deps {:type :client/join :room-id code
+                                       :name (str "P" %)})
+                         (range 1 7))]
+        (protocol/dispatch deps host {:type :client/command :cmd {:type :start-game}})
+        (is (= :night (:phase (room/state-of (:rooms deps) code))))
+        (doseq [pid (range 7)]
+          (is (:ok? (room/submit! (:rooms deps) code pid
+                                  {:type :set-locale :locale :en}))
+              (str "player " pid " must be able to switch at night")))
+        (is (every? #(= :en (:locale %))
+                    (vals (:players (room/state-of (:rooms deps) code)))))
+        (testing "and switching language does not advance the game — it is a
+                  preference, not a move. The night still waits for the Seherin,
+                  which is correct; that :set-locale cannot make an exhausted
+                  role look busy forever is pinned in the engine tests."
+          (is (= :night (:phase (room/state-of (:rooms deps) code)))))
+        (is (seq guests))))))
 
 ;; ------------------------------------------------------------- robustness ---
 

@@ -1,0 +1,216 @@
+(ns werwolf.i18n.en
+  "English. Role names stay German on purpose — Seherin, Hexe, Jäger, Amor.
+
+   That is not laziness. Mixed-locale rooms are the point of this whole layer,
+   and the table has to be able to say a role out loud and be understood by
+   everyone at it. 'Seer' and 'Seherin' in the same conversation is a bug in the
+   game, not a translation. The descriptions are what carry the meaning, and
+   those are fully translated.
+
+   Key set must match werwolf.i18n.de exactly — there is a test."
+  (:require [werwolf.i18n.de :as de]))
+
+(def dict
+  {;; ------------------------------------------------------------- shell ---
+   :app/title         "Werewolves of Millers Hollow"
+
+   :conn/connecting   "connecting…"
+   :conn/connected    "connected"
+   :conn/disconnected "disconnected — trying again…"
+
+   :locale/de         "Deutsch"
+   :locale/en         "English"
+
+   ;; ----------------------------------------------------------- landing ---
+   :landing/name      "Your name"
+   :landing/create    "Start a new game"
+   :landing/join      "Join a game"
+   :landing/code      "Room code"
+   :landing/or        "or"
+
+   ;; ------------------------------------------------------------- lobby ---
+   :lobby/title       "Lobby"
+   :lobby/players     "Players"
+   :lobby/start       "Start the game"
+   :lobby/need-more   "Waiting for more players"
+   :lobby/share       "Share this code"
+   :lobby/leave       "Leave the game"
+
+   ;; ------------------------------------------------------------ phases ---
+   :phase/lobby       "Lobby"
+   :phase/night       "Night"
+   :phase/day-reveal  "Dawn"
+   :phase/discussion  "Discussion"
+   :phase/nomination  "Accusations"
+   :phase/vote        "Vote"
+   :phase/day-resolve "Verdict"
+   :phase/reaction    "Last act"
+   :phase/game-over   "Game over"
+
+   ;; ------------------------------------------------------------- roles ---
+   ;; Names deliberately untranslated — see the namespace docstring.
+   :role/werwolf      "Werwolf"
+   :role/dorfbewohner "Dorfbewohner"
+   :role/seherin      "Seherin"
+   :role/hexe         "Hexe"
+   :role/jaeger       "Jäger"
+   :role/amor         "Amor"
+
+   :role-desc/werwolf      "Each night from the second on, you and the pack take a victim."
+   :role-desc/dorfbewohner "You have no night action — only your voice by day."
+   :role-desc/seherin      "The seer. Each night you may learn one player's role."
+   :role-desc/hexe         "The witch. One healing potion, one poison, once each per game."
+   :role-desc/jaeger       "The hunter. When you die, you take someone with you."
+   :role-desc/amor         "On the first night you choose two players to fall in love."
+
+   ;; ----------------------------------------------------------- actions ---
+   :action/start-game      "Start the game"
+   :action/leave           "Leave"
+   :action/set-locale      "Language"
+   :action/chat            "Say"
+   :action/ready           "I'm done"
+   :action/amor-link       "Choose the lovers"
+   :action/seherin-inspect "Reveal a role"
+   :action/werewolf-vote   "Choose the victim"
+   :action/hexe-heal       "Use the healing potion"
+   :action/hexe-poison     "Use the poison"
+   :action/hexe-pass       "Use neither potion"
+   :action/jaeger-shoot    "Take the shot"
+   :action/jaeger-pass     "Hold your fire"
+   :action/nominate        "Accuse"
+   :action/nominate-pass   "Accuse nobody"
+   :action/vote            "Condemn"
+   :action/vote-abstain    "Abstain"
+   :action/advance-phase   "Next phase (GM)"
+   :action/gm-force-kill   "Kill (GM)"
+   :action/gm-revive       "Revive (GM)"
+   :action/gm-skip-role    "Skip role (GM)"
+   :action/gm-set-phase    "Set phase (GM)"
+   :action/gm-pause        "Pause the clock (GM)"
+   :action/gm-resume       "Resume the clock (GM)"
+   :action/gm-add-time     "+60 s (GM)"
+
+   ;; -------------------------------------------------------------- game ---
+   :game/you           "you"
+   :game/dead          "dead"
+   :game/absent        "away"
+   :game/your-role     "Your role"
+   :game/in-love       "You are in love with"
+   :game/heiltrank     "Healing potion"
+   :game/gifttrank     "Poison"
+   :game/knows         "Known"
+   :game/log           "Chronicle"
+   :game/chat          "Talk"
+   :game/chat-hint     "Write a message…"
+   :game/waiting       "Waiting for the others…"
+   :game/nothing-to-do "Nothing for you to do right now."
+   :game/wolves-channel "Only the werewolves can hear you"
+   :game/dead-channel   "Only the dead can hear you"
+   :game/paused         "Clock paused"
+
+   ;; --------------------------------------------------------- targeting ---
+   :target/pick-one   "Choose a target"
+   :target/pick-two   "Choose two targets"
+   :target/chosen-one "First one chosen — now the second"
+   :target/cancel     "Cancel"
+   :target/hint       "Click a player below"
+
+   ;; ------------------------------------------------------------ badges ---
+   :badge/accused     "accused"
+   :badge/votes       "votes"
+   :badge/vote        "vote"
+   :badge/ready       "done"
+   :badge/decided     "has chosen"
+   :badge/host        "GM"
+   :badge/lover       "in love"
+   :badge/waiting-for "Still waiting on"
+
+   ;; --------------------------------------------------------------- log ---
+   :log/show-all      "Show everything"
+   :log/show-less     "Only what matters"
+   :log/hidden        "more entries"
+
+   :log/joined        (fn [n] (str n " joined"))
+   :log/left          (fn [n] (str n " left the game"))
+   :log/disconnected  (fn [n] (str n " is away"))
+   :log/reconnected   (fn [n] (str n " is back"))
+   :log/host-changed  (fn [n] (str n " is now the game master"))
+   :log/game-started  "The first night falls"
+   :log/amor-linked   "Amor has chosen two lovers"
+   :log/night-began   "Night falls"
+   :log/night-quiet-first "The first night passes quietly — nobody dies"
+   :log/night-quiet   "Nobody died during the night"
+   :log/night-ended   "Dawn breaks"
+   :log/day-began     "The village gathers"
+   :log/ready         (fn [n] (str n " is done"))
+   :log/nominate-passed (fn [n] (str n " accuses nobody"))
+   :log/no-accusation "The village accuses nobody — nobody dies today"
+   :log/jaeger-held-fire (fn [n] (str n " lowers the rifle"))
+   :log/vote-cast     (fn [v t] (str v " → " t))
+   :log/vote-abstained (fn [v] (str v " abstains"))
+
+   :log/died-werwolf  (fn [n] (str n " was torn apart by the werewolves"))
+   :log/died-gift     (fn [n] (str n " was poisoned"))
+   :log/died-liebe    (fn [n] (str n " follows their love into death"))
+   :log/died-lynch    (fn [n] (str n " was condemned by the village"))
+   :log/died-jaeger   (fn [n] (str n " was shot by the Jäger"))
+   :log/died-gm       (fn [n] (str n " was removed by the game master"))
+   :log/died          (fn [n] (str n " died"))
+
+   :log/revived       (fn [n] (str n " lives again"))
+   :log/role-revealed (fn [n r] (str n " was the " r))
+   :log/jaeger-shot   (fn [n t] (str n " shoots " t))
+   :log/lynched       (fn [n] (str "The village condemns " n))
+   :log/tie           "The village cannot agree — nobody dies"
+   :log/nominated     (fn [n] (str n " stands accused"))
+   :log/timed-out     (fn [p] (str "Time ran out for " p))
+   :log/gm-forced     "The game master intervenes"
+   :log/clock-paused  "The game master pauses the clock"
+   :log/clock-resumed "The clock is running again"
+   :log/win-village   "The village wins"
+   :log/win-werewolf  "The werewolves win"
+   :log/win-lovers    "The lovers win"
+
+   :log/group-ready        (fn [names] (str names " are done"))
+   :log/group-passed       (fn [names] (str names " accuse nobody"))
+   :log/group-voted        (fn [names] (str names " have voted"))
+   :log/group-joined       (fn [names] (str names " joined"))
+   :log/group-disconnected (fn [names] (str names " are away"))
+   :log/group-reconnected  (fn [names] (str names " are back"))
+
+   ;; ------------------------------------------------------------ errors ---
+   :error/no-such-room     "There is no such room"
+   :error/game-in-progress "That game has already started"
+   :error/already-joined   "You are already in this game"
+   :error/room-full        "The room is full"
+   :error/name-required    "Please enter a name"
+   :error/not-in-room      "You are not in this game"
+   :error/unknown-player   "No such seat"
+   :error/seat-gone        "Your seat no longer exists"
+   :error/expired          "Your session has expired"
+   :error/wrong-room       "That pass belongs to a different game"
+   :error/bad-signature    "Invalid pass"
+   :error/malformed        "Invalid request"
+   :error/chat-not-allowed "You cannot speak right now"
+   :error/empty-message    "The message is empty"
+   :error/not-allowed      "You cannot do that right now"
+   :error/invalid-target   "That target is not allowed"
+   :error/already-in-room  "You are already in a game"
+   :error/not-host         "Only the game master can do that"
+   :error/already-dead     "That player is already dead"
+   :error/already-alive    "That player is still alive"
+   :error/already-paused   "The clock is already paused"
+   :error/not-paused       "The clock is already running"
+   :error/no-deadline      "No clock is running"
+   :error/not-night        "That only works at night"
+   :error/cannot-advance   "This phase cannot be advanced"
+   :error/distinct-targets-required "Please choose two different players"
+   :error/unsupported-locale "No such language"
+   :error/unknown-command  "Unknown command"
+   :error/internal-error   "Something went wrong"})
+
+(def missing-keys
+  "Keys German has and English does not. Zero by contract — the test in
+   i18n_test.cljc fails on anything here, and this is exposed so the failure
+   message can say which ones rather than 'the sets differ'."
+  (sort (remove (set (keys dict)) (keys de/dict))))

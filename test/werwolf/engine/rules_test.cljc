@@ -282,6 +282,25 @@
       (is (= 4 (:max-players s)))
       (is (= :room-full (:error (engine/execute s {:type :join :player 9 :name "Late"})))))))
 
+(deftest a-preference-is-not-an-action
+  (testing "language can be changed in any phase, alive or dead, which is a trap:
+            if `nobody-can-act?` counted :set-locale as 'has something to do',
+            a role with nothing left to decide would look busy forever and the
+            night would hang waiting for somebody to pick a language"
+    (let [s (tu/game-with {0 :dorfbewohner 1 :werwolf 2 :hexe 3 :seherin
+                           4 :dorfbewohner 5 :dorfbewohner})
+          s (exec! s {:type :seherin-inspect :player 3 :target 1})
+          s (exec! s {:type :werewolf-vote :player 1 :target 0})
+          ;; Spend both potions, so the Hexe has nothing left but :set-locale.
+          s (exec! s {:type :hexe-heal :player 2 :target 0})
+          s (exec! s {:type :hexe-poison :player 2 :target 5})]
+      (is (contains? (phases/legal-actions s 2) :set-locale)
+          "she can still change language")
+      (is (not= :night (:phase s))
+          "and the night ended anyway rather than waiting on her")
+      (testing "the dead keep it too"
+        (is (contains? (phases/legal-actions s 5) :set-locale))))))
+
 (deftest chat-is-allowed-in-the-lobby
   (testing "people arrange the game before it starts; a silent lobby was a bug"
     (let [s (e/replay [{:type :game/created :room-id "R" :host 0 :seed 1 :min-players 5}
@@ -297,7 +316,8 @@
           s (exec! s {:type :hexe-pass :player 2})]
       (is (= :reaction (:phase s)))
       (is (false? (get-in s [:players 4 :alive?])) "the Jäger is dead")
-      (is (= #{:jaeger-shoot :jaeger-pass :chat} (phases/legal-actions s 4))
+      (is (= (into #{:jaeger-shoot :jaeger-pass :chat} phases/always-allowed)
+             (phases/legal-actions s 4))
           "and he may decline: the clock already lets him off if he says
            nothing, so refusing a button for the same choice would only punish
            the player who is paying attention"))))
@@ -312,8 +332,9 @@
       (is (= 1 (:night s)))
       (is (not (contains? (set (phases/night-queue s)) :werwolf))
           "the wolves are not in the first night's queue")
-      (is (empty? (phases/legal-actions s 1))
-          "so the wolf has nothing to do — not even a vote to cast"))))
+      (is (= phases/always-allowed (phases/legal-actions s 1))
+          "so the wolf has nothing to do but choose a language — not even a
+           vote to cast"))))
 
 (deftest the-first-night-passes-with-everyone-alive
   (let [s (tu/game-with {0 :dorfbewohner 1 :werwolf 2 :hexe 3 :seherin 4 :jaeger}

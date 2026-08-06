@@ -10,8 +10,8 @@
    localStorage."
   (:require [cljs.test :refer [deftest is testing]]
             [werwolf.events :as ev]
-            [werwolf.subs :as sub]
-            [werwolf.text :as text]))
+            [werwolf.i18n.core :as i18n]
+            [werwolf.subs :as sub]))
 
 (def db ev/initial-db)
 
@@ -118,17 +118,21 @@
   (into {} (map (fn [i] [i {:name (str "P" i)}])) (range 6)))
 
 (deftest the-chronicle-hides-bookkeeping-by-default
-  (let [rows (text/chronicle names quiet-day {})
+  (let [rows (i18n/chronicle :de names quiet-day {})
         texts (mapv :text rows)]
     (is (not-any? #(re-find #"ist fertig|sind fertig" %) texts)
         "ten ready/pass lines must not bury the one death")
-    (is (some #(re-find #"gestorben" %) texts))
+    ;; Asserted by tone and name rather than by a German word: the death lines
+    ;; are whole sentences per cause, so the wording is the dictionary's business
+    ;; and this test's business is that the death survived the filter.
+    (is (some #(and (= :death (:tone %)) (re-find #"P3" (:text %))) rows)
+        "the one death is still there")
     (testing "and the redundant verdict is demoted — :day/no-accusation already
               said nobody died, so :vote/resolved with no target repeats it"
       (is (= 1 (count (filter #(re-find #"niemanden an|keiner" %) texts)))))))
 
 (deftest the-chronicle-collapses-runs-and-names-them
-  (let [rows (text/chronicle names quiet-day {:show-all? true})
+  (let [rows (i18n/chronicle :de names quiet-day {:show-all? true})
         ready (first (filter #(re-find #"sind fertig" (:text %)) rows))]
     (is (some? ready) "the run became one row")
     (is (= 5 (:count ready)))
@@ -138,43 +142,25 @@
       (is (some #(re-find #"klagen niemanden an" (:text %)) rows)))))
 
 (deftest the-chronicle-is-newest-first
-  (let [rows (text/chronicle names quiet-day {})]
+  (let [rows (i18n/chronicle :de names quiet-day {})]
     (is (re-find #"Nacht" (:text (first rows))))))
 
 (deftest a-tie-is-loud-but-an-empty-vote-is-not
   (testing "a tie is a real outcome the table needs to see; 'nobody voted' is not"
-    (is (= :verdict (text/log-tone {:type :vote/resolved :target nil :tie? true})))
-    (is (= :verdict (text/log-tone {:type :vote/resolved :target 2 :tie? false})))
-    (is (= :muted (text/log-tone {:type :vote/resolved :target nil :tie? false})))))
+    (is (= :verdict (i18n/log-tone {:type :vote/resolved :target nil :tie? true})))
+    (is (= :verdict (i18n/log-tone {:type :vote/resolved :target 2 :tie? false})))
+    (is (= :muted (i18n/log-tone {:type :vote/resolved :target nil :tie? false})))))
 
-;; ------------------------------------------------------------------ strings ---
+;; The dictionaries themselves — completeness, both languages, and coverage of
+;; every event a real game logs — are tested in werwolf.i18n-test, which is .cljc
+;; and therefore runs here too. Nothing about them is client-specific, so
+;; restating a weaker version of those checks in this file would only give two
+;; places to update.
 
-(deftest every-phase-and-role-has-a-name
-  (doseq [p [:lobby :night :day-reveal :discussion :nomination :vote
-             :day-resolve :reaction :game-over]]
-    (is (not (re-find #"^:" (text/phase-name p))) (str p " has no translation")))
-  (doseq [r [:werwolf :dorfbewohner :seherin :hexe :jaeger :amor]]
-    (is (not (re-find #"^:" (text/role-name r))) (str r " has no translation"))))
-
-(deftest every-action-the-server-can-offer-has-a-label
-  (testing "an unlabelled button is a button nobody dares press"
-    (doseq [a [:start-game :leave :set-locale :chat
-               :amor-link :seherin-inspect :werewolf-vote
-               :hexe-heal :hexe-poison :hexe-pass
-               :jaeger-shoot :nominate :vote :advance-phase
-               :gm/force-kill :gm/revive :gm/skip-role :gm/set-phase]]
-      (is (not (re-find #"^:" (text/action-name a)))
-          (str a " has no label")))))
-
-(deftest the-log-renders-structured-events-as-sentences
-  (let [players {0 {:name "Anna"} 1 {:name "Bob"}}]
-    (is (= "Anna ist beigetreten"
-           (text/log-line players {:type :player/joined :player 0})))
-    (is (= "Bob ist gestorben — von Werwölfen gerissen"
-           (text/log-line players {:type :player/died :player 1 :cause :werwolf})))
-    (is (= "Das Dorf kann sich nicht einigen — niemand stirbt"
-           (text/log-line players {:type :vote/resolved :target nil :tie? true})))
-    (testing "an unnamed player is still identifiable — the log holds ids, so a
-              name change must not be able to rewrite history"
-      (is (= "#7 ist beigetreten"
-             (text/log-line players {:type :player/joined :player 7}))))))
+(deftest names-are-data-not-language
+  (testing "the log holds ids, so renaming yourself must not rewrite history —
+            and an unnamed id still has to be identifiable"
+    (is (= "#7 ist beigetreten"
+           (i18n/log-line :de {} {:type :player/joined :player 7})))
+    (is (= "#7 joined"
+           (i18n/log-line :en {} {:type :player/joined :player 7})))))

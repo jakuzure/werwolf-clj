@@ -159,6 +159,25 @@
 
 (declare legal-actions)
 
+(def always-allowed
+  "Preferences, not moves. Offered in every phase, to the living and the dead,
+   because a player must be able to change their language mid-game — asking them
+   to wait for the lobby that will never come again is absurd."
+  #{:set-locale})
+
+(defn- not-really-acting?
+  "Does this action count as 'this player still has something to do'? No, for
+   chat, preferences and GM powers.
+
+   Load-bearing for the night. `nobody-can-act?` uses it, and the moment
+   :set-locale became available in every phase, a night role with nothing left to
+   decide would have looked busy forever — the game would hang waiting for
+   somebody to pick a language."
+  [action]
+  (or (= :chat action)
+      (contains? always-allowed action)
+      (= "gm" (namespace action))))
+
 (defn- nobody-can-act?
   "True when no living holder of `role-id` has any usable action.
 
@@ -169,8 +188,7 @@
   (let [holders (e/living-with-role state role-id)]
     (or (empty? holders)
         (every? (fn [pid]
-                  (empty? (remove #(or (= :chat %) (= "gm" (namespace %)))
-                                  (legal-actions state pid))))
+                  (empty? (remove not-really-acting? (legal-actions state pid))))
                 holders))))
 
 (defn- night-auto [state]
@@ -490,8 +508,9 @@
    like 274 invariant violations.
 
    The Jäger is the whole reason this set is not empty — he fires, or declines
-   to fire, while already dead."
-  #{:chat :jaeger-shoot :jaeger-pass})
+   to fire, while already dead. The rest are not acting at all: talking, and
+   choosing what language to read the game in."
+  (into #{:chat :jaeger-shoot :jaeger-pass} always-allowed))
 
 (def no-target-actions
   "Commands that carry no :target. Everything else needs at least one legal
@@ -515,7 +534,9 @@
   [state pid]
   (if-not (get-in state [:players pid])
     #{}
-    (let [candidates (into (player-actions state pid) (host-actions state pid))]
+    (let [candidates (-> (player-actions state pid)
+                         (into (host-actions state pid))
+                         (into always-allowed))]
       (into #{}
             (remove (fn [action]
                       (and (not (contains? no-target-actions action))

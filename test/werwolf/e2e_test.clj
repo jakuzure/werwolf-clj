@@ -249,7 +249,12 @@
                   (is (empty? (filter #(= :server/error (:type %)) (msgs (:client amor))))
                       "and no rejection anywhere")
                   (testing "while a third party learns only that lovers exist"
-                    (let [other (first (remove #(#{(:pid amor) a b} (:pid %)) all))
+                    ;; `(set [...])` rather than a set literal: Amor is allowed
+                    ;; to be one of the lovers — the official rules let him shoot
+                    ;; himself — so these three ids can legitimately collide, and
+                    ;; #{} would throw on the duplicate.
+                    (let [involved (set [(:pid amor) a b])
+                          other (first (remove #(involved (:pid %)) all))
                           ov (latest-view (:client other))]
                       (is (true? (:lovers-exist? ov)))
                       (is (nil? (:lover (:me ov))))))))
