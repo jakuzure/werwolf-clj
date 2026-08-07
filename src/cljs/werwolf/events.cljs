@@ -10,8 +10,21 @@
    than it was told, which is what makes the redaction boundary real rather than
    a convention."
   (:require [re-frame.core :as rf]
-            [werwolf.audio :as audio]
             [werwolf.ws :as ws]))
+
+;; The voice effects are named by LITERAL keyword rather than through an alias,
+;; and werwolf.audio is deliberately NOT required here.
+;;
+;; That namespace reaches livekit-client through `shadow.lazy`, whose `loadable`
+;; needs a module to resolve against — which exists in the :app build and cannot
+;; in :test-node, a target with no modules at all. Requiring it from here dragged
+;; the whole chain into the test build and broke it.
+;;
+;; re-frame identifies effects by keyword, so dispatching one needs no reference
+;; to the namespace that registers it. `werwolf.core` — the browser entry point,
+;; and the only place a browser is guaranteed — does the requiring. Keep these
+;; keywords in step with the `rf/reg-fx` calls in werwolf.audio; `check:app` in
+;; bb.edn compiles that namespace so a rename cannot pass the suite unnoticed.
 
 (def default-locale
   "German, unconditionally.
@@ -207,14 +220,14 @@
    (let [{:keys [url token available?]} (:audio db)]
      (when (and available? url token)
        {:db (assoc-in db [:audio :state] :joining)
-        ::audio/connect {:url url :token token}}))))
+        :werwolf.audio/connect {:url url :token token}}))))
 
 (rf/reg-event-fx
  ::leave-audio
  (fn [{:keys [db]} _]
    {:db (-> db (assoc-in [:audio :state] :idle)
             (assoc-in [:audio :speakers] #{}))
-    ::audio/disconnect true}))
+    :werwolf.audio/disconnect true}))
 
 (rf/reg-event-db ::audio-joined (fn [db _] (assoc-in db [:audio :state] :joined)))
 (rf/reg-event-db ::audio-left   (fn [db _] (-> db (assoc-in [:audio :state] :idle)
@@ -234,7 +247,7 @@
  (fn [{:keys [db]} _]
    (let [muted? (not (get-in db [:audio :muted?]))]
      {:db (assoc-in db [:audio :muted?] muted?)
-      ::audio/set-muted muted?})))
+      :werwolf.audio/set-muted muted?})))
 
 (defn leave-fx
   "Also the way out of a finished game. Landing on the landing screen with a
@@ -251,7 +264,7 @@
    ;; published into a room the player has walked out of — they would be audible
    ;; to a table they are no longer at, which is the worst possible bug in a game
    ;; about who knows what.
-   ::audio/disconnect true
+   :werwolf.audio/disconnect true
    :dispatch [::refresh-rooms]
    ::ws/send {:type :client/command :cmd {:type :leave}}})
 

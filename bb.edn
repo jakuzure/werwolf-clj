@@ -68,9 +68,23 @@
    :task    (do (shell "npx shadow-cljs compile test-node")
                 (shell "node target/node-tests.js"))}
 
+  check:app
+  {:doc     "Compile the BROWSER build, purely to prove it compiles.
+
+             werwolf.audio reaches livekit-client through shadow.lazy, which
+             resolves against the :app build's module split — so the :test-node
+             target, which has no modules, cannot compile it at all. Without this
+             task a syntax error in werwolf.audio or werwolf.audio-impl would sail
+             through `bb test:all`.
+
+             Exactly the trap client_test already guards for werwolf.views, where
+             a local binding named `set!` passed the whole suite green."
+   :depends [npm-install]
+   :task    (shell "npx shadow-cljs compile app")}
+
   test:all
-  {:doc     "Run the suite on both platforms"
-   :depends [test test:cljs]}
+  {:doc     "Run the suite on both platforms, and compile the browser build"
+   :depends [test test:cljs check:app]}
 
   test:watch
   {:doc  "Re-run tests on change"

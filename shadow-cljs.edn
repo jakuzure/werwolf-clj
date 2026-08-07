@@ -15,7 +15,19 @@
   {:target     :browser
    :output-dir "resources/public/js"
    :asset-path "/js"
-   :modules    {:main {:init-fn werwolf.core/init}}
+   ;; Two modules, because livekit-client is about half the compiled application
+   ;; and this game is played on phones. Requiring it directly roughly doubled the
+   ;; bundle — paid on first paint, before anyone has decided whether they want
+   ;; voice at all. `:audio` is fetched by `shadow.lazy` the first time somebody
+   ;; taps to join.
+   ;;
+   ;; The split is only as good as the require graph: if any namespace that loads
+   ;; on first paint requires werwolf.audio-impl directly, its code moves back
+   ;; into :main and the only symptom is a bundle quietly twice the size. The
+   ;; module sizes printed by `bb build:cljs` are the check — see werwolf.audio.
+   :modules    {:main  {:init-fn werwolf.core/init}
+                :audio {:entries    [werwolf.audio-impl]
+                        :depends-on #{:main}}}
 
    ;; re-frame-10x is deliberately NOT preloaded. Its panel is an overlay on
    ;; the page itself, and on a phone — which is how this game is actually

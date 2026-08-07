@@ -1,150 +1,63 @@
 (ns werwolf.audio
-  "Voice, as a re-frame effect over livekit-client.
+  "The voice effects, and the code split that keeps the SDK out of first paint.
 
-   Shaped after `werwolf.ws` and for the same reason: a LiveKit `Room` is a
-   long-lived stateful object with a microphone attached, so it cannot live in
-   app-db. app-db holds a small summary of it — connected, muted, who is talking —
-   and every mutation happens through an effect. Components then render from
-   subscriptions and never touch the SDK.
+   livekit-client is around half the compiled application — it roughly doubled the
+   release bundle when it was required directly. This game is played on phones,
+   often on mobile data, and not every table uses voice, so paying for the SDK on
+   first paint is the wrong trade: the download is spent before anyone has decided
+   whether they want it.
 
-   ## Joining is an explicit act
+   So everything that touches LiveKit lives in `werwolf.audio-impl`, and this
+   namespace reaches it through `shadow.lazy`. The module is fetched the first time
+   a player taps to join. Nothing on the loading path may require `audio-impl`
+   directly — a single stray require anywhere in the first-paint graph puts the SDK
+   back in the main bundle, and the only symptom is a bundle that is quietly twice
+   the size again. `bb build:cljs` prints the module sizes; that is the check.
 
-   There is no auto-join, and that is not timidity. Browsers refuse
-   `getUserMedia` without a user gesture, so an automatic attempt fails on the
-   first load of every session; and opening someone's microphone because they
-   loaded a web page is the wrong default even where it is technically allowed.
-   So: a button.
+   The effects stay HERE rather than in the impl, because re-frame must know about
+   `::connect` at registration time — before the module exists. Each one loads the
+   module if needed and then applies the call, so callers dispatch effects exactly
+   as they would if nothing were lazy."
+  (:require [re-frame.core :as rf]
+            [shadow.lazy :as lazy]))
 
-   ## Audio elements, and why they are not in the view
+(def ^:private impl (lazy/loadable werwolf.audio-impl/api))
 
-   A remote track has to be attached to a DOM element to be audible, and reagent
-   must not own those elements — a re-render that replaced them would cut the
-   audio mid-sentence. They are created imperatively, parented to a container
-   outside the reagent tree, and removed when the track goes away. This is the one
-   place in the client where manual DOM manipulation is the correct answer.
+;; Whether the module has ever been fetched. Used to keep `::disconnect` from
+;; DOWNLOADING half a megabyte in order to discover there is nothing to hang up:
+;; `::leave` fires it on every exit, including for the majority of players who
+;; never joined a call at all.
+(defonce ^:private loaded (atom nil))
 
-   ## What this namespace does NOT decide
+(defn- with-impl!
+  "Run `(f api)`, fetching the module first if this is the first time."
+  [f]
+  (if-let [api @loaded]
+    (f api)
+    (-> (lazy/load impl)
+        (.then (fn [api]
+                 (reset! loaded api)
+                 (f api)))
+        (.catch (fn [e]
+                  ;; A failed chunk fetch is a network problem, not a refused
+                  ;; microphone, and it must not look like one. Reported through
+                  ;; the same event as any other join failure so it renders in the
+                  ;; player's language.
+                  (js/console.error "audio: could not load the voice module" e)
+                  (rf/dispatch [:werwolf.events/audio-failed :join-failed]))))))
 
-   Who may speak. Every player can talk, always — see `werwolf.media` — so there
-   are no permissions to interpret here. Muting is local and voluntary: it is the
-   player's own microphone, not a rule. If a permission table is ever added, the
-   server will enforce it on the SFU and this namespace will not need to be
-   trusted to cooperate."
-  (:require ["livekit-client" :refer [Room RoomEvent Track]]
-            [re-frame.core :as rf]))
+(rf/reg-fx ::connect (fn [creds] (with-impl! (fn [api] ((:connect! api) creds)))))
 
-;; Every JS object below carries a `^js` hint, and that is load-bearing rather
-;; than decorative. The release build is `:advanced`, so Closure renames property
-;; accesses it cannot prove are external — `.attach`, `.setMicrophoneEnabled`,
-;; `.-identity` — and the failure mode is audio that works in development and is
-;; silently dead in production. `:infer-externs :auto` protects what it can infer;
-;; the hints are what let it infer. `bb test:cljs` must stay at zero warnings for
-;; that reason: here the warnings ARE the bug report.
+(rf/reg-fx
+ ::disconnect
+ (fn [_]
+   ;; Only if the module is already here. Not merely an optimisation: without the
+   ;; guard, leaving a room would trigger the SDK download for every player who
+   ;; never touched voice.
+   (when-let [api @loaded] ((:disconnect! api)))))
 
-(defonce ^:private room* (atom nil))
-
-;; Remote <audio> elements, keyed by track sid so they can be detached again.
-(defonce ^:private els (atom {}))
-
-(def ^:private container-id "werwolf-audio-sink")
-
-(defn- container
-  "A div outside the reagent tree to hang <audio> elements on. Created on demand
-   so nothing has to guarantee ordering against the app's first render."
-  []
-  (or (.getElementById js/document container-id)
-      (let [d (.createElement js/document "div")]
-        (set! (.-id d) container-id)
-        ;; Not display:none — a hidden audio element is still played, but some
-        ;; browsers have historically treated fully hidden media as inert, and
-        ;; the cost of being wrong is silence that looks like a bug.
-        (set! (.. d -style -position) "absolute")
-        (set! (.. d -style -width) "0")
-        (set! (.. d -style -height) "0")
-        (set! (.. d -style -overflow) "hidden")
-        (.appendChild (.-body js/document) d)
-        d)))
-
-(defn- attach! [^js track sid]
-  (let [^js el (.attach track)]
-    (set! (.-autoplay el) true)
-    (.appendChild (container) el)
-    (swap! els assoc sid el)))
-
-(defn- detach! [sid]
-  (when-let [^js el (get @els sid)]
-    (.remove el)
-    (swap! els dissoc sid)))
-
-(defn- detach-all! []
-  (doseq [sid (keys @els)] (detach! sid))
-  (reset! els {}))
-
-(defn- speaking-identities [speakers]
-  (set (keep (fn [^js p] (.-identity p)) speakers)))
-
-(defn- track-key [^js participant ^js track]
-  (str (.-identity participant) "/" (.-sid track)))
-
-(defn- wire! [^js room]
-  (.on room (.-TrackSubscribed RoomEvent)
-       (fn [^js track _pub ^js participant]
-         (when (= (.-Audio Track) (.-kind track))
-           (attach! track (track-key participant track)))))
-  (.on room (.-TrackUnsubscribed RoomEvent)
-       (fn [^js track _pub ^js participant]
-         (detach! (track-key participant track))))
-  ;; Who is talking, for the UI. Everyone is in one room and nobody is muted by
-  ;; the server, so this leaks nothing — worth stating because it would NOT be
-  ;; safe under the plan's permission table, where absence from the main room
-  ;; identifies the wolves.
-  (.on room (.-ActiveSpeakersChanged RoomEvent)
-       (fn [speakers]
-         (rf/dispatch [:werwolf.events/audio-speakers
-                       (speaking-identities speakers)])))
-  (.on room (.-Disconnected RoomEvent)
-       (fn [_]
-         (detach-all!)
-         (rf/dispatch [:werwolf.events/audio-left])))
-  room)
-
-(defn connect!
-  "Join the call. `on-error` receives a keyword, because the UI renders through
-   the dictionaries and must not put a browser's English exception on screen."
-  [{:keys [url token]}]
-  (when-not @room* ; idempotent: a second tap must not open a second microphone
-    (let [^js room (Room. #js {:adaptiveStream true :dynacast true})]
-      (reset! room* room)
-      (wire! room)
-      (-> (.connect room url token)
-          (.then (fn [_] (.setMicrophoneEnabled ^js (.-localParticipant room) true)))
-          (.then (fn [_] (rf/dispatch [:werwolf.events/audio-joined])))
-          (.catch (fn [^js e]
-                    (js/console.error "audio: join failed" e)
-                    (reset! room* nil)
-                    (rf/dispatch [:werwolf.events/audio-failed
-                                  ;; A refused microphone is the common case and
-                                  ;; deserves its own message: it is fixed in
-                                  ;; browser settings, not by retrying.
-                                  (if (re-find #"(?i)permission|denied|notallowed"
-                                               (str (.-message e)))
-                                    :mic-denied
-                                    :join-failed)])))))))
-
-(defn disconnect! []
-  (when-let [^js room @room*]
-    (reset! room* nil)
-    (detach-all!)
-    (.disconnect room)))
-
-(defn set-muted!
-  "Mute locally. `setMicrophoneEnabled false` stops publishing rather than
-   sending silence, so a muted player costs the SFU nothing and — more to the
-   point — cannot be heard by accident."
-  [muted?]
-  (when-let [^js room @room*]
-    (.setMicrophoneEnabled ^js (.-localParticipant room) (not muted?))))
-
-(rf/reg-fx ::connect (fn [creds] (connect! creds)))
-(rf/reg-fx ::disconnect (fn [_] (disconnect!)))
-(rf/reg-fx ::set-muted (fn [muted?] (set-muted! muted?)))
+(rf/reg-fx
+ ::set-muted
+ (fn [muted?]
+   ;; Same reasoning — there is no microphone to mute until there is a module.
+   (when-let [api @loaded] ((:set-muted! api) muted?))))

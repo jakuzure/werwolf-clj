@@ -5,6 +5,14 @@
    `werwolf.views`. This namespace only starts things."
   (:require [reagent.dom.client :as rdomc]
             [re-frame.core :as rf]
+            ;; Required for its side effect of registering the voice effects, and
+            ;; required HERE rather than from werwolf.events because it reaches
+            ;; livekit-client through `shadow.lazy` — which needs the :app build's
+            ;; module split and cannot compile in :test-node. This namespace is the
+            ;; browser entry point, so it is the one place a module graph is
+            ;; guaranteed to exist. It does NOT pull in the SDK: audio-impl is a
+            ;; separate module, fetched on the first tap to join.
+            [werwolf.audio]
             [werwolf.config :as config]
             [werwolf.events :as ev]
             [werwolf.subs]
