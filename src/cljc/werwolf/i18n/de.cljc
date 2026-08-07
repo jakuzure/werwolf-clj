@@ -24,12 +24,22 @@
    :landing/join      "Runde beitreten"
    :landing/code      "Raumcode"
    :landing/or        "oder"
+   ;; Die offenen Runden stehen über dem Codefeld: einen Code abtippen ist jetzt
+   ;; der Notausgang für eine Runde, die die Liste nicht zeigen kann.
+   :landing/open-rooms "Offene Runden"
+   :landing/no-rooms   "Gerade läuft keine offene Runde"
+   :landing/refresh    "Neu laden"
 
    ;; ------------------------------------------------------------- lobby ---
    :lobby/title       "Warteraum"
    :lobby/players     "Mitspieler"
    :lobby/start       "Spiel starten"
    :lobby/need-more   "Es fehlen noch Mitspieler"
+   ;; Die Spielleitung darf unter der empfohlenen Größe starten. Ein Hinweis,
+   ;; keine Sperre: vier Leute, die jetzt spielen wollen, sollen nicht an einer
+   ;; Zahl scheitern, die für einen größeren Abend gesetzt wurde.
+   :lobby/below-recommended (fn [n] (str "Ihr könnt starten — schöner wird es ab "
+                                         n " Mitspielern"))
    :lobby/share       "Teile diesen Code"
    :lobby/leave       "Runde verlassen"
 
@@ -82,9 +92,22 @@
    :action/gm-revive       "Wiederbeleben (SL)"
    :action/gm-skip-role    "Rolle überspringen (SL)"
    :action/gm-set-phase    "Phase setzen (SL)"
+   :action/gm-reassign-role "Rolle neu vergeben (SL)"
    :action/gm-pause        "Zeit anhalten (SL)"
    :action/gm-resume       "Zeit weiterlaufen (SL)"
    :action/gm-add-time     "+60 s (SL)"
+
+   ;; ---------------------------------------------------- Spielleitung ---
+   :gm/panel          "Spielleitung"
+   :gm/panel-hint     "Nur du siehst diese Schalter. Jeder Eingriff steht in der Chronik."
+   :gm/open           "Öffnen"
+   :gm/close          "Schließen"
+   :gm/pick-player    "Mitspieler"
+   :gm/pick-role      "Rolle"
+   :gm/pick-phase     "Phase"
+   :gm/confirm        "Wirklich?"
+   :gm/clock          "Zeit"
+   :gm/nothing        "Gerade nichts zu steuern."
 
    ;; -------------------------------------------------------------- game ---
    :game/you           "du"
@@ -103,6 +126,8 @@
    :game/wolves-channel "Nur die Werwölfe hören dich"
    :game/dead-channel   "Nur die Toten hören dich"
    :game/paused         "Zeit angehalten"
+   :game/new-round      "Zurück — neue Runde"
+   :game/over-hint      "Alle Rollen sind jetzt aufgedeckt."
 
    ;; --------------------------------------------------------- targeting ---
    :target/pick-one   "Wähle ein Ziel"
@@ -160,7 +185,17 @@
    :log/tie           "Das Dorf kann sich nicht einigen — niemand stirbt"
    :log/nominated     (fn [n] (str n " wird angeklagt"))
    :log/timed-out     (fn [p] (str "Die Zeit für " p " ist abgelaufen"))
+   ;; Was die Spielleitung getan hat. Nur für die Eingriffe, die sonst spurlos
+   ;; blieben: Töten und Wiederbeleben schreiben ohnehin ihre eigene Zeile, und
+   ;; zweimal dasselbe zu sagen liest sich wie ein Fehler.
+   ;;
+   ;; Die neue Rolle steht bewusst NICHT hier. Die Chronik liest der ganze
+   ;; Tisch — dass eingegriffen wurde, geht alle an; was auf der Karte steht,
+   ;; nur den einen. Siehe `handle :gm/reassign-role`.
    :log/gm-forced     "Die Spielleitung greift ein"
+   :log/gm-skip-role  (fn [r] (str "Die Spielleitung überspringt " r))
+   :log/gm-set-phase  (fn [p] (str "Die Spielleitung setzt die Phase auf " p))
+   :log/gm-reassign-role (fn [n] (str n " hat von der Spielleitung eine neue Rolle bekommen"))
    :log/clock-paused  "Die Spielleitung hält die Zeit an"
    :log/clock-resumed "Die Zeit läuft weiter"
    :log/win-village   "Das Dorf hat gewonnen"
@@ -182,6 +217,7 @@
    :error/already-joined   "Du sitzt schon in dieser Runde"
    :error/room-full        "Der Raum ist voll"
    :error/name-required    "Bitte gib einen Namen ein"
+   :error/code-required    "Bitte gib den Raumcode ein"
    :error/not-in-room      "Du sitzt nicht in dieser Runde"
    :error/unknown-player   "Diesen Platz gibt es nicht"
    :error/seat-gone        "Dein Platz existiert nicht mehr"

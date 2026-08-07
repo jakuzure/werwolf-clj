@@ -232,6 +232,32 @@
     :else [{:type :gm/forced :actor player :action :skip-role :detail {:role role}}
            {:type :night/role-completed :role (or role (:night-cursor state))}]))
 
+(defmethod handle :gm/reassign-role
+  ;; The deal was wrong, or somebody has to be written out of one role and into
+  ;; another. The only override that changes who a player IS.
+  ;;
+  ;; The :gm/forced entry deliberately carries the target and NOT the role,
+  ;; because that entry is published to the public log. Everyone learns that the
+  ;; GM rewrote P3's card, which is the auditable fact; nobody learns what it now
+  ;; says, which is P3's alone. The role travels in :player/role-changed, which
+  ;; is never published.
+  ;;
+  ;; :max-count is NOT enforced. A registry limit says how a deal is composed,
+  ;; and this command exists precisely to override a composition — refusing a
+  ;; second Seherin here would block the correction the GM reached for. Two
+  ;; Seherinnen is a table's problem, and it is in the log.
+  [state {:keys [player target role]}]
+  (cond
+    (not (host? state player))                (err :not-host {})
+    (#{:lobby :game-over} (:phase state))     (err :no-game-in-progress {})
+    (not (get-in state [:players target]))    (err :no-such-player {:target target})
+    (not (contains? roles/all-ids role))      (err :unknown-role {:role role})
+    (= role (get-in state [:players target :role]))
+    (err :already-that-role {:target target})
+    :else [{:type :gm/forced :actor player :action :reassign-role
+            :detail {:target target}}
+           {:type :player/role-changed :player target :role role}]))
+
 ;; ---- GM control of the clock ----
 ;;
 ;; The narrator's oldest privilege: "hang on, let him finish". A server-owned

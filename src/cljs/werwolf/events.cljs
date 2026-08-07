@@ -9,17 +9,19 @@
    redacted for this player. The client is structurally incapable of knowing more
    than it was told, which is what makes the redaction boundary real rather than
    a convention."
-  (:require [clojure.string :as str]
-            [re-frame.core :as rf]
+  (:require [re-frame.core :as rf]
             [werwolf.ws :as ws]))
 
-(defn browser-locale
-  "The language to open in, from the browser. Anything that is not clearly
-   English gets German: this is a German group's game, and Düsterwald
-   terminology is the default rather than the translation."
-  []
-  (let [tag (some-> js/navigator .-language str .toLowerCase)]
-    (if (and tag (str/starts-with? tag "en")) :en :de)))
+(def default-locale
+  "German, unconditionally.
+
+   The browser's language used to decide this, which sounds friendlier than it
+   played: this is a German group's game, the terminology is Düsterwald's, and
+   a phone set to English opened the whole table in the translation. Switching
+   is one tap in the header and the choice is then per-player game state, so
+   the cost of guessing wrong in this direction is a tap — and in the other
+   direction it was a room reading the wrong language by default."
+  :de)
 
 (def initial-db
   {:conn/status :connecting
@@ -27,14 +29,24 @@
    :me          nil          ; {:room-id :player-id :host?} from :server/welcome
    :view        nil          ; the server's redacted state — the only game truth
    :chat        []
+   :rooms       []          ; joinable lobbies, from :server/rooms
    :error       nil
-   :locale      nil        ; filled in by ::init from the browser
+   ;; Only covers the landing screen. Once seated, the server's per-player copy
+   ;; wins — see ::set-locale and the ::locale subscription.
+   :locale      default-locale
    :now         (.getTime (js/Date.))
    :form        {:name "" :code "" :text ""}})
 
-(rf/reg-event-db ::init (fn [_ _] (assoc initial-db :locale (browser-locale))))
+(rf/reg-event-db ::init (fn [_ _] initial-db))
 
-(rf/reg-event-db ::connected    (fn [db _] (assoc db :conn/status :connected)))
+(rf/reg-event-fx
+ ::connected
+ ;; Ask for the room list as soon as there is a socket to ask on. A landing
+ ;; screen that only fills in after you tap refresh looks like there are no
+ ;; games, which is the one thing it exists to answer.
+ (fn [{:keys [db]} _]
+   {:db (assoc db :conn/status :connected)
+    ::ws/send {:type :client/rooms}}))
 (rf/reg-event-db ::disconnected (fn [db _] (assoc db :conn/status :disconnected)))
 
 (rf/reg-event-db ::tick (fn [db _] (assoc db :now (.getTime (js/Date.)))))
@@ -47,21 +59,52 @@
 
 ;; ------------------------------------------------------------------ outbound ---
 
-(rf/reg-event-fx
- ::create-room
- (fn [{:keys [db]} _]
-   (let [nm (.trim (get-in db [:form :name] ""))]
-     (when (seq nm)
-       {::ws/send {:type :client/create :name nm :locale (:locale db :de)}}))))
+;; Both of these used to return nil when a field was empty, which is a silent
+;; no-op: you tap the button, nothing happens, and nothing says why. On a phone
+;; that is indistinguishable from a broken button — and it was reported as one.
+;; Say what is missing instead.
+
+;; Named and public rather than anonymous, so the guard clauses are testable
+;; without a browser — the same reason `handle-server` is.
+
+(defn create-room-fx [{:keys [db]} _]
+  (let [nm (.trim (get-in db [:form :name] ""))]
+    (if (empty? nm)
+      {:db (assoc db :error :name-required)}
+      {:db (assoc db :error nil)
+       ::ws/send {:type :client/create :name nm :locale (:locale db :de)}})))
+
+(defn join-room-fx [{:keys [db]} _]
+  (let [nm   (.trim (get-in db [:form :name] ""))
+        code (.toUpperCase (.trim (get-in db [:form :code] "")))]
+    (cond
+      (empty? nm)   {:db (assoc db :error :name-required)}
+      (empty? code) {:db (assoc db :error :code-required)}
+      :else {:db (assoc db :error nil)
+             ::ws/send {:type :client/join :room-id code :name nm
+                        :locale (:locale db :de)}})))
+
+(defn join-listed-fx
+  "Join a room picked off the landing screen's list. Same guard as typing the
+   code by hand — the name is still required, and saying so beats a tap that
+   appears to do nothing."
+  [{:keys [db]} [_ code]]
+  (let [nm (.trim (get-in db [:form :name] ""))]
+    (if (empty? nm)
+      {:db (assoc db :error :name-required)}
+      {:db (-> db (assoc :error nil) (assoc-in [:form :code] code))
+       ::ws/send {:type :client/join :room-id code :name nm
+                  :locale (:locale db :de)}})))
+
+(rf/reg-event-fx ::create-room create-room-fx)
+(rf/reg-event-fx ::join-room   join-room-fx)
+(rf/reg-event-fx ::join-listed join-listed-fx)
 
 (rf/reg-event-fx
- ::join-room
- (fn [{:keys [db]} _]
-   (let [nm   (.trim (get-in db [:form :name] ""))
-         code (.toUpperCase (.trim (get-in db [:form :code] "")))]
-     (when (and (seq nm) (seq code))
-       {::ws/send {:type :client/join :room-id code :name nm
-                   :locale (:locale db :de)}}))))
+ ::refresh-rooms
+ ;; Pull, not push. The server answers the asker alone, so a room list can
+ ;; never become a side channel into a game somebody is not in.
+ (fn [_ _] {::ws/send {:type :client/rooms}}))
 
 (rf/reg-event-fx
  ::act
@@ -79,6 +122,19 @@
  ;; because anything in the client knows what Amor is.
  (fn [_ [_ action a b]]
    {::ws/send {:type :client/command :cmd {:type action :a a :b b}}}))
+
+(rf/reg-event-fx
+ ::act-with
+ ;; An action plus whatever keys it needs, merged over `{:type action}`. The GM
+ ;; overrides are the reason this exists: they name a phase or a role rather
+ ;; than a seat, and `:target` means a player id everywhere in the protocol.
+ ;;
+ ;; Which key a choice travels under comes from `proto/choice-key`, read by the
+ ;; caller — shared wire vocabulary, so the client is not the place it is
+ ;; decided. The map is passed through as-is and validated server-side like
+ ;; every other command.
+ (fn [_ [_ action kvs]]
+   {::ws/send {:type :client/command :cmd (into {:type action} kvs)}}))
 
 (rf/reg-event-fx
  ::set-locale
@@ -99,9 +155,13 @@
 
 (rf/reg-event-fx
  ::leave
+ ;; Also the way out of a finished game. Landing on the landing screen with a
+ ;; stale room list would mean the first thing you see after a game is the game
+ ;; you just left, so ask again on the way out.
  (fn [{:keys [db]} _]
    {:db (merge db (select-keys initial-db [:screen :me :view :chat :error]))
     ::ws/forget-seat true
+    :dispatch [::refresh-rooms]
     ::ws/send {:type :client/command :cmd {:type :leave}}}))
 
 ;; ------------------------------------------------------------------- inbound ---
@@ -121,6 +181,9 @@
   (assoc db :server/protocol (:protocol msg)))
 
 (defmethod handle-server :server/pong [db _] db)
+
+(defmethod handle-server :server/rooms [db msg]
+  (assoc db :rooms (vec (:rooms msg))))
 
 (defmethod handle-server :server/welcome [db {:keys [room-id player-id host?]}]
   (assoc db

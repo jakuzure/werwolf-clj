@@ -152,6 +152,33 @@
                                    :cmd {:type :start-game :player 3}})
         (is (= [:malformed] (codes s)))))))
 
+(deftest an-unseated-socket-may-ask-what-there-is-to-join
+  (testing "the one question that needs no seat — it is how you get one"
+    (with-deps [deps]
+      (let [asker (sock)]
+        (protocol/dispatch deps asker {:type :client/rooms})
+        (is (= [:server/rooms] (mapv :type (got asker))))
+        (is (= [] (:rooms (last (got asker)))) "nothing open yet")
+
+        (let [host (seat! deps {:type :client/create :name "Anna"})]
+          (swap! asker empty)
+          (protocol/dispatch deps asker {:type :client/rooms})
+          (let [listed (:rooms (last (got asker)))]
+            (is (= 1 (count listed)))
+            (is (= "Anna" (:host (first listed))))
+            (is (= 1 (:players (first listed))))
+            (testing "and the answer goes to the asker alone — a room list
+                      pushed at everyone would be a side channel into a game
+                      you are not in"
+              (is (not-any? #(= :server/rooms (:type %)) (got host)))))
+
+          (testing "the code it hands out really does admit you"
+            (let [code (:room-id (first (:rooms (last (got asker)))))
+                  guest (sock)]
+              (protocol/dispatch deps guest {:type :client/join
+                                             :room-id code :name "Bob"})
+              (is (some #(= :server/welcome (:type %)) (got guest))))))))))
+
 (deftest an-error-reply-never-echoes-the-payload
   (testing "a rejected :client/resume payload contains a token"
     (with-deps [deps]

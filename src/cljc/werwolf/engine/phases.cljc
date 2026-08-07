@@ -412,7 +412,7 @@
                (not= :game-over (:phase state))
                (not= :lobby (:phase state)))
     #{}
-    (cond-> #{:gm/force-kill :gm/revive :gm/set-phase}
+    (cond-> #{:gm/force-kill :gm/revive :gm/set-phase :gm/reassign-role}
       (contains? next-phase (:phase state)) (conj :advance-phase)
       (= :night (:phase state))             (conj :gm/skip-role)
       ;; The narrator's oldest privilege: "hang on, let him finish."
@@ -427,12 +427,23 @@
         player (get-in state [:players pid])
         host?  (= pid (:host state))]
     (cond
-      (= :game-over phase) #{}
+      ;; The game is decided, so there is nothing left to play — but there is
+      ;; something left to DO, and it used to be nothing at all: the final
+      ;; screen offered no way out, so the only exit from a finished game was
+      ;; closing the tab. Leaving is not a move; it is the door.
+      (= :game-over phase) #{:leave}
 
       ;; The lobby is where people arrange the game, so of course they may talk.
+      ;;
+      ;; The host may start BELOW :min-players. That number is the recommended
+      ;; table size — it is what the lobby counts up to and what the UI nags
+      ;; about — but a group of four who want to play now should not be held
+      ;; back by a config value set for a bigger evening. The one floor that
+      ;; does bind is the deck's: below three there is no game to start, and
+      ;; that limit belongs to the role composition, not to a preference.
       (= :lobby phase)
       (cond-> #{:chat :leave :set-locale}
-        (and host? (>= (count (:players state)) (:min-players state 5)))
+        (and host? (>= (count (:players state)) roles/absolute-min-players))
         (conj :start-game))
 
       ;; The Jäger fires his shot while ALREADY DEAD, so this must be checked
@@ -508,9 +519,10 @@
    like 274 invariant violations.
 
    The Jäger is the whole reason this set is not empty — he fires, or declines
-   to fire, while already dead. The rest are not acting at all: talking, and
-   choosing what language to read the game in."
-  (into #{:chat :jaeger-shoot :jaeger-pass} always-allowed))
+   to fire, while already dead. The rest are not acting at all: talking,
+   choosing what language to read the game in, and walking out of a game that
+   is already over."
+  (into #{:chat :jaeger-shoot :jaeger-pass :leave} always-allowed))
 
 (def no-target-actions
   "Commands that carry no :target. Everything else needs at least one legal
@@ -521,16 +533,19 @@
     ;; are commands at all rather than the absence of one.
     :hexe-pass :nominate-pass :vote-abstain :jaeger-pass})
 
-(declare legal-targets)
+(declare legal-targets legal-choices)
 
 (defn legal-actions
   "What pid may do right now. Drives both the UI's affordances and the
    simulation harness, so it must be exhaustive and honest.
 
-   'Honest' specifically means: an action is never offered when it has no legal
-   target. Otherwise the UI shows a dead button and, worse, the night can
+   'Honest' specifically means: an action is never offered when it has nothing
+   to point at. Otherwise the UI shows a dead button and, worse, the night can
    deadlock — the Seherin who has already inspected everyone still being offered
-   :seherin-inspect was a real bug the simulation harness caught."
+   :seherin-inspect was a real bug the simulation harness caught.
+
+   'Nothing to point at' means neither a legal target nor a legal choice: a GM
+   override that names a phase rather than a player is still perfectly usable."
   [state pid]
   (if-not (get-in state [:players pid])
     #{}
@@ -540,7 +555,8 @@
       (into #{}
             (remove (fn [action]
                       (and (not (contains? no-target-actions action))
-                           (empty? (legal-targets state pid action)))))
+                           (empty? (legal-targets state pid action))
+                           (empty? (legal-choices state action)))))
             candidates))))
 
 (defn legal-targets
@@ -571,6 +587,28 @@
       :gm/force-kill   (vec living)
       :gm/revive       (vec (sort (keep (fn [[id p]] (when-not (:alive? p) id))
                                        (:players state))))
-      :gm/skip-role    (if-let [c (:night-cursor state)] [c] [])
-      :gm/set-phase    (vec (sort (keys next-phase)))
+      ;; Everyone, dead included: the reason to rewrite a dead player's role is
+      ;; usually that the deal was wrong, and reviving them first would put a
+      ;; second correction in the log to undo the first.
+      :gm/reassign-role (vec (sort (keys (:players state))))
       [])))
+
+(defn legal-choices
+  "Valid NON-PLAYER options for an action: a phase, a role.
+
+   Separate from `legal-targets` because the two are not interchangeable, and
+   conflating them was a real bug — `:gm/set-phase` and `:gm/skip-role` returned
+   keywords from `legal-targets`, the client dutifully entered its pick-a-player
+   mode, and no player card matched. Both GM controls looked present and neither
+   could be used. A target is a seat; a choice is a word.
+
+   Takes no pid: what a phase or a role IS does not depend on who is asking.
+   Whether the action is offered at all is `host-actions`' business."
+  [state action]
+  (case action
+    :gm/set-phase     (vec (sort (keys next-phase)))
+    ;; Only the role currently being called — skipping a role that is not
+    ;; speaking would silently mark its turn done for the rest of the night.
+    :gm/skip-role     (if-let [c (:night-cursor state)] [c] [])
+    :gm/reassign-role roles/assignable-ids
+    []))

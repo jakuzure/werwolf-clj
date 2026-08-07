@@ -8,7 +8,14 @@
   (:require [werwolf.engine.commands :as commands]
             [werwolf.engine.events :as events]
             [werwolf.engine.phases :as phases]
+            [werwolf.engine.roles :as roles]
             [werwolf.engine.view :as view]))
+
+(def absolute-min-players
+  "The smallest table the deck composes a real game for. A rule, so it lives in
+   the engine and the room layer reads it from here rather than keeping its own
+   three — which it did, and which would have drifted the moment either moved."
+  roles/absolute-min-players)
 
 ;; ---- construction -------------------------------------------------------
 

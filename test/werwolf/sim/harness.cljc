@@ -16,16 +16,28 @@
   "A real game of 18 finishes well inside this. Hitting it means a livelock."
   2000)
 
-;; Actions the simulation never issues: they would end or distort the game
-;; rather than play it.
-;;
-;; The clock overrides are here because there is no clock in a headless game —
-;; :deadline is always nil — so pausing and resuming would burn turns and
-;; consume RNG draws while changing nothing about the game being played.
-(def ^:private excluded-actions
-  #{:chat :leave :set-locale
-    :gm/force-kill :gm/revive :gm/set-phase :gm/skip-role
-    :gm/pause :gm/resume :gm/add-time})
+(def ^:private never-issued
+  "Actions the simulation never issues: they would end or distort the game
+   rather than play it."
+  #{:chat :leave :set-locale})
+
+(defn- excluded?
+  "Every GM override is excluded, by NAMESPACE rather than by name.
+
+   This was a hand-kept list of seven, and it went stale the moment an eighth
+   override existed: the simulation issued `:gm/reassign-role` with no role to
+   assign and reported the engine's own refusal as thirty broken games. Same
+   lesson as `no-target-actions` below, which is taken from the engine for
+   exactly this reason — a test that keeps its own copy of a rule eventually
+   tests the copy.
+
+   Excluding them all is right on the merits too. An override is the narrator
+   overruling the game; a random walk through them is not a game being played,
+   and two of them (the clock ones) cannot do anything at all in a headless run
+   where :deadline is always nil. `:advance-phase` is deliberately NOT excluded:
+   the host advancing a phase is ordinary play."
+  [action]
+  (or (never-issued action) (= "gm" (namespace action))))
 
 (defn sim-genesis
   "The events that create a lobby of n players. Returned as data so the whole
@@ -80,7 +92,7 @@
   [state]
   (for [pid    (sort (keys (:players state)))
         action (sort (phases/legal-actions state pid))
-        :when  (not (excluded-actions action))]
+        :when  (not (excluded? action))]
     [pid action]))
 
 (defn step

@@ -248,13 +248,16 @@
         (is (= :unknown-command (:error err)))))))
 
 (deftest legal-actions-never-offers-an-unusable-action
-  (testing "every offered action must have at least one legal target"
+  (testing "every offered action must have something legal to point at —
+            a player, or, for the GM overrides that name a phase or a role
+            instead, a choice"
     (let [s (tu/game-with {0 :dorfbewohner 1 :werwolf 2 :hexe 3 :seherin 4 :jaeger})]
       (doseq [pid (range 5)
               action (phases/legal-actions s pid)
               :when (not (contains? phases/no-target-actions action))]
-        (is (seq (phases/legal-targets s pid action))
-            (str "player " pid " offered " action " with no targets"))))))
+        (is (or (seq (phases/legal-targets s pid action))
+                (seq (phases/legal-choices s action)))
+            (str "player " pid " offered " action " with nothing to point at"))))))
 
 (deftest small-tables-still-compose-a-real-deck
   (testing "MIN_PLAYERS can be lowered for a quick test game, so the deck has
@@ -577,6 +580,97 @@
       (is (= 1 (tu/count-log s :host/changed)) "public, so the override is auditable")
       (testing "and it folds like any other event"
         (is (= s (e/apply-event (e/replay (butlast log)) (last log))))))))
+
+;; ------------------------------------------------- GM overrides -----------
+
+(def ^:private gm-cast
+  {0 :dorfbewohner 1 :werwolf 2 :hexe 3 :seherin 4 :jaeger})
+
+(deftest the-gm-can-rewrite-a-role
+  (testing "the escape hatch for a deal that was wrong"
+    (let [s (tu/game-with gm-cast)
+          s (exec! s {:type :gm/reassign-role :player 0 :target 4 :role :dorfbewohner})]
+      (is (= :dorfbewohner (tu/role-of s 4)))
+      (testing "and it is announced, because an override nobody can see is not
+                an override, it is a secret"
+        (is (= 1 (tu/count-log s :gm/forced)))))))
+
+(deftest a-reassigned-role-brings-its-own-resources
+  (testing "a Hexe with no potions is not a Hexe, and an ex-Hexe must not keep
+            a vial she can no longer use"
+    (let [s (tu/game-with gm-cast)
+          s (exec! s {:type :gm/reassign-role :player 0 :target 4 :role :hexe})]
+      (is (= {:heiltrank 1 :gifttrank 1} (get-in s [:players 4 :resources]))
+          "the new Hexe is holding both potions")
+      (let [s (exec! s {:type :gm/reassign-role :player 0 :target 2 :role :dorfbewohner})]
+        (is (nil? (get-in s [:players 2 :resources]))
+            "and the old one is not")))))
+
+(deftest reassigning-does-not-unlearn-what-a-seherin-saw
+  (testing "her inspections were true when she made them, and she cannot unsee
+            them — the redaction boundary reads the same map, so what she keeps
+            and what she may keep are the same thing by construction"
+    (let [s (tu/game-with gm-cast)
+          s (exec! s {:type :seherin-inspect :player 3 :target 1})
+          s (exec! s {:type :gm/reassign-role :player 0 :target 3 :role :dorfbewohner})]
+      (is (= :dorfbewohner (tu/role-of s 3)))
+      (is (= {1 :werwolf} (get-in s [:players 3 :knows]))))))
+
+(deftest reassigning-can-decide-the-game
+  (testing "roles are what the win check counts, so rewriting one has to be
+            settled like any other event rather than left for the next command"
+    (let [s (tu/game-with gm-cast)
+          s (exec! s {:type :gm/reassign-role :player 0 :target 1 :role :dorfbewohner})]
+      (is (= :game-over (:phase s)))
+      (is (= :village (:winner s)) "the last wolf stopped being one"))))
+
+(deftest reassigning-the-acting-role-does-not-hang-the-night
+  (testing "the night waits for whoever holds the cursor's role; take it away
+            mid-turn and the turn must end, not stall forever"
+    (let [s (tu/game-with gm-cast)
+          _ (is (= :seherin (:night-cursor s)))
+          s (exec! s {:type :gm/reassign-role :player 0 :target 3 :role :dorfbewohner})]
+      (is (not= :seherin (:night-cursor s))
+          "with nobody left to look, the night moved on"))))
+
+(deftest the-gm-cannot-reassign-nonsense
+  (let [s (tu/game-with gm-cast)]
+    (are [cmd err] (= err (:error (second (try-exec s cmd))))
+      {:type :gm/reassign-role :player 1 :target 4 :role :hexe}     :not-host
+      {:type :gm/reassign-role :player 0 :target 9 :role :hexe}     :no-such-player
+      {:type :gm/reassign-role :player 0 :target 4 :role :admin}    :unknown-role
+      {:type :gm/reassign-role :player 0 :target 4 :role nil}       :unknown-role
+      {:type :gm/reassign-role :player 0 :target 2 :role :hexe}     :already-that-role)))
+
+(deftest gm-overrides-are-refused-before-a-game-exists
+  (testing "there are no roles to rewrite in a lobby, and none worth rewriting
+            once the game is decided"
+    (let [s (engine/new-game {:room-id "R" :host 0 :seed 1 :min-players 5})
+          s (reduce (fn [s i] (e/apply-event s {:type :player/joined :player i
+                                                :name (str "P" i) :locale :de}))
+                    s (range 5))]
+      (is (= :no-game-in-progress
+             (:error (second (try-exec s {:type :gm/reassign-role :player 0
+                                          :target 1 :role :hexe}))))))))
+
+(deftest an-override-that-names-a-word-offers-choices-not-targets
+  (testing ":gm/set-phase names a phase and :gm/skip-role a role. Returning
+            those from legal-targets made the client arm its pick-a-player mode
+            with no player to pick — both controls looked present and neither
+            could be used"
+    (let [s (tu/game-with gm-cast)]
+      (is (contains? (phases/legal-actions s 0) :gm/set-phase))
+      (is (empty? (phases/legal-targets s 0 :gm/set-phase)))
+      (is (= [:discussion :nomination :vote] (phases/legal-choices s :gm/set-phase)))
+      (testing "skip-role offers exactly the role being called, and nothing
+                when no role is"
+        (is (= [:seherin] (phases/legal-choices s :gm/skip-role)))
+        (is (empty? (phases/legal-choices (assoc s :night-cursor nil) :gm/skip-role))))
+      (testing "reassign-role is the one that names BOTH"
+        (is (= [0 1 2 3 4] (phases/legal-targets s 0 :gm/reassign-role))
+            "the dead included — the usual reason to rewrite a card is that the
+             deal was wrong, and reviving first would need a second correction")
+        (is (= roles/assignable-ids (phases/legal-choices s :gm/reassign-role)))))))
 
 ;; ------------------------------------------------------------- replay ---
 

@@ -17,12 +17,21 @@
    :asset-path "/js"
    :modules    {:main {:init-fn werwolf.core/init}}
 
-   :dev        {:devtools  {:after-load werwolf.core/reload!
-                            :preloads   [day8.re-frame-10x.preload]}
-                :compiler-options
-                {:closure-defines
-                 {re-frame.trace/trace-enabled?  true
-                  werwolf.config/ws-url          "ws://localhost:3000/api/ws"}}}
+   ;; re-frame-10x is deliberately NOT preloaded. Its panel is an overlay on
+   ;; the page itself, and on a phone — which is how this game is actually
+   ;; played — it covers the board rather than sitting beside it. To bring it
+   ;; back for a debugging session, restore the preload and the trace define:
+   ;;
+   ;;   :preloads [day8.re-frame-10x.preload]
+   ;;   re-frame.trace/trace-enabled? true
+   ;;
+   ;; The dependency stays in deps.edn so that is a two-line change, not a
+   ;; dependency hunt.
+   ;; No :ws-url define. It was pinned to ws://localhost:3000 here, which works
+   ;; on the machine running the server and nowhere else — on a phone the client
+   ;; dialled the phone. werwolf.config derives the endpoint from the page's own
+   ;; origin instead, and hops :8080 to :3000 for the dev-http case.
+   :dev        {:devtools {:after-load werwolf.core/reload!}}
 
    :release    {:compiler-options {:optimizations :advanced
                                    :infer-externs :auto}}}

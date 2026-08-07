@@ -9,9 +9,18 @@
    `handle-server` is pure, so none of this needs a browser, a socket or
    localStorage."
   (:require [cljs.test :refer [deftest is testing]]
+            [clojure.string :as str]
+            [werwolf.config :as cfg]
             [werwolf.events :as ev]
             [werwolf.i18n.core :as i18n]
-            [werwolf.subs :as sub]))
+            [werwolf.proto :as proto]
+            [werwolf.subs :as sub]
+            ;; Required for its side effect of being COMPILED. Nothing here
+            ;; calls into it — rendering needs a DOM — but the test build
+            ;; otherwise never sees the view layer at all, and a client that
+            ;; does not compile passed `bb test:all` green. It was a local
+            ;; binding named `set!`, which is a special form.
+            [werwolf.views]))
 
 (def db ev/initial-db)
 
@@ -94,6 +103,96 @@
     (testing "while a real armed action comes through untouched"
       (is (= {:action :vote :picks []}
              (sub/armed-action {:pending {:action :vote :picks []}}))))))
+
+;; -------------------------------------------------------------- room list ---
+
+(deftest the-room-list-replaces-wholesale
+  (testing "a list that merged would keep showing a game that has started"
+    (let [db' (apply* db {:type :server/rooms
+                          :rooms [{:room-id "ABCD" :players 2 :max-players 18
+                                   :host "Anna"}]})]
+      (is (= 1 (count (:rooms db'))))
+      (is (= [] (:rooms (apply* db' {:type :server/rooms :rooms []})))))))
+
+(deftest joining-from-the-list-still-needs-a-name
+  (testing "the same guard as typing the code, or the tap silently does nothing"
+    (is (= :name-required (:error (:db (ev/join-listed-fx {:db db} [nil "ABCD"])))))
+    (let [named (assoc-in db [:form :name] "Anna")
+          out (ev/join-listed-fx {:db named} [nil "ABCD"])]
+      (is (= "ABCD" (:room-id (:werwolf.ws/send out))))
+      (is (= "Anna" (:name (:werwolf.ws/send out))))
+      (is (= "ABCD" (get-in out [:db :form :code]))
+          "the code field follows the tap, so the screen agrees with itself"))))
+
+;; ------------------------------------------------------------ where we dial ---
+
+(deftest the-socket-follows-the-page-never-localhost
+  (testing "the dev build pinned ws://localhost:3000, which works on exactly the
+            machine running the server. On a phone the client dialled the phone,
+            the socket never opened, and every tap went into the outbox instead
+            of onto the wire — the buttons looked broken"
+    (is (= "ws://192.168.1.40:3000/api/ws"
+           (cfg/ws-url-for {:protocol "http:" :hostname "192.168.1.40" :port "3000"})))
+    (testing "https means wss, or a browser refuses the upgrade outright"
+      (is (= "wss://werwolf.example.com/api/ws"
+             (cfg/ws-url-for {:protocol "https:" :hostname "werwolf.example.com"
+                              :port ""}))))
+    (testing "shadow's dev-http serves on 8080 and proxies /api, so the socket
+              hops to the game server — by hostname, still not by localhost"
+      (is (= "ws://192.168.1.40:3000/api/ws"
+             (cfg/ws-url-for {:protocol "http:" :hostname "192.168.1.40" :port "8080"}))))
+    (testing "and no host reachable from another device ever resolves to this one"
+      (doseq [host ["192.168.1.40" "werwolf.example.com" "mac-mini.local"]]
+        (is (not (str/includes? (cfg/ws-url-for {:protocol "http:" :hostname host
+                                                 :port "8080"})
+                                "localhost")))))))
+
+(deftest an-empty-field-says-so-instead-of-doing-nothing
+  (testing "tapping a button that silently drops the click is indistinguishable
+            from a broken button, which is how it was reported"
+    (is (= :name-required (:error (:db (ev/create-room-fx {:db db} nil)))))
+    (is (= :name-required (:error (:db (ev/join-room-fx {:db db} nil)))))
+    (testing "a name but no code is the other half of the same trap"
+      (let [named (assoc-in db [:form :name] "Anna")]
+        (is (= :code-required (:error (:db (ev/join-room-fx {:db named} nil)))))
+        (testing "and with both, it actually sends"
+          (let [ready (assoc-in named [:form :code] "abcd")
+                out (ev/join-room-fx {:db ready} nil)]
+            (is (nil? (:error (:db out))))
+            (is (= "ABCD" (:room-id (:werwolf.ws/send out)))
+                "upper-cased, because nobody types a code the way it was printed")))))
+    (testing "and a real name creates a room rather than complaining"
+      (let [out (ev/create-room-fx {:db (assoc-in db [:form :name] "Anna")} nil)]
+        (is (nil? (:error (:db out))))
+        (is (= "Anna" (:name (:werwolf.ws/send out))))
+        (is (= :de (:locale (:werwolf.ws/send out))) "German by default")))))
+
+;; ---------------------------------------------------------------- GM console ---
+
+(deftest the-gm-console-guards-its-scratch-state-too
+  (testing "same trap as the armed action, one panel over: \"\" is truthy, and
+            the GM console reads maps out of the same form map"
+    (is (= {} (sub/gm-console (:form ev/initial-db))))
+    (is (= {} (sub/gm-console {:gm ""})))
+    (is (= {} (sub/gm-console {:gm :open})))
+    (is (= {:open? true} (sub/gm-console {:gm {:open? true}})))))
+
+(deftest an-overrides-choice-travels-under-the-key-the-protocol-names
+  (testing ":target means a player id everywhere. The overrides that name a
+            phase or a role need a different key, and the client must not be
+            the place that decides which — it reads proto/choice-key"
+    (is (= :phase (proto/choice-key :gm/set-phase)))
+    (is (= :role (proto/choice-key :gm/skip-role)))
+    (is (= :role (proto/choice-key :gm/reassign-role)))
+    (testing "and an override that names only a seat has no choice key at all"
+      (is (nil? (proto/choice-key :gm/force-kill)))
+      (is (nil? (proto/choice-key :gm/revive))))
+    (testing "every key it names is one the wire schema actually carries"
+      (doseq [[action k] proto/choice-key]
+        (is (contains? proto/command-types action) (str action " is not a command"))
+        (is (proto/valid-client-message?
+             {:type :client/command :cmd {:type action k (if (= :phase k) :vote :hexe)}})
+            (str action " cannot be expressed with " k))))))
 
 ;; ------------------------------------------------------------- the Chronik ---
 

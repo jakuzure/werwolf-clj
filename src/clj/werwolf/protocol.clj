@@ -62,6 +62,13 @@
   ;; out an otherwise silent connection is the usual reason a lobby goes quiet.
   (reply! deps sock {:type :server/pong}))
 
+(defmethod handle :client/rooms
+  ;; The only question an unseated socket may ask. Answered to the asker alone
+  ;; and never pushed, so a room list cannot become a side channel that tells a
+  ;; seated player something about a game they are not in.
+  [{:keys [rooms] :as deps} sock _]
+  (reply! deps sock {:type :server/rooms :rooms (room/open-rooms rooms)}))
+
 (defmethod handle :client/create
   [{:keys [rooms] :as deps} sock {:keys [name locale]}]
   (let [res (room/create! rooms {:name name :locale (or locale :de)})]

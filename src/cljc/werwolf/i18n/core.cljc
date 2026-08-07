@@ -115,10 +115,38 @@
    :jaeger  :log/died-jaeger
    :gm      :log/died-gm})
 
+(def ^:private gm-action-keys
+  "GM overrides that need a line of their own.
+
+   Only the ones that would otherwise leave no trace. A forced kill already logs
+   :player/died with cause :gm, and a revive logs :player/revived, so giving
+   those a second sentence makes the Chronik stutter — the same volume problem
+   the grouping in `chronicle` exists to solve. Skipping a role, setting a phase
+   and reassigning a role publish nothing else at all, and an override nobody
+   can see is exactly what logging them was supposed to prevent."
+  {:skip-role     :log/gm-skip-role
+   :set-phase     :log/gm-set-phase
+   :reassign-role :log/gm-reassign-role})
+
+(defn- gm-line
+  "One GM override, named. The argument depends on which noun the override
+   points at: a role, a phase, or a player."
+  [locale players {:keys [action detail]}]
+  (if-let [k (gm-action-keys action)]
+    (case action
+      :skip-role     (t locale k (role-name locale (:role detail)))
+      :set-phase     (t locale k (phase-name locale (:phase detail)))
+      ;; The player, never the role. `:detail` does not carry one — see
+      ;; `handle :gm/reassign-role` — and this is the reader's half of that
+      ;; decision: the table learns whose card changed, not what it now says.
+      :reassign-role (t locale k (who players (:target detail))))
+    (t locale :log/gm-forced)))
+
 (defn log-line
   "Render one public log entry. `players` supplies names, because the log holds
    ids — renaming yourself must not rewrite history."
-  [locale players {:keys [type player target role winner phase host cause night voter tie?]}]
+  [locale players {:keys [type player target role winner phase host cause night voter tie?]
+                   :as entry}]
   (let [nm #(who players %)]
     (case type
       :player/joined       (t locale :log/joined (nm player))
@@ -150,7 +178,7 @@
                              (t locale :log/tie))
       :player/nominated    (t locale :log/nominated (nm target))
       :phase/timed-out     (t locale :log/timed-out (phase-name locale phase))
-      :gm/forced           (t locale :log/gm-forced)
+      :gm/forced           (gm-line locale players entry)
       :clock/paused        (t locale :log/clock-paused)
       :clock/resumed       (t locale :log/clock-resumed)
       :game/ended          (t locale (case winner

@@ -23,6 +23,7 @@
             [re-frame.core :as rf]
             [werwolf.events :as ev]
             [werwolf.i18n.core :as i18n]
+            [werwolf.proto :as proto]
             [werwolf.subs :as sub]))
 
 ;; --------------------------------------------------------------- language ---
@@ -114,6 +115,34 @@
 
 ;; ----------------------------------------------------------------- landing ---
 
+(defn- open-rooms
+  "The lobbies you could walk into, so nobody has to read a code off someone
+   else's phone. Only rooms with a free seat are listed — the server decides
+   that, since a game in progress cannot be joined at all."
+  []
+  (let [rooms @(rf/subscribe [::sub/rooms])]
+    [:div {:class "space-y-2"}
+     [:div {:class "flex items-baseline justify-between"}
+      [:span {:class "text-sm text-slate-400"} (t :landing/open-rooms)]
+      [:button {:class "text-xs text-slate-500 hover:text-slate-200 underline"
+                :on-click #(rf/dispatch [::ev/refresh-rooms])}
+       (t :landing/refresh)]]
+     (if (empty? rooms)
+       [:p {:class "text-sm text-slate-600"} (t :landing/no-rooms)]
+       [:div {:class "space-y-2"}
+        (for [{:keys [room-id host players max-players]} rooms]
+          ^{:key room-id}
+          [:button {:class "w-full flex items-center justify-between gap-3 px-3 py-3
+                            rounded-lg bg-slate-800 border border-slate-700
+                            hover:border-indigo-500 hover:bg-slate-700 transition text-left"
+                    :on-click #(rf/dispatch [::ev/join-listed room-id])}
+           [:div {:class "min-w-0"}
+            [:div {:class "font-mono text-lg tracking-[0.2em] text-indigo-300"} room-id]
+            (when host
+              [:div {:class "text-xs text-slate-400 truncate"} host])]
+           [:span {:class "shrink-0 text-xs text-slate-400"}
+            (str players " / " max-players)]])])]))
+
 (defn landing []
   [:div {:class "max-w-sm mx-auto mt-16 space-y-8"}
    [:div {:class "flex justify-center"} [language-switch]]
@@ -122,6 +151,9 @@
     [field :name (t :landing/name)]
     [btn (t :landing/create) #(rf/dispatch [::ev/create-room])]]
    [:div {:class "text-center text-slate-500 text-sm"} (t :landing/or)]
+   ;; The list first, the code field under it: typing a code is now the
+   ;; fallback for a room the list cannot show, not the normal way in.
+   [open-rooms]
    [:div {:class "space-y-3"}
     [field :code (t :landing/code) {:on-enter [::ev/join-room] :maxlength 4}]
     [btn (t :landing/join) #(rf/dispatch [::ev/join-room]) {:tone :ghost}]]])
@@ -243,31 +275,130 @@
         targets @(rf/subscribe [::sub/targets])
         armed (:action (pending))
         needs-target? (fn [a] (seq (get targets a)))
-        offered (remove #{:chat :leave :set-locale} actions)
-        gm (sort (filter #(= "gm" (namespace %)) offered))
-        plain (sort (remove #(= "gm" (namespace %)) offered))]
-    [:div {:class "space-y-2"}
-     (if (empty? plain)
-       [:div {:class "text-sm text-slate-500"} (t :game/nothing-to-do)]
-       [:div {:class "flex flex-wrap gap-2"}
-        (for [a plain]
-          ^{:key (str a)}
-          [btn (action-name a)
-           (if (needs-target? a)
-             #(if (= armed a) (disarm!) (arm! a))
-             #(rf/dispatch [::ev/act a]))
-           {:tone (cond (= armed a) :armed
-                        (declines a) :quiet
-                        :else :primary)}])])
-     (when (seq gm)
-       [:div {:class "flex flex-wrap gap-2 pt-1 border-t border-slate-800"}
-        (for [a gm]
-          ^{:key (str a)}
-          [btn (action-name a)
-           (if (needs-target? a)
-             #(if (= armed a) (disarm!) (arm! a))
-             #(rf/dispatch [::ev/act a]))
-           {:tone :ghost}])])]))
+        ;; GM powers are not player actions and have their own console below.
+        ;; :advance-phase is one of them despite its plain name — `host-actions`
+        ;; grants it, and its label has said "(SL)" all along.
+        plain (sort (remove #(or (= "gm" (namespace %))
+                                 (#{:chat :leave :set-locale :advance-phase} %))
+                            actions))]
+    (if (empty? plain)
+      [:div {:class "text-sm text-slate-500"} (t :game/nothing-to-do)]
+      [:div {:class "flex flex-wrap gap-2"}
+       (for [a plain]
+         ^{:key (str a)}
+         [btn (action-name a)
+          (if (needs-target? a)
+            #(if (= armed a) (disarm!) (arm! a))
+            #(rf/dispatch [::ev/act a]))
+          {:tone (cond (= armed a) :armed
+                       (declines a) :quiet
+                       :else :primary)}])])))
+
+;; ---------------------------------------------------------------- GM console ---
+;;
+;; Deliberately NOT the action bar. GM powers were rendered as more buttons in
+;; the same row as "I'm done" and "Accuse", which was wrong twice over: it put
+;; a kill switch a thumb's width from an ordinary move, and it assumed every
+;; affordance points at a player. Two of these do not — `:gm/set-phase` and
+;; `:gm/skip-role` name a phase and a role — so arming them dropped the host
+;; into pick-a-player mode with no card to click. Both controls appeared to
+;; exist and neither worked.
+;;
+;; So: a console of its own, closed by default, with a select for whatever kind
+;; of thing each override actually names.
+
+(def ^:private gm-confirm-first
+  "Overrides that take two clicks.
+
+   Not the irreversible ones — none of these are, the GM can revive and reassign
+   back. The ones whose FIRST click is already public: both write a line the
+   whole table reads, and 'sorry, wrong player' is not a thing the Chronik can
+   unsay."
+  #{:gm/force-kill :gm/reassign-role})
+
+(defn- gm-select
+  "A dropdown of options, rendering each through `label`. Values cross the DOM
+   as strings, so `parse` puts them back into the type the protocol wants."
+  [{:keys [value options label parse on-change]}]
+  [:select {:class "px-2 py-1.5 rounded-lg bg-slate-800 border border-slate-600
+                    text-sm text-slate-100 outline-none focus:border-violet-500"
+            :value (str value)
+            :on-change #(on-change (parse (.. % -target -value)))}
+   (for [o options]
+     ^{:key (str o)} [:option {:value (str o)} (label o)])])
+
+(defn- gm-row
+  "One override: its selects, then its button.
+
+   The selects are built from `:targets` and `:choices` as the server sent them,
+   so this function knows that an override may name a seat and/or a word, and
+   nothing at all about which overrides exist."
+  [action]
+  (let [gm @(rf/subscribe [::sub/gm])
+        players @(rf/subscribe [::sub/players])
+        targets (get @(rf/subscribe [::sub/targets]) action)
+        choices (get @(rf/subscribe [::sub/choices]) action)
+        ;; Falls back to the first option so the button is never a no-op: an
+        ;; untouched select still reads as its visible value.
+        target (or (get-in gm [:target action]) (first targets))
+        choice (or (get-in gm [:choice action]) (first choices))
+        confirming? (= action (:confirm gm))
+        ;; Not `set!` — that is a special form in ClojureScript, and shadowing
+        ;; it fails to compile rather than merely reading badly.
+        put! (fn [path v] (rf/dispatch [::ev/form-set :gm (assoc-in gm path v)]))
+        fire! (fn []
+                (rf/dispatch [::ev/act-with action
+                              (cond-> {}
+                                (seq targets) (assoc :target target)
+                                (seq choices) (assoc (proto/choice-key action) choice))])
+                (put! [:confirm] nil))]
+    [:div {:class "flex flex-wrap items-center gap-2"}
+     (when (seq targets)
+       [gm-select {:value target
+                   :options targets
+                   :parse js/parseInt
+                   :label #(or (get-in players [% :name]) (str "#" %))
+                   :on-change #(put! [:target action] %)}])
+     (when (seq choices)
+       [gm-select {:value (some-> choice name)
+                   :options (map name choices)
+                   :parse keyword
+                   :label #(let [k (keyword %)]
+                             (if (= :gm/set-phase action) (phase-name k) (role-name k)))
+                   :on-change #(put! [:choice action] %)}])
+     [btn (if confirming? (t :gm/confirm) (action-name action))
+      (if (and (gm-confirm-first action) (not confirming?))
+        #(put! [:confirm] action)
+        fire!)
+      {:tone (cond confirming? :danger
+                   (gm-confirm-first action) :quiet
+                   :else :ghost)}]]))
+
+(defn gm-panel
+  "The narrator's console. Renders only for whoever holds the GM powers, because
+   it is built from `:actions` and nobody else is offered any."
+  []
+  (let [actions @(rf/subscribe [::sub/actions])
+        gm @(rf/subscribe [::sub/gm])
+        open? (boolean (:open? gm))
+        rows (sort-by str (filter #(or (= "gm" (namespace %)) (= :advance-phase %))
+                                  actions))]
+    (when (seq rows)
+      [:div {:class "rounded-xl border border-violet-800/60 bg-violet-950/20 overflow-hidden"}
+       [:button {:class "w-full px-4 py-2 bg-violet-900/40 flex items-center justify-between
+                         text-left hover:bg-violet-900/60 transition"
+                 :on-click #(rf/dispatch [::ev/form-set :gm (assoc gm :open? (not open?)
+                                                                   :confirm nil)])}
+        [:span {:class "text-sm font-bold uppercase tracking-wide text-violet-200"}
+         (str "🛠 " (t :gm/panel))]
+        [:span {:class "text-xs text-violet-300"} (t (if open? :gm/close :gm/open))]]
+       (when open?
+         [:div {:class "p-4 space-y-3"}
+          ;; Said out loud, because a host who thinks an override is private
+          ;; will use it as though it were.
+          [:p {:class "text-xs text-violet-300/80"} (t :gm/panel-hint)]
+          (for [a rows]
+            ^{:key (str a)} [gm-row a])])])))
 
 ;; -------------------------------------------------------------------- panels ---
 
@@ -447,15 +578,48 @@
      [:div {:class "text-sm text-slate-400"}
       (str (count (:players view)) " / " (:min-players view) " " (t :lobby/players))]
      [player-grid]
-     [:div {:class "flex flex-wrap items-center gap-3"}
-      (if (contains? actions :start-game)
-        [btn (t :lobby/start) #(rf/dispatch [::ev/act :start-game])]
-        [:span {:class "text-sm text-slate-500"}
-         (if (:host? me) (t :lobby/need-more) (t :game/waiting))])
-      [btn (t :lobby/leave) #(rf/dispatch [::ev/leave]) {:tone :quiet}]]
+     [:div {:class "space-y-2"}
+      [:div {:class "flex flex-wrap items-center gap-3"}
+       (if (contains? actions :start-game)
+         [btn (t :lobby/start) #(rf/dispatch [::ev/act :start-game])]
+         [:span {:class "text-sm text-slate-500"}
+          (if (:host? me) (t :lobby/need-more) (t :game/waiting))])
+       [btn (t :lobby/leave) #(rf/dispatch [::ev/leave]) {:tone :quiet}]]
+      ;; The host may start under the recommended size, so say so rather than
+      ;; letting a start button next to "3 / 5" look like a bug. Derived from
+      ;; the offer, not from a rule of its own: if the server did not offer
+      ;; :start-game, the table is below the deck's floor and there is nothing
+      ;; to recommend.
+      (when (and (contains? actions :start-game)
+                 (< (count (:players view)) (:min-players view 5)))
+        [:p {:class "text-xs text-amber-400/90"}
+         (t :lobby/below-recommended (:min-players view))])]
      [chat-panel]]))
 
 ;; --------------------------------------------------------------------- game ---
+
+(defn- game-over-panel
+  "The end of the game, and the way out of it.
+
+   There was no way out: at :game-over the engine offered no actions, so the
+   final screen was a board nobody could leave except by closing the tab. The
+   button is rendered from `:actions` like everything else — the engine now
+   offers :leave once the game is decided."
+  []
+  (let [view @(rf/subscribe [::sub/view])
+        actions @(rf/subscribe [::sub/actions])]
+    (when (= :game-over (:phase view))
+      [:div {:class "rounded-xl border-2 border-amber-600 bg-amber-950/30 p-4 space-y-3"}
+       [:div {:class "text-2xl font-bold text-amber-300"}
+        (t (case (:winner view)
+             :werewolf :log/win-werewolf
+             :lovers   :log/win-lovers
+             :log/win-village))]
+       ;; Every role is public now — view-for reveals them all once the game is
+       ;; decided — so the table can finally read who everyone was.
+       [:p {:class "text-sm text-amber-100/80"} (t :game/over-hint)]
+       (when (contains? actions :leave)
+         [btn (t :game/new-round) #(rf/dispatch [::ev/leave])])])))
 
 (defn game []
   [:div {:class "space-y-4"}
@@ -463,8 +627,10 @@
    [target-prompt]
    [:div {:class "grid lg:grid-cols-5 gap-4"}
     [:div {:class "lg:col-span-3 space-y-4"}
+     [game-over-panel]
      [me-panel]
      [action-bar]
+     [gm-panel]
      [player-grid]]
     [:div {:class "lg:col-span-2 space-y-4"}
      [log-panel]

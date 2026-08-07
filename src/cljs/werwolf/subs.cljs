@@ -38,7 +38,21 @@
 
 (rf/reg-sub ::pending :<- [::form] (fn [form _] (armed-action form)))
 
+(defn gm-console
+  "The GM panel's own scratch state: which overrides are half-selected, and
+   which one is waiting for its second click.
+
+   Same guard as `armed-action` and for the same reason — ::form-field defaults
+   to \"\", which is truthy in ClojureScript, so non-text state read through it
+   comes back as a string that passes every `when-let` in sight."
+  [form]
+  (let [g (:gm form)] (if (map? g) g {})))
+
+(rf/reg-sub ::gm :<- [::form] (fn [form _] (gm-console form)))
+
 (rf/reg-sub ::show-all-log? (fn [db _] (boolean (:log/show-all? db))))
+
+(rf/reg-sub ::rooms (fn [db _] (or (:rooms db) [])))
 
 (rf/reg-sub ::phase    :<- [::view] (fn [v _] (:phase v)))
 (rf/reg-sub ::players  :<- [::view] (fn [v _] (:players v)))
@@ -64,6 +78,15 @@
 ;; should not exist cannot be drawn, and one that is drawn will be accepted.
 (rf/reg-sub ::actions :<- [::view] (fn [v _] (or (:actions v) #{})))
 (rf/reg-sub ::targets :<- [::view] (fn [v _] (or (:targets v) {})))
+
+(rf/reg-sub
+ ::choices
+ :<- [::view]
+ ;; The non-player options an action may name: a phase, a role. Separate from
+ ;; ::targets because a target is a seat and a choice is a word — the GM panel
+ ;; renders them with different controls, and conflating the two is what made
+ ;; :gm/set-phase arm the pick-a-player mode with nothing to pick.
+ (fn [v _] (or (:choices v) {})))
 
 (rf/reg-sub
  ::arity

@@ -35,14 +35,30 @@
     :hexe-heal :hexe-poison :hexe-pass
     :jaeger-shoot :jaeger-pass
     :ready :nominate :nominate-pass :vote :vote-abstain :advance-phase
-    :gm/force-kill :gm/revive :gm/skip-role :gm/set-phase
+    :gm/force-kill :gm/revive :gm/skip-role :gm/set-phase :gm/reassign-role
     :gm/pause :gm/resume :gm/add-time})
 
+(def choice-key
+  "Which command key carries an action's NON-PLAYER choice.
+
+   `:target` always means a player id, everywhere in the protocol. Three GM
+   overrides point at something that is not a player — a phase, a role — and the
+   client has to know which key to put it under. That is wire vocabulary rather
+   than a game rule, so it belongs here and not in the UI: a client that hard-
+   coded it would have to be edited every time an override learns a new noun.
+
+   Actions absent from this map take no choice. An action may take BOTH a target
+   and a choice; `:gm/reassign-role` names a player and the role to give them."
+  {:gm/skip-role     :role
+   :gm/set-phase     :phase
+   :gm/reassign-role :role})
+
 (def client-message-types
-  #{:client/create :client/join :client/resume :client/command :client/chat :client/ping})
+  #{:client/create :client/join :client/resume :client/command :client/chat
+    :client/ping :client/rooms})
 
 (def server-message-types
-  #{:server/hello :server/welcome :server/error :server/pong
+  #{:server/hello :server/welcome :server/error :server/pong :server/rooms
     :room/view :room/chat :room/chat-history})
 
 ;; ------------------------------------------------------------------ schemas ---
@@ -117,7 +133,14 @@
 
    [:client/ping
     [:map {:closed true}
-     [:type [:= :client/ping]]]]])
+     [:type [:= :client/ping]]]]
+
+   ;; "What can I join?" — answered with the rooms still in their lobby, so
+   ;; nobody has to read a code off someone else's screen. Takes no arguments
+   ;; and needs no seat: it is the one thing an unseated socket may ask for.
+   [:client/rooms
+    [:map {:closed true}
+     [:type [:= :client/rooms]]]]])
 
 (def ^:private client-validator (m/validator ClientMessage))
 (def ^:private client-explainer (m/explainer ClientMessage))

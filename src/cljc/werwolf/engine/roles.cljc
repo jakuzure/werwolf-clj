@@ -105,6 +105,17 @@
 
 (def all-ids (set (keys registry)))
 
+(def assignable-ids
+  "Every role a GM may hand out, in a STABLE order.
+
+   Sorted, not the set: set iteration order differs between Clojure and
+   ClojureScript, and this list reaches the client through `view-for`. An
+   unsorted one would make two players' GM panels disagree about the order of
+   the menu, and — worse, since the same rule already bit `:nominations` once —
+   would make a replay platform-dependent if anything downstream ever indexed
+   into it."
+  (vec (sort all-ids)))
+
 (defn role [id] (get registry id))
 
 (defn team-of [id] (:team (role id)))
@@ -125,6 +136,16 @@
 (defn i18n-key [id] (keyword "role" (name id)))
 
 ;; ------------------------------------------------------- role set setup ---
+
+(def ^:const absolute-min-players
+  "The smallest table `compose-roles` makes a real game out of: one wolf, a
+   Seherin and a villager.
+
+   A hard floor, not a preference. Below three the game is decided before it
+   starts — two players is a wolf and his dinner — so this is the one size rule
+   nobody may override, the host included. `:min-players` is the room's
+   RECOMMENDED size and the host may start under it; this is where that stops."
+  3)
 
 (def default-composition
   "Number of werewolves by player count, following common Düsterwald practice.

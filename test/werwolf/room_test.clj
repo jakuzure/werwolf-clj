@@ -117,10 +117,10 @@
               {:keys [room-id]} (room/create! ctx {:name "Anna"})]
           (is (= 3 (:min-players (room/state-of ctx room-id))))
           (room/join! ctx room-id {:name "Bob"})
-          (testing "and the host can start as soon as the configured minimum is met"
+          (testing "and the host can start once the DECK can make a game"
             (is (not (contains? (engine/legal-actions (room/state-of ctx room-id) 0)
                                 :start-game))
-                "two is still short")
+                "two is a wolf and his dinner, not a game")
             (room/join! ctx room-id {:name "Cem"})
             (is (contains? (engine/legal-actions (room/state-of ctx room-id) 0)
                            :start-game)))
@@ -128,6 +128,22 @@
             (room/join! ctx room-id {:name "Dana"})
             (is (= :room-full (:error (room/join! ctx room-id {:name "Eve"}))))))
         (finally (cleanup! path))))))
+
+(deftest the-host-may-start-under-the-recommended-size
+  (testing "MIN_PLAYERS is the recommended table, not a gate. Four people who
+            want to play now must not be held back by a number set for a bigger
+            evening — the UI says more is better and the host decides"
+    (with-ctx [ctx]
+      (let [{:keys [room-id]} (room/create! ctx {:name "Anna" :min-players 8})
+            actions #(engine/legal-actions (room/state-of ctx room-id) 0)]
+        (is (= 8 (:min-players (room/state-of ctx room-id))))
+        (room/join! ctx room-id {:name "Bob"})
+        (is (not (contains? (actions) :start-game)) "two is below the deck's floor")
+        (room/join! ctx room-id {:name "Cem"})
+        (is (contains? (actions) :start-game)
+            "three is a game, even though eight was asked for")
+        (is (:ok? (room/submit! ctx room-id 0 {:type :start-game})))
+        (is (= :night (:phase (room/state-of ctx room-id))))))))
 
 (deftest a-nonsensical-minimum-is-clamped-not-obeyed
   (testing "below three the roles cannot make a game that is not already decided"
@@ -217,6 +233,51 @@
     (let [{:keys [room-id]} (room/create! ctx {:name "Anna"})]
       (is (= :name-required (:error (room/join! ctx room-id {:name "  "})))))))
 
+(deftest the-open-room-list-shows-only-rooms-you-could-actually-join
+  (testing "so nobody has to read a code off someone else's phone — and so the
+            list never offers a door that is already locked"
+    (with-ctx [ctx]
+      (let [waiting (host-seat! ctx "Anna")
+            playing (table ctx 5)]
+        (guest-seat! ctx (:room-id waiting) "Bob")
+        (is (= [{:room-id (:room-id waiting) :players 2 :max-players 18 :host "Anna"}]
+               (filterv #(= (:room-id waiting) (:room-id %)) (room/open-rooms ctx)))
+            "a lobby is listed with its host and how many are waiting")
+        (testing "a game in progress drops off the list — it cannot be joined,
+                  and offering it would be an invitation to a locked door"
+          (is (some #(= (:room-id playing) (:room-id %)) (room/open-rooms ctx)))
+          (start! ctx playing)
+          (is (not-any? #(= (:room-id playing) (:room-id %)) (room/open-rooms ctx))))
+        (testing "and a full lobby drops off too"
+          ;; Both limits: max is clamped up to min, so asking for a 3-seat room
+          ;; while the config still recommends 5 gives you a 5-seat room.
+          (let [{:keys [room-id]} (room/create! ctx {:name "Cem" :min-players 3
+                                                     :max-players 3})]
+            (room/join! ctx room-id {:name "Dana"})
+            (is (some #(= room-id (:room-id %)) (room/open-rooms ctx)))
+            (room/join! ctx room-id {:name "Eve"})
+            (is (not-any? #(= room-id (:room-id %)) (room/open-rooms ctx)))))
+        (testing "nothing about who else is in a room, and certainly no roles"
+          (doseq [entry (room/open-rooms ctx)]
+            (is (= #{:room-id :players :max-players :host} (set (keys entry))))))))))
+
+(deftest a-finished-game-can-be-walked-out-of
+  (testing "at :game-over the engine offered nothing at all, so the last screen
+            of a game was one the players could only leave by closing the tab"
+    (with-ctx [ctx]
+      (let [{:keys [room-id] :as t} (table ctx 5)]
+        (start! ctx t)
+        ;; Kill every wolf: the village wins and the game is over.
+        (let [st (room/state-of ctx room-id)]
+          (doseq [w (wolves-in st)]
+            (room/submit! ctx room-id (:host st) {:type :gm/force-kill :target w})))
+        (is (= :game-over (:phase (room/state-of ctx room-id))))
+        (doseq [pid (keys (:players (room/state-of ctx room-id)))]
+          (is (contains? (engine/legal-actions (room/state-of ctx room-id) pid) :leave)
+              (str "player " pid " is stuck in a finished game")))
+        (testing "and leaving actually works"
+          (is (:ok? (room/submit! ctx room-id 1 {:type :leave}))))))))
+
 ;; -------------------------------------------------------------- broadcast ---
 
 (deftest every-player-gets-their-own-view-on-every-change
@@ -264,6 +325,37 @@
             (when (= :room/view (:type m))
               (is (every? #(not (contains? % :role)) (vals (:players (:view m))))
                   "the public player map carries no roles at all"))))))))
+
+(deftest reassigning-a-role-leaks-nothing-onto-the-wire
+  (testing "the override that changes who somebody IS, audited against what
+            actually reached each socket — the log crosses the wire inside
+            every view, so a role named in it would reach the whole table"
+    (with-ctx [ctx]
+      (let [{:keys [room-id seats] :as t} (table ctx 7)]
+        (start! ctx t)
+        (let [st (room/state-of ctx room-id)
+              ;; Somebody who is not already a wolf, so the change is real.
+              victim (first (remove (wolves-in st) (engine/living-ids st)))]
+          (is (:ok? (room/submit! ctx room-id (:host st)
+                                  {:type :gm/reassign-role :target victim
+                                   :role :werwolf})))
+          (doseq [{:keys [pid sink]} seats
+                  v (map :view (views sink))]
+            (is (empty? (engine/redaction-leaks? (room/state-of ctx room-id) pid v))
+                (str "player " pid " received a foreign role")))
+          (testing "and the table was told that something happened"
+            (is (some #(= :gm/forced (:type %))
+                      (:log (last-view (:sink (first seats)))))))
+          (testing "while the role it dealt appears in no log entry anyone
+                    received. (:gm/skip-role does name a role, legitimately —
+                    which role is being called is already public — so this is
+                    scoped to the one override whose noun is a secret.)"
+            (doseq [{:keys [sink]} seats
+                    v (map :view (views sink))
+                    entry (:log v)
+                    :when (= :reassign-role (:action entry))]
+              (is (not (contains? (:detail entry) :role))
+                  (str "a reassignment named the role it dealt: " (pr-str entry))))))))))
 
 ;; ---------------------------------------------------------------- commands ---
 

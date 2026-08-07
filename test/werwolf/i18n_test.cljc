@@ -92,6 +92,29 @@
         (is (str/includes? line "Anna") (str cause " in " locale))
         (is (not (untranslated? line)))))))
 
+;; ------------------------------------------------------- the GM's overrides ---
+
+(deftest a-gm-override-says-what-it-did
+  (testing "'the game master intervenes' audits nothing. The overrides that
+            publish no other line have to name their own effect"
+    (doseq [locale i18n/locales]
+      (let [line #(i18n/log-line locale players %)]
+        (is (str/includes? (line {:type :gm/forced :action :skip-role
+                                  :detail {:role :seherin}})
+                           "Seherin"))
+        (is (not (untranslated? (line {:type :gm/forced :action :set-phase
+                                       :detail {:phase :vote}}))))
+        (testing "and one of them names a player while deliberately NOT naming
+                  the role, because the whole table reads this"
+          (let [l (line {:type :gm/forced :action :reassign-role :detail {:target 1}})]
+            (is (str/includes? l "Bob"))
+            (is (not (untranslated? l)))
+            (doseq [r (keys roles/registry)]
+              (is (not (str/includes? l (i18n/role-name locale r)))
+                  (str r " must not appear in a public reassignment line")))))
+        (testing "an override with no line of its own still reads as something"
+          (is (not (untranslated? (line {:type :gm/forced :action :pause :detail {}})))))))))
+
 ;; ------------------------------------------------------- actually bilingual ---
 
 (deftest the-same-event-reads-differently-in-each-language

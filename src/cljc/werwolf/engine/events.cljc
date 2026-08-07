@@ -431,6 +431,35 @@
   [state {:keys [actor action detail]}]
   (publish state {:type :gm/forced :actor actor :action action :detail detail}))
 
+;; GM-only: rewrite a player's role mid-game, for a deal that was wrong or a
+;; player who has to be written out of one and into another.
+;;
+;; NOT published. This is the one override whose detail cannot go in the log:
+;; :log is included in every player's view, so naming the new role there would
+;; hand the whole table a card. What IS public is that the GM changed somebody's
+;; role — see the :gm/forced entry the command emits alongside this — which is
+;; the auditable part. Who they now are is between them and the narrator.
+;;
+;; Resources come from the new role, so a freshly-made Hexe has her potions; an
+;; ex-Hexe loses hers rather than keeping a vial she can no longer use. This is
+;; also the one way to refill a spent potion, by reassigning away and back.
+;; Deliberate: an override that cannot undo the mistake it was reached for is
+;; not much of an override, and it is logged both times.
+;;
+;; `:knows` is deliberately kept. A Seherin demoted to Dorfbewohner does not
+;; unlearn what she saw, and her inspections were true when she made them. The
+;; redaction boundary agrees: `revealed-roles` reads that same map, so she keeps
+;; seeing exactly what she is still entitled to.
+(defmethod apply-event :player/role-changed
+  [state {:keys [player role]}]
+  (if-not (get-in state [:players player])
+    state ; a replay must not resurrect a player who left
+    (-> state
+        (assoc-in [:players player :role] role)
+        (update-in [:players player] dissoc :resources)
+        (cond-> (roles/initial-resources role)
+          (assoc-in [:players player :resources] (roles/initial-resources role))))))
+
 ;; ------------------------------------------------------------- replay ---
 
 (defn replay

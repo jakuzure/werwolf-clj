@@ -95,6 +95,36 @@
 
 (defn room-ids [ctx] (sort (keys (rooms ctx))))
 
+(defn open-rooms
+  "The rooms a newcomer could actually join, for the landing screen.
+
+   Only lobbies with a free seat. A game in progress cannot be joined — the
+   engine refuses it — and listing one would be an invitation to a door that is
+   already locked.
+
+   What it discloses is deliberate and small: the code, how many are waiting,
+   and the host's name, which is how a friend group tells 'Anna's game' from
+   'Bob's game'. No roles, obviously, but also no player list — the code alone
+   is what admits you, and until you are in the room the others are not your
+   business.
+
+   Note this trades a little privacy for not having to read a code off someone
+   else's phone: anyone who can reach the server can see that a room exists and
+   join it. That is right for a private group on a private host, and would want
+   revisiting before the server is opened to the public — see the plan's
+   deferred 'public lobby browser'."
+  [ctx]
+  (->> (vals (rooms ctx))
+       (keep (fn [{s :state}]
+               (when (and (= :lobby (:phase s))
+                          (< (count (:players s)) (:max-players s 18)))
+                 {:room-id     (:room-id s)
+                  :players     (count (:players s))
+                  :max-players (:max-players s 18)
+                  :host        (get-in s [:players (:host s) :name])})))
+       (sort-by :room-id)
+       vec))
+
 (defn- with-room
   "Run `f` against the room, holding that room's lock. Re-reads the room inside
    the lock so `f` never sees a stale snapshot.
@@ -226,10 +256,14 @@
             code))))))
 
 (def ^:private absolute-min-players
-  "Three is the smallest table the role composition produces a real game for:
-   one wolf, a Seherin and a villager. Below that a 'game' is decided before it
-   starts, so a misconfigured MIN_PLAYERS is clamped rather than obeyed."
-  3)
+  "The smallest table the role composition produces a real game for: one wolf,
+   a Seherin and a villager. Below that a 'game' is decided before it starts,
+   so a misconfigured MIN_PLAYERS is clamped rather than obeyed.
+
+   Taken from the engine, which is where the deck lives. This was a literal 3
+   here and another one in the lobby's start rule, and two copies of a number
+   are two places to change it."
+  engine/absolute-min-players)
 
 (defn create!
   "Open a room and seat its creator as host (player 0).

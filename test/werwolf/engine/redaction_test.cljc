@@ -118,8 +118,41 @@
         "vector of tuples")
     (is (= #{[7 :werwolf]} (view/foreign-roles-in-view {:a {:b [{:c {7 :werwolf}}]}} 0))
         "deeply nested")
+    (is (= #{[6 :hexe]} (view/foreign-roles-in-view {:x {:target 6 :role :hexe}} 0))
+        "map with :target/:role — the shape a GM override's :detail takes, and
+         that detail is published to the log")
     (is (empty? (view/foreign-roles-in-view {:me {:id 0 :role :werwolf}} 0))
         "the viewer's own role is not a leak")))
+
+;; ------------------------------------------------------- the GM's overrides ---
+
+(deftest reassigning-a-role-tells-the-table-nothing-about-it
+  (testing "the log is in every player's view, so the one override that changes
+            who somebody IS must not name the card it dealt them. That an
+            override happened is public and auditable; what it did is not"
+    (let [s (tu/game-with cast-of-7)
+          s (exec! s {:type :gm/reassign-role :player 0 :target 4 :role :werwolf})
+          entry (last (:log s))]
+      (is (= :gm/forced (:type entry)))
+      (is (= {:target 4} (:detail entry)) "the seat, never the role")
+      (testing "so an ordinary villager still knows only their own role"
+        (let [v (view/view-for s 1)]
+          (is (not (contains? (:known-roles v) 4)))
+          (is (empty? (view/foreign-roles-in-view v 1)))
+          (is (nil? (engine/redaction-leaks? s 1)))))
+      (testing "while the wolves do learn their new packmate — that is what
+                being one means, and it comes from the role, not the log"
+        (is (= :werwolf (get-in (view/view-for s 2) [:known-roles 4])))
+        (is (nil? (engine/redaction-leaks? s 2))))
+      (testing "and the player themself is simply told"
+        (is (= :werwolf (get-in (view/view-for s 4) [:me :role]))))))
+
+  (testing "a demoted wolf stops being visible to the pack"
+    (let [s (tu/game-with cast-of-7)
+          _ (is (= :werwolf (get-in (view/view-for s 2) [:known-roles 6])))
+          s (exec! s {:type :gm/reassign-role :player 0 :target 6 :role :dorfbewohner})]
+      (is (not (contains? (:known-roles (view/view-for s 2)) 6)))
+      (is (nil? (engine/redaction-leaks? s 2))))))
 
 ;; ------------------------------------------------- the property that counts ---
 

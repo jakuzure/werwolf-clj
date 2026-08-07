@@ -181,6 +181,13 @@
      :actions     (phases/legal-actions state pid)
      :targets     (into {} (map (fn [a] [a (phases/legal-targets state pid a)]))
                         (phases/legal-actions state pid))
+     ;; Non-player options: the phases and roles a GM override may name. Sent
+     ;; for the same reason as :targets — so the client offers what the engine
+     ;; permits and invents nothing — and safe to send because a menu of every
+     ;; role in the registry says nothing about who holds one.
+     :choices     (into {} (keep (fn [a] (when-let [cs (seq (phases/legal-choices state a))]
+                                           [a (vec cs)])))
+                        (phases/legal-actions state pid))
      ;; How many players each offered action wants the client to pick. Sent so
      ;; the UI can handle Amor's pair without hard-coding a rule about Amor.
      :arity       (into {} (keep (fn [a] (when-let [n (phases/target-arity a)] [a n])))
@@ -213,9 +220,17 @@
                 (do
                   ;; {player-id role-id}
                   (doseq [[k v] x] (note! k v))
-                  ;; {:player id :role r} / {:id id :role r}
+                  ;; {:player id :role r} / {:id id :role r} / {:target id :role r}
+                  ;;
+                  ;; :target is checked because a GM override's :detail is shaped
+                  ;; that way, and that detail is published to the log. Naming
+                  ;; both the player and the role a GM just gave them would
+                  ;; broadcast a card to the whole table — see
+                  ;; `handle :gm/reassign-role`, which omits the role for exactly
+                  ;; this reason. Without :target here the detector would have
+                  ;; watched it happen and said nothing.
                   (when (contains? x :role)
-                    (note! (or (:id x) (:player x)) (:role x)))
+                    (note! (or (:id x) (:player x) (:target x)) (:role x)))
                   (doseq [v (vals x)] (walk v)))
 
                 ;; [player-id role-id] pairs — a leak shaped as a vector of

@@ -27,12 +27,22 @@
    :landing/join      "Join a game"
    :landing/code      "Room code"
    :landing/or        "or"
+   ;; The open rooms sit above the code field: typing a code is now the fallback
+   ;; for a room the list cannot show, not the normal way in.
+   :landing/open-rooms "Open games"
+   :landing/no-rooms   "No open game right now"
+   :landing/refresh    "Refresh"
 
    ;; ------------------------------------------------------------- lobby ---
    :lobby/title       "Lobby"
    :lobby/players     "Players"
    :lobby/start       "Start the game"
    :lobby/need-more   "Waiting for more players"
+   ;; The host may start below the recommended size. A nudge, not a gate: four
+   ;; people who want to play now should not be stopped by a number set for a
+   ;; bigger evening.
+   :lobby/below-recommended (fn [n] (str "You can start — it plays better with "
+                                         n " or more"))
    :lobby/share       "Share this code"
    :lobby/leave       "Leave the game"
 
@@ -86,9 +96,22 @@
    :action/gm-revive       "Revive (GM)"
    :action/gm-skip-role    "Skip role (GM)"
    :action/gm-set-phase    "Set phase (GM)"
+   :action/gm-reassign-role "Reassign role (GM)"
    :action/gm-pause        "Pause the clock (GM)"
    :action/gm-resume       "Resume the clock (GM)"
    :action/gm-add-time     "+60 s (GM)"
+
+   ;; ----------------------------------------------------- game master ---
+   :gm/panel          "Game master"
+   :gm/panel-hint     "Only you can see these. Every override goes in the chronicle."
+   :gm/open           "Open"
+   :gm/close          "Close"
+   :gm/pick-player    "Player"
+   :gm/pick-role      "Role"
+   :gm/pick-phase     "Phase"
+   :gm/confirm        "Sure?"
+   :gm/clock          "Clock"
+   :gm/nothing        "Nothing to control right now."
 
    ;; -------------------------------------------------------------- game ---
    :game/you           "you"
@@ -107,6 +130,8 @@
    :game/wolves-channel "Only the werewolves can hear you"
    :game/dead-channel   "Only the dead can hear you"
    :game/paused         "Clock paused"
+   :game/new-round      "Back — new game"
+   :game/over-hint      "Every role is revealed now."
 
    ;; --------------------------------------------------------- targeting ---
    :target/pick-one   "Choose a target"
@@ -164,7 +189,17 @@
    :log/tie           "The village cannot agree — nobody dies"
    :log/nominated     (fn [n] (str n " stands accused"))
    :log/timed-out     (fn [p] (str "Time ran out for " p))
+   ;; What the game master actually did. Only for the overrides that would
+   ;; otherwise leave no trace: killing and reviving already write their own
+   ;; line, and saying the same thing twice reads as a bug.
+   ;;
+   ;; The new role is deliberately NOT here. The whole table reads the
+   ;; chronicle — that an override happened concerns everyone, what the card now
+   ;; says concerns one player. See `handle :gm/reassign-role`.
    :log/gm-forced     "The game master intervenes"
+   :log/gm-skip-role  (fn [r] (str "The game master skips the " r))
+   :log/gm-set-phase  (fn [p] (str "The game master sets the phase to " p))
+   :log/gm-reassign-role (fn [n] (str n " was given a new role by the game master"))
    :log/clock-paused  "The game master pauses the clock"
    :log/clock-resumed "The clock is running again"
    :log/win-village   "The village wins"
@@ -184,6 +219,7 @@
    :error/already-joined   "You are already in this game"
    :error/room-full        "The room is full"
    :error/name-required    "Please enter a name"
+   :error/code-required    "Please enter the room code"
    :error/not-in-room      "You are not in this game"
    :error/unknown-player   "No such seat"
    :error/seat-gone        "Your seat no longer exists"

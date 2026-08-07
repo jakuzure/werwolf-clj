@@ -261,6 +261,117 @@
               (finally (doseq [{:keys [client]} all] (close! client))))))
         (finally (cleanup! path))))))
 
+(deftest every-gm-override-works-and-lands-in-the-public-log
+  (testing "verification step 6 of the plan, over real sockets. Two of these
+            could not be issued at all until now: :gm/set-phase and
+            :gm/skip-role name a phase and a role rather than a seat, and the
+            client's only way to say so was :target, which the wire schema
+            declares an :int"
+    (let [path (tmp-path)]
+      (try
+        (with-server [srv path]
+          (let [host (client (:port srv))
+                _ (await-type host :server/hello)
+                _ (send! host {:type :client/create :name "Anna" :locale :de})
+                code (:room-id (await-type host :server/welcome))
+                guests (doall (for [n ["Bob" "Cem" "Dana" "Eve"]]
+                                (let [c (client (:port srv))]
+                                  (await-type c :server/hello)
+                                  (send! c {:type :client/join :room-id code :name n})
+                                  (await-type c :server/welcome)
+                                  c)))
+                all (cons host guests)
+                gm! (fn [cmd] (send! host {:type :client/command :cmd cmd}))
+                forced (fn [c] (filterv #(= :gm/forced (:type %)) (:log (latest-view c))))
+                ;; Every wait here is on the OVERRIDE LOG growing, never on a
+                ;; flag flipping. `await-msg` scans the whole inbox from the
+                ;; start, so "wait until alive? is true again" matched a view
+                ;; from before the kill and the test raced past the revive it
+                ;; was supposed to be waiting for. The log only ever grows.
+                await-actions (fn [c expected]
+                                (await-msg c #(and (= :room/view (:type %))
+                                                   (every? (into #{} (keep :action)
+                                                                 (get-in % [:view :log]))
+                                                           expected))))]
+            (try
+              (send! host {:type :client/command :cmd {:type :start-game}})
+              (doseq [c all] (await-phase c :night))
+
+              (testing "the host is offered every override, with something legal
+                        to point at for each"
+                ;; The clock is armed by a second commit after the phase change,
+                ;; and :gm/add-time is only offered once there is a deadline to
+                ;; add to — waiting for the phase is not waiting for the clock.
+                (await-deadline host)
+                (let [v (latest-view host)
+                      offered (set (:actions v))]
+                  (doseq [a [:gm/force-kill :gm/revive :gm/set-phase :gm/skip-role
+                             :gm/reassign-role :gm/pause :gm/add-time]]
+                    ;; :gm/revive needs a corpse and :gm/add-time a clock, so
+                    ;; both are conditional; the rest must always be there.
+                    (when-not (#{:gm/revive} a)
+                      (is (contains? offered a) (str a " was not offered"))))
+                  (testing "and the choices arrive as choices, not as targets"
+                    (is (= [:seherin] (get-in v [:choices :gm/skip-role]))
+                        "exactly the role being called")
+                    (is (seq (get-in v [:choices :gm/reassign-role])))
+                    (is (empty? (get-in v [:targets :gm/set-phase]))
+                        "a phase is not a seat"))))
+
+              ;; Nothing below may depend on WHO holds which role. The deck is
+              ;; dealt from a random per-room seed and the host cannot see it —
+              ;; that is the whole point of the engine — so a test that reassigns
+              ;; one seat to one fixed role fails whenever the deal already put
+              ;; it there. It did, about one run in four.
+              ;;
+              ;; Two seats, both made werewolves. At five players there is one
+              ;; wolf, so at most one of these is a no-op and at least one lands.
+              ;; And ADDING a wolf can never decide the game, while removing the
+              ;; last one ends it and would have every later override refused.
+              (let [victims (vec (take 2 (sort (remove #{0} (keys (:players (latest-view host)))))))
+                    victim (first victims)]
+                (testing "every override, issued in one run"
+                  (gm! {:type :gm/add-time :secs 30})
+                  (gm! {:type :gm/pause})
+                  (gm! {:type :gm/resume})
+                  ;; Named, not targeted. This is the pair that could not be
+                  ;; sent at all before :choices existed.
+                  (gm! {:type :gm/skip-role :role :seherin})
+                  (doseq [v victims]
+                    (gm! {:type :gm/reassign-role :target v :role :werwolf}))
+                  ;; Certainly a wolf by now, and certainly not the last one.
+                  (gm! {:type :gm/force-kill :target victim})
+                  (gm! {:type :gm/revive :target victim})
+                  (gm! {:type :gm/set-phase :phase :discussion}))
+
+                (let [all-actions #{:add-time :pause :resume :skip-role
+                                    :reassign-role :force-kill :revive :set-phase}]
+                  (testing "every one of them lands in the log the whole table
+                            reads — an override only the host can see audits
+                            nothing"
+                    (doseq [c all]
+                      (await-actions c all-actions)
+                      (is (= all-actions (into #{} (keep :action) (forced c)))
+                          "someone is missing an override")))
+
+                  (testing "and each did what it said"
+                    (let [v (latest-view host)]
+                      (is (= :discussion (:phase v)))
+                      (is (false? (:paused? v)))
+                      (is (true? (get-in v [:players victim :alive?]))
+                          "killed and brought back")))
+
+                  (testing "the reassignment told the table that it happened and
+                            nothing whatsoever about what it did"
+                    (doseq [c all
+                            entry (filterv #(= :reassign-role (:action %)) (forced c))]
+                      (is (= [:target] (keys (:detail entry)))
+                          "the seat, never the role")
+                      (is (contains? (set victims) (:target (:detail entry))))))))
+
+              (finally (doseq [c all] (close! c))))))
+        (finally (cleanup! path))))))
+
 (deftest killing-the-server-mid-game-loses-nothing
   (testing "verification step 5: kill the server mid-game and restart. Clients
             reconnect from their tokens and land in the correct phase with the
