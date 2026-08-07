@@ -82,8 +82,25 @@
    :depends [npm-install]
    :task    (shell "npx shadow-cljs compile app")}
 
+  test:browser
+  {:doc     "Drive the app in a real browser (Playwright).
+
+             Covers the only layer the other suites cannot reach: the DOM,
+             reagent's reconciliation, and a real WebSocket. Runs against the
+             RELEASE build, deliberately — two of the bugs this suite exists to
+             catch only exist under :advanced optimisation, so testing the dev
+             build would test the artifact nobody ships.
+
+             Playwright starts and stops the server itself, on :3999 with a fresh
+             temp database. Voice tests skip unless a LiveKit is reachable:
+             `docker compose -f deploy/livekit.dev.yml up -d`."
+   :depends [build:cljs build:css]
+   :task    (shell "npx playwright test --config test/browser/playwright.config.js")}
+
   test:all
-  {:doc     "Run the suite on both platforms, and compile the browser build"
+  {:doc     "Run the suite on both platforms, and compile the browser build.
+             Does NOT include test:browser — it needs a browser download and is
+             an order of magnitude slower; run it explicitly."
    :depends [test test:cljs check:app]}
 
   test:watch

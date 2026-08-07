@@ -58,52 +58,72 @@
     label]))
 
 (defn- field
-  "A text input whose displayed value comes from a LOCAL atom while the player is
-   typing, and from app-db only when something else writes the field.
+  "A text input that is UNCONTROLLED: React is never given a `:value`, so it never
+   writes one back into the element.
 
-   That split is the fix for a real Android bug, not a style preference.
-   `rf/dispatch` is asynchronous, so a fully controlled input's `:value` lags the
-   DOM by at least a tick. React reconciles the difference by writing the STALE
-   value back into the element — harmless on a desktop beyond the odd cursor
-   jump, but on Android it lands in the middle of an active IME composition. The
-   composing region's offsets no longer match the text, so accepting a keyboard
-   suggestion APPENDS instead of replacing: typing `Greta` and tapping the
-   suggestion produced `GrGrGreta`.
+   That is the fix for the Android bug, and the third attempt at it. The reported
+   symptom was typing `Greta`, accepting the keyboard's suggestion, and getting
+   `GrGrGreta`.
 
-   Setting `draft` synchronously in `:on-change` means the value reagent renders
-   is already exactly what the element contains, so React has nothing to write
-   and the composition is left alone. app-db still receives every keystroke — it
-   is what the send buttons and Enter read — it just stops being what the DOM is
-   told to display mid-word.
+   The mechanism, finally pinned down with a DevTools-Protocol test that drives a
+   REAL composing region (`Input.imeSetComposition`) rather than dispatching
+   synthetic CompositionEvents, which cannot reproduce it:
 
-   `:gen` is how a PROGRAMMATIC write still wins. Code that fills a field in or
-   clears it (`::ev/form-put`) bumps a counter; the draft records the counter it
-   was typed against, so a mismatch means somebody else moved the field and the
-   draft steps aside. Comparing counters rather than values is deliberate: the
-   value is expected to differ during the dispatch gap, which is the whole
-   problem, so a value comparison would discard the draft on every keystroke."
+   Writing `node.value` while a composition is active COMMITS the composing text
+   early. The next composition then starts after it and appends. So it does not
+   matter whether the value React writes is stale or perfectly correct — the write
+   itself is the bug. An earlier version of this component kept a synchronous local
+   draft so the value would always match, and it still failed: the test produced
+   `GGrGreGreta`.
+
+   And the write is not even provoked by typing. `::ev/tick` re-renders the whole
+   app every 500 ms to move the countdown, which is enough on its own to land a
+   reconciliation in the middle of a word.
+
+   So the DOM owns the text. app-db is fed one way, from `:on-change`, and stays
+   the thing Enter and the send buttons read. The only writes back into the element
+   are PROGRAMMATIC ones — `::ev/form-put` filling in a tapped room code, or
+   clearing the chat box after a send — applied imperatively in
+   `:component-did-update` when the generation counter moves. Comparing generations
+   rather than values is what keeps ordinary typing from counting as a write: the
+   value legitimately differs from app-db for a tick, which is where this started."
   [_k _placeholder & _opts]
-  (let [draft (r/atom nil)]                       ; {:typed s :gen n} | nil
-    (fn [k placeholder & [{:keys [on-enter maxlength]}]]
-      (let [committed @(rf/subscribe [::sub/form-field k])
-            gen       @(rf/subscribe [::sub/form-gen k])
-            d         @draft
-            ;; "" is TRUTHY in ClojureScript, which is what makes an emptied
-            ;; field survive here instead of snapping back to app-db. The same
-            ;; fact caused the phantom target dialog when it was not intended;
-            ;; here it is.
-            value     (if (and d (= gen (:gen d))) (:typed d) committed)]
-        [:input {:class "w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700
-                         focus:border-indigo-500 outline-none text-slate-100"
-                 :value value
-                 :placeholder placeholder
-                 :maxLength (or maxlength 24)
-                 :on-change (fn [e]
-                              (let [v (.. e -target -value)]
-                                (reset! draft {:typed v :gen gen})
-                                (rf/dispatch [::ev/form-set k v])))
-                 :on-key-down #(when (and on-enter (= "Enter" (.-key %)))
-                                 (rf/dispatch on-enter))}]))))
+  (let [node  (atom nil)
+        ;; Plain atoms, not ratoms: these must not make the component reactive.
+        ;; `:want` is recorded during render and applied after it.
+        want  (atom {:gen nil :value ""})
+        seen  (atom {:gen nil})]
+    (r/create-class
+     {:display-name "werwolf-field"
+
+      :component-did-update
+      (fn [_this _]
+        (let [{:keys [gen value]} @want]
+          (when (and @node (not= gen (:gen @seen)))
+            (reset! seen {:gen gen})
+            ;; Only reached for a programmatic write, so clobbering whatever is in
+            ;; the element is the intent rather than a side effect.
+            (set! (.-value @node) (or value "")))))
+
+      :reagent-render
+      (fn [k placeholder & [{:keys [on-enter maxlength]}]]
+        (let [committed @(rf/subscribe [::sub/form-field k])
+              gen       @(rf/subscribe [::sub/form-gen k])]
+          (reset! want {:gen gen :value committed})
+          ;; Seed `seen` on the first render so mounting is not mistaken for a
+          ;; programmatic write on the next update.
+          (when (nil? (:gen @seen)) (reset! seen {:gen gen}))
+          [:input {:class "w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700
+                           focus:border-indigo-500 outline-none text-slate-100"
+                   ;; :default-value, never :value — React applies it on mount and
+                   ;; then leaves the element alone, which is the entire point.
+                   :default-value committed
+                   :ref (fn [el] (reset! node el))
+                   :placeholder placeholder
+                   :maxLength (or maxlength 24)
+                   :on-change (fn [e] (rf/dispatch [::ev/form-set k (.. e -target -value)]))
+                   :on-key-down #(when (and on-enter (= "Enter" (.-key %)))
+                                   (rf/dispatch on-enter))}]))})))
 
 (defn- pill [label tone]
   [:span {:class (str "px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide "
