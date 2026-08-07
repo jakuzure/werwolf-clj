@@ -10,6 +10,7 @@
    than it was told, which is what makes the redaction boundary real rather than
    a convention."
   (:require [re-frame.core :as rf]
+            [werwolf.audio :as audio]
             [werwolf.ws :as ws]))
 
 (def default-locale
@@ -40,7 +41,10 @@
    ;; wins — see ::set-locale and the ::locale subscription.
    :locale      default-locale
    :now         (.getTime (js/Date.))
-   :form        {:name "" :code "" :text ""}})
+   :form        {:name "" :code "" :text ""}
+   ;; Filled in by :server/media once seated. Reset on leave, so a credential for
+   ;; the last room is never carried into the next one.
+   :audio       nil})
 
 (rf/reg-event-db ::init (fn [_ _] initial-db))
 
@@ -186,6 +190,52 @@
 
 (rf/reg-event-fx ::send-chat send-chat-fx)
 
+;; ---------------------------------------------------------------------- audio ---
+;;
+;; The server hands out a credential; joining is the player's decision. Browsers
+;; refuse a microphone without a user gesture, so an automatic join would fail on
+;; the first load of every session — and opening someone's mic because they loaded
+;; a page is the wrong default regardless.
+
+(rf/reg-event-fx
+ ::request-media
+ (fn [_ _] {::ws/send {:type :client/media}}))
+
+(rf/reg-event-fx
+ ::join-audio
+ (fn [{:keys [db]} _]
+   (let [{:keys [url token available?]} (:audio db)]
+     (when (and available? url token)
+       {:db (assoc-in db [:audio :state] :joining)
+        ::audio/connect {:url url :token token}}))))
+
+(rf/reg-event-fx
+ ::leave-audio
+ (fn [{:keys [db]} _]
+   {:db (-> db (assoc-in [:audio :state] :idle)
+            (assoc-in [:audio :speakers] #{}))
+    ::audio/disconnect true}))
+
+(rf/reg-event-db ::audio-joined (fn [db _] (assoc-in db [:audio :state] :joined)))
+(rf/reg-event-db ::audio-left   (fn [db _] (-> db (assoc-in [:audio :state] :idle)
+                                               (assoc-in [:audio :speakers] #{}))))
+
+(rf/reg-event-db
+ ::audio-failed
+ (fn [db [_ reason]]
+   ;; Surfaced through :error like every other failure, so it renders in the
+   ;; player's language rather than as a browser exception.
+   (-> db (assoc-in [:audio :state] :idle) (assoc :error reason))))
+
+(rf/reg-event-db ::audio-speakers (fn [db [_ ids]] (assoc-in db [:audio :speakers] ids)))
+
+(rf/reg-event-fx
+ ::toggle-mute
+ (fn [{:keys [db]} _]
+   (let [muted? (not (get-in db [:audio :muted?]))]
+     {:db (assoc-in db [:audio :muted?] muted?)
+      ::audio/set-muted muted?})))
+
 (defn leave-fx
   "Also the way out of a finished game. Landing on the landing screen with a
    stale room list would mean the first thing you see after a game is the game
@@ -195,8 +245,13 @@
    was not: `:view/seq` stayed behind and rejected the next room's views."
   [{:keys [db]} _]
   {:db (merge db (select-keys initial-db
-                              [:screen :me :view :view/seq :chat :error]))
+                              [:screen :me :view :view/seq :chat :error :audio]))
    ::ws/forget-seat true
+   ;; Hang up on the way out. Without this the microphone stays live and
+   ;; published into a room the player has walked out of — they would be audible
+   ;; to a table they are no longer at, which is the worst possible bug in a game
+   ;; about who knows what.
+   ::audio/disconnect true
    :dispatch [::refresh-rooms]
    ::ws/send {:type :client/command :cmd {:type :leave}}})
 
@@ -222,6 +277,24 @@
 
 (defmethod handle-server :server/rooms [db msg]
   (assoc db :rooms (vec (:rooms msg))))
+
+(defn media-fx
+  "Store what the server said about audio.
+
+   `:enabled? false` is a normal answer from a text-only server, not an error —
+   the UI omits the voice panel entirely rather than showing a dead button.
+
+   The credential is kept in app-db while the connection itself lives in
+   `werwolf.audio`: a token is inert data, a Room with a microphone attached is
+   not."
+  [db {:keys [enabled? url token room]}]
+  (assoc db :audio {:available? (boolean enabled?)
+                    :url url :token token :room room
+                    :state :idle
+                    :muted? false
+                    :speakers #{}}))
+
+(defmethod handle-server :server/media [db msg] (media-fx db msg))
 
 (defmethod handle-server :server/welcome [db {:keys [room-id player-id host?]}]
   (assoc db
@@ -285,6 +358,12 @@
      ;; time however long the game runs.
      (= :server/welcome (:type msg))
      (assoc ::ws/save-seat (select-keys msg [:room-id :token]))
+
+     ;; Ask what the voice situation is as soon as there is a seat to ask about.
+     ;; Asking only fetches a credential — it does not open a microphone, which
+     ;; stays behind an explicit tap.
+     (= :server/welcome (:type msg))
+     (assoc :dispatch [::request-media])
 
      (fatal-errors (:code msg))
      (assoc ::ws/forget-seat true))))

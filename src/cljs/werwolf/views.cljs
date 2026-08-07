@@ -297,6 +297,38 @@
          [:div {:class "font-bold"} headline]
          (when detail [:div {:class "text-sm opacity-90"} detail])]))))
 
+(defn- voice-panel
+  "Join the call, and mute yourself.
+
+   Absent entirely when the server carries no audio, because a text-only server is
+   a supported configuration and a disabled button would invite people to keep
+   tapping it.
+
+   Muting is local and voluntary — it is your own microphone, not a rule. The
+   server enforces nothing about who may speak, so this button is the honest
+   extent of it: it says what it does and does not pretend to be a game
+   mechanic."
+  []
+  (when @(rf/subscribe [::sub/audio-available?])
+    (let [state  @(rf/subscribe [::sub/audio-state])
+          muted? @(rf/subscribe [::sub/audio-muted?])]
+      [:div {:class "rounded-xl border border-slate-700 bg-slate-900/80 px-4 py-3
+                     flex flex-wrap items-center gap-3"}
+       [:span {:class "text-sm font-bold uppercase tracking-wide text-slate-400"}
+        (t :voice/title)]
+       (case state
+         :idle    [btn (t :voice/join) #(rf/dispatch [::ev/join-audio])]
+         :joining [:span {:class "text-sm text-slate-400"} (t :voice/joining)]
+         :joined  [:<>
+                   [btn (if muted? (str "🔇 " (t :voice/unmute))
+                                   (str "🎙 " (t :voice/mute)))
+                    #(rf/dispatch [::ev/toggle-mute])
+                    {:tone (if muted? :quiet :armed)}]
+                   [btn (t :voice/leave) #(rf/dispatch [::ev/leave-audio]) {:tone :quiet}]]
+         nil)
+       (when (= :joined state)
+         [:span {:class "text-xs text-slate-500"} (t :voice/everyone-hears)])])))
+
 ;; ------------------------------------------------------------- player cards ---
 
 (defn- vote-count [votes id]
@@ -315,7 +347,12 @@
         picked? (boolean (some #{id} picks))
         me? (= id (:id me))
         role (get known id)
-        n-votes (vote-count votes id)]
+        n-votes (vote-count votes id)
+        ;; Safe to show because everyone shares one media room and nobody is
+        ;; muted by the server — so who is talking reveals nothing. It would NOT
+        ;; be safe under the plan's permission table, where the wolves' absence
+        ;; from the main room identifies them. See werwolf.media.
+        talking? (sub/speaking? @(rf/subscribe [::sub/speaking]) id)]
     [:div {:class (str "rounded-xl border-2 p-3 transition select-none "
                        (cond
                          picked?      "border-amber-400 bg-amber-500/20 "
@@ -326,9 +363,12 @@
                        (when (and targets (not selectable?) (not picked?)) "opacity-40 "))
            :on-click (when selectable? #(pick! id))}
      [:div {:class "flex items-start gap-2"}
-      ;; Seat number: the one label that never changes and never lies.
+      ;; Seat number: the one label that never changes and never lies. It also
+      ;; carries the speaking ring, because it is the one element on the card
+      ;; whose position never moves as pills wrap.
       [:div {:class (str "shrink-0 w-8 h-8 rounded-lg grid place-items-center font-bold "
-                         (if alive? "bg-slate-700 text-slate-100" "bg-slate-800 text-slate-500"))}
+                         (if alive? "bg-slate-700 text-slate-100" "bg-slate-800 text-slate-500")
+                         (when talking? " ring-2 ring-emerald-400 "))}
        id]
       [:div {:class "min-w-0 flex-1"}
        [:div {:class (str "font-semibold truncate "
@@ -689,6 +729,10 @@
                  (< (count (:players view)) (:min-players view 5)))
         [:p {:class "text-xs text-amber-400/90"}
          (t :lobby/below-recommended (:min-players view))])]
+     ;; The lobby is where a call gets joined in practice — everyone is arriving,
+     ;; nobody is mid-decision, and sorting out microphones before the deal beats
+     ;; doing it during the first night.
+     [voice-panel]
      [chat-panel]]))
 
 ;; --------------------------------------------------------------------- game ---
@@ -750,15 +794,19 @@
      [:div {:class "order-1 empty:hidden"} [game-over-panel]]
      [:div {:class "order-3 empty:hidden"} [me-panel]]
      [:div {:class "order-4 empty:hidden"} [action-bar]]
-     [:div {:class "order-5 empty:hidden"} [gm-panel]]
-     [:div {:class "order-7 empty:hidden"} [player-grid]]]
+     ;; Above the board on a phone: joining the call is something you do once, at
+     ;; the start, and hunting for it under nine player cards is how people end up
+     ;; playing in silence.
+     [:div {:class "order-5 empty:hidden"} [voice-panel]]
+     [:div {:class "order-6 empty:hidden"} [gm-panel]]
+     [:div {:class "order-8 empty:hidden"} [player-grid]]]
     [:div {:class "contents lg:block lg:col-span-2 lg:space-y-4"}
      ;; The turn banner is rendered in the RIGHT wrapper so that on desktop it
      ;; heads the Chronik column, and on a phone `order-2` lifts it to just under
      ;; the phase header — the first thing you see either way.
      [:div {:class "order-2 empty:hidden"} [turn-banner]]
-     [:div {:class "order-6 empty:hidden"} [log-panel]]
-     [:div {:class "order-8 empty:hidden"} [chat-panel]]]]])
+     [:div {:class "order-7 empty:hidden"} [log-panel]]
+     [:div {:class "order-9 empty:hidden"} [chat-panel]]]]])
 
 ;; ---------------------------------------------------------------------- app ---
 

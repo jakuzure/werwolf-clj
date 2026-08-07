@@ -208,6 +208,52 @@
 (deftest a-blank-message-is-not-sent-and-clears-nothing
   (is (nil? (ev/send-chat-fx {:db (assoc-in db [:form :text] "   ")} nil))))
 
+;; -------------------------------------------------------------------- voice ---
+
+(deftest audio-off-is-an-answer-not-a-failure
+  (testing "a text-only server is a supported configuration, so the client records
+            that audio is unavailable and the UI omits the panel — rather than
+            showing a button that cannot work"
+    (let [db' (apply* seated {:type :server/media :enabled? false})]
+      (is (false? (get-in db' [:audio :available?])))
+      (is (nil? (:error db')) "and it is not surfaced as an error"))))
+
+(deftest credentials-are-stored-but-nothing-is-joined-yet
+  (testing "joining opens a microphone, so it waits for a tap: browsers refuse
+            getUserMedia without a user gesture, and opening someone's mic
+            because they loaded a page is the wrong default regardless"
+    (let [db' (apply* seated {:type :server/media :enabled? true
+                              :url "ws://localhost:7880" :room "werwolf-abcd"
+                              :token "eyJhbGciOi"})]
+      (is (true? (get-in db' [:audio :available?])))
+      (is (= "werwolf-abcd" (get-in db' [:audio :room])))
+      (is (= :idle (get-in db' [:audio :state])) "idle until asked")
+      (is (false? (get-in db' [:audio :muted?]))))))
+
+(deftest leaving-hangs-up
+  (testing "without this the microphone stays published into a room the player
+            has walked out of — audible to a table they are no longer at, which
+            is the worst available bug in a game about who knows what"
+    (let [joined (-> seated
+                     (apply* {:type :server/media :enabled? true
+                              :url "ws://x" :room "werwolf-abcd" :token "t"})
+                     (assoc-in [:audio :state] :joined))
+          out (ev/leave-fx {:db joined} nil)]
+      (is (true? (:werwolf.audio/disconnect out)) "the effect is requested")
+      (is (nil? (get-in out [:db :audio]))
+          "and the credential does not survive into the next room"))))
+
+(deftest speaking-is-matched-by-seat-not-by-name
+  (testing "the SFU reports identities of the form werwolf-<code>-p<seat>, and
+            seat 1 must not light up because seat 11 is talking"
+    (let [speakers #{"werwolf-abcd-p1" "werwolf-abcd-p11"}]
+      (is (true? (sub/speaking? speakers 1)))
+      (is (true? (sub/speaking? speakers 11)))
+      (is (false? (sub/speaking? speakers 2))))
+    (testing "and nothing is speaking when nobody is"
+      (is (false? (sub/speaking? #{} 0)))
+      (is (false? (sub/speaking? #{"werwolf-abcd-p0"} nil))))))
+
 ;; ------------------------------------------------------------ where we dial ---
 
 (deftest the-socket-follows-the-page-never-localhost

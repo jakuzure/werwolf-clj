@@ -62,6 +62,33 @@
 
 (rf/reg-sub ::rooms (fn [db _] (or (:rooms db) [])))
 
+;; ---- voice ----
+;;
+;; A summary of the LiveKit connection, which itself lives in werwolf.audio: a
+;; Room with a microphone attached cannot sit in app-db.
+
+(rf/reg-sub ::audio (fn [db _] (:audio db)))
+
+(rf/reg-sub ::audio-available? :<- [::audio] (fn [a _] (boolean (:available? a))))
+(rf/reg-sub ::audio-state      :<- [::audio] (fn [a _] (or (:state a) :idle)))
+(rf/reg-sub ::audio-muted?     :<- [::audio] (fn [a _] (boolean (:muted? a))))
+
+(defn speaking?
+  "Is the player in seat `pid` talking right now?
+
+   The SFU reports participant IDENTITIES, and identity is `werwolf-<code>-p<n>`
+   — see `werwolf.media/identity-for`. Matching on the suffix keeps that rule in
+   one place on each side rather than reconstructing the room code here. Pure and
+   public so the parsing is testable without a browser."
+  [speakers pid]
+  (boolean (and pid (some #(= (str "-p" pid) (re-find (re-pattern (str "-p" pid "$")) %))
+                          speakers))))
+
+(rf/reg-sub
+ ::speaking
+ :<- [::audio]
+ (fn [a _] (or (:speakers a) #{})))
+
 (rf/reg-sub ::phase    :<- [::view] (fn [v _] (:phase v)))
 (rf/reg-sub ::players  :<- [::view] (fn [v _] (:players v)))
 (rf/reg-sub ::me-view  :<- [::view] (fn [v _] (:me v)))

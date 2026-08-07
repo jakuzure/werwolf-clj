@@ -147,6 +147,20 @@
    :turn/urgent  "Everyone is waiting for you"
    :turn/calling (fn [role] (str "The Spielleiter calls: " role))
 
+   ;; ------------------------------------------------------------ voice ---
+   ;;
+   ;; Joining is an explicit tap: browsers refuse a microphone without a user
+   ;; gesture, and opening one because somebody loaded a page is the wrong
+   ;; default anyway. `:voice/everyone-hears` is deliberately plain about the
+   ;; rule — the server enforces no phase muting, so the UI must not imply it.
+   :voice/title          "Voice"
+   :voice/join           "🎧 Join voice"
+   :voice/joining        "Connecting…"
+   :voice/leave          "Leave"
+   :voice/mute           "Mute"
+   :voice/unmute         "Unmute"
+   :voice/everyone-hears "Everyone at the table hears you — at night too, and when dead."
+
    ;; --------------------------------------------------------- targeting ---
    :target/pick-one   "Choose a target"
    :target/pick-two   "Choose two targets"
@@ -228,6 +242,10 @@
    :log/group-reconnected  (fn [names] (str names " are back"))
 
    ;; ------------------------------------------------------------ errors ---
+   ;; Voice failures. A refused microphone gets its own line because it is fixed
+   ;; in browser settings, not by tapping again — and it is by far the common one.
+   :error/mic-denied       "No access to the microphone — please allow it in your browser settings"
+   :error/join-failed      "Could not connect to voice"
    :error/no-such-room     "There is no such room"
    :error/game-in-progress "That game has already started"
    :error/already-joined   "You are already in this game"
