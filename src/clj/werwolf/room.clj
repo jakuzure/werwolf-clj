@@ -153,13 +153,24 @@
                         :view (engine/view-for (:state r) pid)})))
 
 (defn- broadcast!
-  "Give every connected player their own view of the room.
+  "Give every SEATED connected player their own view of the room.
 
    The ONLY place game state reaches a socket. One `view-for` per player id —
-   never a shared payload, never raw state."
+   never a shared payload, never raw state.
+
+   Seated, because a socket leaves `:sinks` when it CLOSES and not when its
+   player leaves the room. Without that filter the commit recording
+   `:player/left` sent the departing player one last view of the room they had
+   just walked out of — pointless, mildly wrong (it is a snapshot of a table they
+   are no longer at), and the reason leaving took two clicks: the client treated
+   an arriving view as proof it was in a room. The client now refuses views it
+   has no seat for as well; a bug reachable from both ends is worth closing at
+   both, since either fix alone leaves the other half latent."
   [ctx r]
-  (doseq [pid (keys (:sinks r))]
-    (send-view! ctx r pid)))
+  (let [seated (:players (:state r))]
+    (doseq [pid (keys (:sinks r))
+            :when (contains? seated pid)]
+      (send-view! ctx r pid))))
 
 ;; ---------------------------------------------------------------- commit ---
 

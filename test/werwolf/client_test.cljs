@@ -36,13 +36,55 @@
               because app-db is what re-frame-10x happily prints to the console"
       (is (not (contains? (:me db') :token))))))
 
+(def seated
+  "A db holding a seat, which is the precondition for a view meaning anything."
+  (apply* db {:type :server/welcome :room-id "ABCD" :player-id 0
+              :host? true :token "t"}))
+
 (deftest views-replace-state-but-never-go-backwards
   (let [v1 {:type :room/view :seq 5 :view {:phase :night}}
         v2 {:type :room/view :seq 9 :view {:phase :discussion}}]
-    (is (= :discussion (get-in (apply* db v1 v2) [:view :phase])))
+    (is (= :discussion (get-in (apply* seated v1 v2) [:view :phase])))
     (testing "an older view arriving late must not overwrite a newer one —
               the room broadcasts outside a single atomic step, so this happens"
-      (is (= :discussion (get-in (apply* db v2 v1) [:view :phase]))))))
+      (is (= :discussion (get-in (apply* seated v2 v1) [:view :phase]))))))
+
+(deftest a-view-without-a-seat-is-not-a-room
+
+  (testing "the server drops a socket from a room's :sinks when it CLOSES, not
+            when the player leaves, so the commit recording :player/left still
+            broadcasts one last view to the player who just left. A view used to
+            set :screen :room unconditionally, which put them straight back into
+            the room they had walked out of — leaving took two clicks, and the
+            second only worked because by then there was nothing left to send."
+    (let [after-leave (assoc db :screen :landing :me nil)
+          trailing    {:type :room/view :seq 99 :view {:phase :discussion}}
+          db'         (apply* after-leave trailing)]
+      (is (= :landing (:screen db')) "a trailing view must not re-enter the room")
+      (is (nil? (:view db')) "nor install state for a room we are not in"))))
+
+(deftest a-fresh-room-is-not-judged-by-the-last-rooms-sequence
+  (testing "every room numbers its views from its own beginning, so a high-water
+            mark carried across would silently reject the new room's views and
+            leave you on an empty room screen"
+    (let [long-game (apply* seated {:type :room/view :seq 400 :view {:phase :night}})
+          rejoined  (apply* long-game
+                            {:type :server/welcome :room-id "WXYZ" :player-id 1
+                             :host? false :token "t2"}
+                            {:type :room/view :seq 2 :view {:phase :lobby}})]
+      (is (= "WXYZ" (:room-id (:me rejoined))))
+      (is (= :lobby (get-in rejoined [:view :phase]))
+          "the new room's view was accepted despite a lower seq")
+      (is (= 2 (:view/seq rejoined))))))
+
+(deftest leaving-clears-the-sequence-too
+  (testing "otherwise the reset is incomplete and the next room inherits it"
+    (let [played (apply* seated {:type :room/view :seq 77 :view {:phase :vote}})
+          out    (:db (ev/leave-fx {:db played} nil))]
+      (is (= :landing (:screen out)))
+      (is (nil? (:me out)))
+      (is (nil? (:view out)))
+      (is (nil? (:view/seq out))))))
 
 (deftest chat-history-replaces-and-live-chat-appends
   (let [db' (apply* db {:type :room/chat-history

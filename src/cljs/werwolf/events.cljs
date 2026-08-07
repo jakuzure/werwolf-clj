@@ -28,6 +28,11 @@
    :screen      :landing
    :me          nil          ; {:room-id :player-id :host?} from :server/welcome
    :view        nil          ; the server's redacted state — the only game truth
+   ;; Which view we last accepted, so an out-of-order frame cannot overwrite a
+   ;; newer one. Listed here — and therefore reset on leave — because it is
+   ;; PER-ROOM: a new room starts its own sequence, and a stale high-water mark
+   ;; from the last game would silently drop every view of the next one.
+   :view/seq    nil
    :chat        []
    :rooms       []          ; joinable lobbies, from :server/rooms
    :error       nil
@@ -181,16 +186,21 @@
 
 (rf/reg-event-fx ::send-chat send-chat-fx)
 
-(rf/reg-event-fx
- ::leave
- ;; Also the way out of a finished game. Landing on the landing screen with a
- ;; stale room list would mean the first thing you see after a game is the game
- ;; you just left, so ask again on the way out.
- (fn [{:keys [db]} _]
-   {:db (merge db (select-keys initial-db [:screen :me :view :chat :error]))
-    ::ws/forget-seat true
-    :dispatch [::refresh-rooms]
-    ::ws/send {:type :client/command :cmd {:type :leave}}}))
+(defn leave-fx
+  "Also the way out of a finished game. Landing on the landing screen with a
+   stale room list would mean the first thing you see after a game is the game
+   you just left, so ask again on the way out.
+
+   Named and public so the reset is testable — it has to be COMPLETE, and it
+   was not: `:view/seq` stayed behind and rejected the next room's views."
+  [{:keys [db]} _]
+  {:db (merge db (select-keys initial-db
+                              [:screen :me :view :view/seq :chat :error]))
+   ::ws/forget-seat true
+   :dispatch [::refresh-rooms]
+   ::ws/send {:type :client/command :cmd {:type :leave}}})
+
+(rf/reg-event-fx ::leave leave-fx)
 
 ;; ------------------------------------------------------------------- inbound ---
 
@@ -217,14 +227,36 @@
   (assoc db
          :screen :room
          :error nil
+         ;; A new room numbers its views from its own beginning, so the previous
+         ;; room's high-water mark has to go. Keeping it meant leaving a long game
+         ;; and joining a fresh one dropped every view of the new room as "old",
+         ;; leaving you on a room screen with nothing on it.
+         :view/seq nil
+         :view nil
          :me {:room-id room-id :player-id player-id :host? host?}))
 
 (defmethod handle-server :room/view [db {:keys [view] n :seq}]
-  ;; Views may legitimately arrive out of order, so an older one must never
-  ;; overwrite a newer. This is precisely what :seq is for.
-  (if (and n (:view/seq db) (< n (:view/seq db)))
-    db
-    (assoc db :view view :view/seq n :screen :room)))
+  ;; A view only means anything if we hold a seat, and this guard is why leaving
+  ;; takes one click instead of two.
+  ;;
+  ;; The server drops a socket from a room's `:sinks` when it CLOSES, not when
+  ;; the player leaves — so the commit that records `:player/left` still
+  ;; broadcasts one final view to the player who just left. This method used to
+  ;; set `:screen :room` unconditionally, so that trailing frame put them
+  ;; straight back into the room they had just walked out of; the second click
+  ;; only worked because by then there was nothing left to send.
+  ;;
+  ;; Checking `:me` rather than filtering on the message is deliberate: it also
+  ;; covers any frame still in flight for the previous room, which is the same
+  ;; bug wearing a different hat. `:server/welcome` always arrives before any
+  ;; view for that socket (see protocol/handle :client/join, which welcomes then
+  ;; attaches), so a legitimate view is never dropped by this.
+  (cond
+    (nil? (:me db)) db
+    ;; Views may legitimately arrive out of order, so an older one must never
+    ;; overwrite a newer. This is precisely what :seq is for.
+    (and n (:view/seq db) (< n (:view/seq db))) db
+    :else (assoc db :view view :view/seq n :screen :room)))
 
 (defmethod handle-server :room/chat [db msg]
   (update db :chat (fn [c] (vec (take-last 300 (conj (vec c) msg))))))
@@ -239,7 +271,10 @@
 
 (defmethod handle-server :server/error [db {:keys [code]}]
   (cond-> (assoc db :error code)
-    (fatal-errors code) (assoc :screen :landing :me nil :view nil :chat [])))
+    ;; :view/seq goes with the rest of it — a discarded session must not leave a
+    ;; sequence number behind to reject the next room's views.
+    (fatal-errors code)
+    (assoc :screen :landing :me nil :view nil :view/seq nil :chat [])))
 
 (rf/reg-event-fx
  ::server-message

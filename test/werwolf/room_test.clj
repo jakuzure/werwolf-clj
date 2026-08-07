@@ -222,6 +222,25 @@
                 would let the leaver's reconnect token drive a stranger"
         (is (= 3 (:player-id (room/join! ctx room-id {:name "Dana"}))))))))
 
+(deftest a-player-who-leaves-gets-no-further-view
+  (with-ctx [ctx]
+    (let [{:keys [room-id seats]} (table ctx 3)
+          leaver (second seats)
+          stayer (first seats)
+          before-leaver (count (views (:sink leaver)))
+          before-stayer (count (views (:sink stayer)))]
+      (is (:ok? (room/submit! ctx room-id (:pid leaver) {:type :leave})))
+      (testing "a socket leaves :sinks when it CLOSES, not when its player
+                leaves, so the commit recording :player/left used to broadcast
+                one last view to the player who had just walked out. Harmless
+                looking, but the client treated an arriving view as proof it was
+                in a room, so leaving took two clicks."
+        (is (= before-leaver (count (views (:sink leaver))))
+            "the departing player received no view of the room they left"))
+      (testing "while everyone still seated is told that they are gone"
+        (is (> (count (views (:sink stayer))) before-stayer))
+        (is (not (contains? (:players (last-view (:sink stayer))) (:pid leaver))))))))
+
 (deftest joining-a-room-that-does-not-exist-is-an-error-not-a-crash
   (with-ctx [ctx]
     (is (= {:error :no-such-room} (room/join! ctx "ZZZZ" {:name "Nobody"})))
