@@ -55,10 +55,11 @@
 
 (def client-message-types
   #{:client/create :client/join :client/resume :client/command :client/chat
-    :client/ping :client/rooms})
+    :client/ping :client/rooms :client/media})
 
 (def server-message-types
   #{:server/hello :server/welcome :server/error :server/pong :server/rooms
+    :server/media
     :room/view :room/chat :room/chat-history})
 
 ;; ------------------------------------------------------------------ schemas ---
@@ -140,7 +141,18 @@
    ;; and needs no seat: it is the one thing an unseated socket may ask for.
    [:client/rooms
     [:map {:closed true}
-     [:type [:= :client/rooms]]]]])
+     [:type [:= :client/rooms]]]]
+
+   ;; "Where do I join the call?" — answered with a short-lived SFU token for
+   ;; THIS socket's seat, or with audio-disabled when there is no provider.
+   ;;
+   ;; Takes no arguments, and that is the security property: a client cannot ask
+   ;; for a token naming a room or a participant, so it cannot mint itself a
+   ;; microphone in somebody else's game. The server reads the seat from its own
+   ;; socket index, the same way :client/chat learns who is speaking.
+   [:client/media
+    [:map {:closed true}
+     [:type [:= :client/media]]]]])
 
 (def ^:private client-validator (m/validator ClientMessage))
 (def ^:private client-explainer (m/explainer ClientMessage))

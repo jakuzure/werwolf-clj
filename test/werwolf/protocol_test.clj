@@ -7,7 +7,10 @@
   (:require [clojure.java.io :as io]
             [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]
+            [buddy.sign.jwt :as jwt]
             [werwolf.i18n.core :as i18n]
+            [werwolf.livekit :as livekit]
+            [werwolf.media :as media]
             [werwolf.proto :as proto]
             [werwolf.protocol :as protocol]
             [werwolf.room :as room]
@@ -379,3 +382,80 @@
     (let [s (sock)]
       (protocol/dispatch deps s {:type :client/ping})
       (is (= [{:type :server/pong}] (got s))))))
+
+;; ------------------------------------------------------------------- media ---
+;;
+;; Audio is a plain group call — every player may talk, always — so what matters
+;; here is not a permission table but who can obtain a credential at all.
+
+(def livekit-cfg
+  {:provider :livekit :url "ws://localhost:7880"
+   :api-key "devkey" :api-secret "secret"})
+
+(defn- with-media [deps cfg]
+  (assoc deps :media (:provider (livekit/provider cfg))))
+
+(deftest a-seated-player-gets-credentials-for-their-own-room
+  (with-deps [deps]
+    (let [deps (with-media deps livekit-cfg)
+          s    (seat! deps {:type :client/create :name "Anna" :locale :de})
+          room (:room-id (last-of s :server/welcome))]
+      (protocol/dispatch deps s {:type :client/media})
+      (let [m (last-of s :server/media)]
+        (is (true? (:enabled? m)))
+        (is (= (media/room-name room) (:room m)))
+        (is (= "ws://localhost:7880" (:url m)))
+        (testing "and the token grants exactly that room"
+          (is (= (media/room-name room)
+                 (get-in (jwt/unsign (:token m) "secret" {:alg :hs256})
+                         [:video :room]))))))))
+
+(deftest a-media-token-is-never-broadcast
+  (testing "it is a bearer credential for a microphone, so it belongs to one
+            socket — a token in a broadcast would hand every player at the table
+            the ability to speak as somebody else"
+    (with-deps [deps]
+      (let [deps (with-media deps livekit-cfg)
+            host (seat! deps {:type :client/create :name "Anna" :locale :de})
+            room (:room-id (last-of host :server/welcome))
+            guest (seat! deps {:type :client/join :room-id room :name "Bob"})]
+        (protocol/dispatch deps guest {:type :client/media})
+        (is (some? (last-of guest :server/media)))
+        (is (empty? (of-type host :server/media))
+            "the host must not receive the guest's credential")
+        (testing "and no other frame anywhere carries a token-looking string"
+          (is (empty? (filterv #(and (not= :server/media (:type %))
+                                     (not= :server/welcome (:type %))
+                                     (str/includes? (pr-str %) "eyJ"))
+                               (got guest)))))))))
+
+(deftest an-unseated-socket-cannot-obtain-a-microphone
+  (testing "the message carries no room and no identity precisely so that this is
+            the only possible answer: a client cannot ask for a token naming a
+            game it is not in"
+    (with-deps [deps]
+      (let [deps (with-media deps livekit-cfg)
+            s (sock)]
+        (protocol/on-open deps s)
+        (protocol/dispatch deps s {:type :client/media})
+        (is (= [:not-in-room] (codes s)))
+        (is (empty? (of-type s :server/media)))))))
+
+(deftest with-no-provider-audio-is-off-rather-than-broken
+  (testing "a text-only server is a supported configuration, not a failure, so
+            the client is told audio is off instead of shown an error"
+    (with-deps [deps]
+      (let [s (seat! deps {:type :client/create :name "Anna" :locale :de})]
+        (protocol/dispatch deps s {:type :client/media})
+        (let [m (last-of s :server/media)]
+          (is (= {:type :server/media :enabled? false} m))
+          (is (empty? (errors s))))))))
+
+(deftest client-media-typechecks-and-takes-no-arguments
+  (is (proto/valid-client-message? {:type :client/media}))
+  (testing "a room or identity smuggled in must be rejected by the schema, not
+            merely ignored by the handler"
+    (is (not (proto/valid-client-message?
+              {:type :client/media :room "werwolf-zzzz"})))
+    (is (not (proto/valid-client-message?
+              {:type :client/media :identity "werwolf-abcd-p0"})))))

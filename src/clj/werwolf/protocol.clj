@@ -16,6 +16,7 @@
    with atoms for sockets, asserting exactly what a client would have received."
   (:require [clojure.string :as str]
             [clojure.tools.logging :as log]
+            [werwolf.media :as media]
             [werwolf.proto :as proto]
             [werwolf.room :as room]
             [werwolf.token :as token]))
@@ -123,6 +124,30 @@
     (let [res (room/chat! rooms room-id pid text)]
       (when-let [code (:error res)]
         (error! deps sock code (:detail res))))
+    (error! deps sock :not-in-room {})))
+
+(defmethod handle :client/media
+  ;; Hand this socket the credentials for its own seat's call, or say that audio
+  ;; is off. Answered to the asker alone and never broadcast: a join token is a
+  ;; bearer credential for a microphone, so it belongs to exactly one socket.
+  ;;
+  ;; The message carries no room and no identity — both are read from the
+  ;; registry's socket index — so there is nothing a client could put in it to
+  ;; obtain a token for a game it is not in.
+  ;;
+  ;; `:enabled? false` rather than an error when there is no provider: a text-only
+  ;; server is a supported configuration, not a failure, and a client that
+  ;; treated it as an error would show a banner on every correctly-running v1.
+  [{:keys [rooms media] :as deps} sock _]
+  (if-let [[room-id pid] (room/whereis rooms sock)]
+    (let [nm (get-in (room/state-of rooms room-id) [:players pid :name])
+          cr (media/credentials (or media (media/noop))
+                                {:room-id room-id :player-id pid
+                                 :display-name nm
+                                 :now-ms (System/currentTimeMillis)})]
+      (reply! deps sock (if cr
+                          (assoc cr :type :server/media :enabled? true)
+                          {:type :server/media :enabled? false})))
     (error! deps sock :not-in-room {})))
 
 ;; ------------------------------------------------------------- entry points ---

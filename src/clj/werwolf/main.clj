@@ -13,6 +13,7 @@
             [org.httpkit.server :as hk]
             [werwolf.config :as config]
             [werwolf.http :as http]
+            [werwolf.livekit :as livekit]
             [werwolf.room :as room]
             [werwolf.store :as store]
             [werwolf.timer :as timer]
@@ -22,11 +23,12 @@
 
 (defn system-config
   "Build the integrant config from the loaded application config."
-  [{:keys [server db tokens game]}]
+  [{:keys [server db tokens game media]}]
   {::db      {:config db}
    ::rooms   {:db (ig/ref ::db) :game game}
    ::timer   {:rooms (ig/ref ::rooms)}
-   ::handler {:rooms (ig/ref ::rooms) :tokens tokens}
+   ::media   {:config media}
+   ::handler {:rooms (ig/ref ::rooms) :tokens tokens :media (ig/ref ::media)}
    ::server  {:handler (ig/ref ::handler)
               :port    (:port server)
               :host    (:host server)}})
@@ -57,7 +59,22 @@
 (defmethod ig/halt-key! ::timer [_ handle]
   (timer/stop! handle))
 
-(defmethod ig/init-key ::handler [_ {:keys [rooms tokens]}]
+(defmethod ig/init-key ::media [_ {:keys [config]}]
+  ;; A misconfigured voice provider must not stop a game that can be played
+  ;; without it, so this falls back to NoopMedia and says why at a volume matched
+  ;; to the mistake: asking for LiveKit and forgetting the keys is a warning,
+  ;; because the operator clearly wanted audio and will not otherwise find out.
+  (let [{:keys [provider reason]} (livekit/provider config)]
+    (case reason
+      :ok (log/info "media: livekit at" (:url config))
+      :disabled (log/info "media: none (text only)")
+      :incomplete-config
+      (log/warn (str "media: MEDIA_PROVIDER=livekit but LIVEKIT_URL / "
+                     "LIVEKIT_API_KEY / LIVEKIT_API_SECRET are incomplete — "
+                     "audio is OFF")))
+    provider))
+
+(defmethod ig/init-key ::handler [_ {:keys [rooms tokens media]}]
   (when (token/insecure-secret? tokens)
     ;; Loud, but not fatal: refusing to boot would mean a typo'd env var locks
     ;; you out of your own server, and the threat model here is a friend group,
@@ -66,6 +83,7 @@
                     "forgeable. Set TOKEN_SECRET before exposing this server.")))
   (http/handler {:rooms rooms
                  :tokens tokens
+                 :media media
                  :send! ws/send!}))
 
 (defmethod ig/init-key ::server [_ {:keys [handler port host]}]

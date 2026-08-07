@@ -1,0 +1,35 @@
+# LiveKit for LOCAL development only. Never for the Hetzner box.
+#
+#   docker compose -f deploy/livekit.dev.yml up -d
+#
+# `--dev` means placeholder credentials (devkey / secret) printed in the log and
+# baked into every LiveKit example on the internet. That is exactly right here and
+# catastrophic in production, which is why this is a separate file from
+# docker-compose.yml rather than a profile inside it: there is no flag to
+# accidentally pass.
+#
+# Why local rather than LiveKit Cloud, which the plan originally suggested for
+# getting the permission table right: on localhost WebRTC uses host ICE
+# candidates, so there is no NAT, no TURN, no UDP port range and no firewall to
+# get wrong — the same isolation Cloud buys, with no third-party processor of
+# player audio and no participant-minute budget. The awkward infrastructure (the
+# 50000-60000/UDP range, coturn on 443) has to be faced on the real deployment
+# either way; Cloud defers that work rather than removing it.
+
+name: werwolf-livekit
+
+services:
+  livekit:
+    image: livekit/livekit-server:v1.13.5
+    # Pinned. `latest` would silently change the server API under a permission
+    # table that is tested against it.
+    command: --dev --bind 0.0.0.0
+    restart: unless-stopped
+    ports:
+      # Signaling + the whole HTTP/Twirp server API.
+      - "7880:7880"
+      # TCP fallback for media when UDP is blocked. Irrelevant on localhost,
+      # published anyway so a phone on the same wifi can join the dev room.
+      - "7881:7881"
+      # RTC over UDP. A single port suffices in dev; production wants a range.
+      - "7882:7882/udp"
