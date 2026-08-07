@@ -51,7 +51,27 @@
 
 (rf/reg-event-db ::tick (fn [db _] (assoc db :now (.getTime (js/Date.)))))
 
+;; Two ways to write a form field, and the difference matters to the input.
+;;
+;; ::form-set is what the input itself dispatches as you type. It must NOT bump
+;; the generation counter: the whole point is that the element already shows `v`,
+;; and app-db is only catching up.
+;;
+;; ::form-put is a write from anywhere else — filling in a code you tapped,
+;; clearing the chat box after sending. It bumps the counter, which is the signal
+;; a `field` needs in order to drop its local draft and show what it was handed.
+;; Without it, clearing :text after a send left the sent message sitting in the
+;; box, because the draft outranks app-db while you are typing.
 (rf/reg-event-db ::form-set (fn [db [_ k v]] (assoc-in db [:form k] v)))
+
+(defn form-put
+  "Programmatic write: set the value AND bump the field's generation."
+  [db k v]
+  (-> db
+      (assoc-in [:form k] v)
+      (update-in [:form/gen k] (fnil inc 0))))
+
+(rf/reg-event-db ::form-put (fn [db [_ k v]] (form-put db k v)))
 
 (rf/reg-event-db ::dismiss-error (fn [db _] (assoc db :error nil)))
 
@@ -92,7 +112,9 @@
   (let [nm (.trim (get-in db [:form :name] ""))]
     (if (empty? nm)
       {:db (assoc db :error :name-required)}
-      {:db (-> db (assoc :error nil) (assoc-in [:form :code] code))
+      ;; form-put so the code field actually shows what you tapped, even if you
+      ;; had started typing a different one by hand.
+      {:db (-> db (assoc :error nil) (form-put :code code))
        ::ws/send {:type :client/join :room-id code :name nm
                   :locale (:locale db :de)}})))
 
@@ -145,13 +167,19 @@
    {:db (assoc db :locale locale)
     ::ws/send {:type :client/command :cmd {:type :set-locale :locale locale}}}))
 
-(rf/reg-event-fx
- ::send-chat
- (fn [{:keys [db]} _]
-   (let [text (.trim (get-in db [:form :text] ""))]
-     (when (seq text)
-       {:db (assoc-in db [:form :text] "")
-        ::ws/send {:type :client/chat :text text}}))))
+(defn send-chat-fx
+  "Named and public so the clearing behaviour is testable without a browser —
+   the same reason create-room-fx and join-room-fx are."
+  [{:keys [db]} _]
+  (let [text (.trim (get-in db [:form :text] ""))]
+    (when (seq text)
+      ;; form-put, not assoc-in: the chat box normally HAS focus when this fires,
+      ;; and the input's local draft outranks app-db while typing. A plain assoc
+      ;; left the message you just sent sitting in the box.
+      {:db (form-put db :text "")
+       ::ws/send {:type :client/chat :text text}})))
+
+(rf/reg-event-fx ::send-chat send-chat-fx)
 
 (rf/reg-event-fx
  ::leave

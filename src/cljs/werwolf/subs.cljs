@@ -22,6 +22,14 @@
  ;; be handed nil. Do NOT read non-text state through here — see ::pending.
  (fn [form [_ k]] (get form k "")))
 
+(rf/reg-sub
+ ::form-gen
+ ;; How many times something OTHER than typing has written this field. A text
+ ;; input keeps a local draft while you type — see `views/field`, and the Android
+ ;; IME bug it exists for — and this counter is how it learns that app-db was
+ ;; changed out from under it and the draft should step aside.
+ (fn [db [_ k]] (get-in db [:form/gen k] 0)))
+
 (defn armed-action
   "The action the player has armed for targeting, or nil.
 
@@ -61,6 +69,16 @@
 (rf/reg-sub ::votes    :<- [::view] (fn [v _] (or (:votes v) {})))
 (rf/reg-sub ::nominations :<- [::view] (fn [v _] (or (:nominations v) #{})))
 (rf/reg-sub ::known-roles :<- [::view] (fn [v _] (or (:known-roles v) {})))
+
+;; Which ROLE the narrator is calling right now. Public by design — a human
+;; narrator says it out loud ("Werwölfe, wacht auf") — and which player holds it
+;; is not in the view. This is most of the answer to "whose turn is it?" at night.
+(rf/reg-sub ::night-cursor :<- [::view] (fn [v _] (:night-cursor v)))
+
+;; Set only when THIS player is the one who owes a reaction — the Jäger who has
+;; just been told he is dead and still has a shot. The table is waiting on them
+;; specifically, so it outranks every other banner.
+(rf/reg-sub ::awaiting-reaction :<- [::view] (fn [v _] (:awaiting-reaction v)))
 
 (rf/reg-sub ::db-locale (fn [db _] (:locale db)))
 

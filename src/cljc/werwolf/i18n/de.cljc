@@ -128,6 +128,17 @@
    :game/paused         "Zeit angehalten"
    :game/new-round      "Zurück — neue Runde"
    :game/over-hint      "Alle Rollen sind jetzt aufgedeckt."
+   :game/dead-hint      "Du bist tot — du schaust nur noch zu."
+
+   ;; ------------------------------------------------------------- turn ---
+   ;;
+   ;; The banner that says whether the game is waiting for YOU. Its own group
+   ;; because "warte auf die anderen" already exists as :game/waiting and these
+   ;; are the other half of that sentence.
+   :turn/yours   "Du bist dran"
+   :turn/hint    "Wähle unten eine Aktion"
+   :turn/urgent  "Alle warten auf dich"
+   :turn/calling (fn [role] (str "Der Spielleiter ruft: " role))
 
    ;; --------------------------------------------------------- targeting ---
    :target/pick-one   "Wähle ein Ziel"

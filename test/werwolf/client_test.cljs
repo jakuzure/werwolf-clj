@@ -124,6 +124,48 @@
       (is (= "ABCD" (get-in out [:db :form :code]))
           "the code field follows the tap, so the screen agrees with itself"))))
 
+;; ------------------------------------------------------- typing on a phone ---
+
+(deftest typing-does-not-bump-a-field-generation-but-writing-to-it-does
+  (testing "A text input keeps a LOCAL draft while you type, because rf/dispatch
+            is asynchronous and a fully controlled :value lags the DOM by a tick.
+            React writes that stale value back, and on Android it lands inside an
+            active IME composition: accepting a keyboard suggestion appended
+            instead of replacing, so typing 'Greta' and tapping the suggestion
+            produced 'GrGrGreta'.
+
+            The generation counter is how the draft learns to step aside. Typing
+            must NOT bump it — the element already shows the character, app-db is
+            merely catching up — and a programmatic write MUST, or the draft
+            outranks it forever."
+    (let [typed (ev/form-put db :text "")          ; establish a baseline
+          gen0  (get-in typed [:form/gen :text])]
+      (testing "typing leaves the generation alone"
+        (let [after (reduce (fn [d ch] (assoc-in d [:form :text] ch))
+                            typed ["G" "Gr" "Gre" "Gret" "Greta"])]
+          (is (= gen0 (get-in after [:form/gen :text])))))
+      (testing "a programmatic write bumps it, so the input adopts the new value"
+        (is (= (inc gen0) (get-in (ev/form-put typed :text "") [:form/gen :text]))))
+      (testing "and each write bumps it again — a second clear is still a signal"
+        (is (= (+ gen0 2) (-> typed
+                              (ev/form-put :text "")
+                              (ev/form-put :text "")
+                              (get-in [:form/gen :text]))))))))
+
+(deftest sending-a-message-clears-the-box-even-though-it-has-focus
+  (testing "the chat input normally HAS focus when Enter fires, so its local
+            draft outranks app-db. Clearing with a plain assoc left the message
+            you just sent sitting in the box."
+    (let [typed (assoc-in db [:form :text] "wer war das?")
+          out   (ev/send-chat-fx {:db typed} nil)]
+      (is (= "wer war das?" (:text (:werwolf.ws/send out))) "it was sent")
+      (is (= "" (get-in out [:db :form :text])) "and the field was cleared")
+      (is (pos? (get-in out [:db :form/gen :text]))
+          "with a generation bump, which is what makes the draft yield"))))
+
+(deftest a-blank-message-is-not-sent-and-clears-nothing
+  (is (nil? (ev/send-chat-fx {:db (assoc-in db [:form :text] "   ")} nil))))
+
 ;; ------------------------------------------------------------ where we dial ---
 
 (deftest the-socket-follows-the-page-never-localhost

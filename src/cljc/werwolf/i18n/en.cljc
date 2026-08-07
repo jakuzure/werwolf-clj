@@ -132,6 +132,20 @@
    :game/paused         "Clock paused"
    :game/new-round      "Back — new game"
    :game/over-hint      "Every role is revealed now."
+   :game/dead-hint      "You are dead — you are only watching now."
+
+   ;; ------------------------------------------------------------- turn ---
+   ;;
+   ;; The banner that says whether the game is waiting for YOU. Its own group
+   ;; because "waiting for the others" already exists as :game/waiting and these
+   ;; are the other half of that sentence.
+   ;;
+   ;; "Spielleiter" stays German for the same reason the role names do: a mixed
+   ;; table has to be able to say it out loud and be understood by everyone at it.
+   :turn/yours   "Your turn"
+   :turn/hint    "Choose an action below"
+   :turn/urgent  "Everyone is waiting for you"
+   :turn/calling (fn [role] (str "The Spielleiter calls: " role))
 
    ;; --------------------------------------------------------- targeting ---
    :target/pick-one   "Choose a target"

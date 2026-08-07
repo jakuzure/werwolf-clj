@@ -21,6 +21,7 @@
      same is a log nobody reads."
   (:require [clojure.string :as str]
             [re-frame.core :as rf]
+            [reagent.core :as r]
             [werwolf.events :as ev]
             [werwolf.i18n.core :as i18n]
             [werwolf.proto :as proto]
@@ -56,15 +57,53 @@
              :on-click on-click}
     label]))
 
-(defn- field [k placeholder & [{:keys [on-enter maxlength]}]]
-  [:input {:class "w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700
-                   focus:border-indigo-500 outline-none text-slate-100"
-           :value @(rf/subscribe [::sub/form-field k])
-           :placeholder placeholder
-           :maxLength (or maxlength 24)
-           :on-change #(rf/dispatch [::ev/form-set k (.. % -target -value)])
-           :on-key-down #(when (and on-enter (= "Enter" (.-key %)))
-                           (rf/dispatch on-enter))}])
+(defn- field
+  "A text input whose displayed value comes from a LOCAL atom while the player is
+   typing, and from app-db only when something else writes the field.
+
+   That split is the fix for a real Android bug, not a style preference.
+   `rf/dispatch` is asynchronous, so a fully controlled input's `:value` lags the
+   DOM by at least a tick. React reconciles the difference by writing the STALE
+   value back into the element — harmless on a desktop beyond the odd cursor
+   jump, but on Android it lands in the middle of an active IME composition. The
+   composing region's offsets no longer match the text, so accepting a keyboard
+   suggestion APPENDS instead of replacing: typing `Greta` and tapping the
+   suggestion produced `GrGrGreta`.
+
+   Setting `draft` synchronously in `:on-change` means the value reagent renders
+   is already exactly what the element contains, so React has nothing to write
+   and the composition is left alone. app-db still receives every keystroke — it
+   is what the send buttons and Enter read — it just stops being what the DOM is
+   told to display mid-word.
+
+   `:gen` is how a PROGRAMMATIC write still wins. Code that fills a field in or
+   clears it (`::ev/form-put`) bumps a counter; the draft records the counter it
+   was typed against, so a mismatch means somebody else moved the field and the
+   draft steps aside. Comparing counters rather than values is deliberate: the
+   value is expected to differ during the dispatch gap, which is the whole
+   problem, so a value comparison would discard the draft on every keystroke."
+  [_k _placeholder & _opts]
+  (let [draft (r/atom nil)]                       ; {:typed s :gen n} | nil
+    (fn [k placeholder & [{:keys [on-enter maxlength]}]]
+      (let [committed @(rf/subscribe [::sub/form-field k])
+            gen       @(rf/subscribe [::sub/form-gen k])
+            d         @draft
+            ;; "" is TRUTHY in ClojureScript, which is what makes an emptied
+            ;; field survive here instead of snapping back to app-db. The same
+            ;; fact caused the phantom target dialog when it was not intended;
+            ;; here it is.
+            value     (if (and d (= gen (:gen d))) (:typed d) committed)]
+        [:input {:class "w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700
+                         focus:border-indigo-500 outline-none text-slate-100"
+                 :value value
+                 :placeholder placeholder
+                 :maxLength (or maxlength 24)
+                 :on-change (fn [e]
+                              (let [v (.. e -target -value)]
+                                (reset! draft {:typed v :gen gen})
+                                (rf/dispatch [::ev/form-set k v])))
+                 :on-key-down #(when (and on-enter (= "Enter" (.-key %)))
+                                 (rf/dispatch on-enter))}]))))
 
 (defn- pill [label tone]
   [:span {:class (str "px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide "
@@ -206,6 +245,58 @@
          " — " (t :target/hint)]]
        [btn (t :target/cancel) disarm! {:tone :quiet}]])))
 
+(defn- turn-banner
+  "One line, high on the screen, answering 'is the game waiting for ME?'.
+
+   The most common complaint from the playtest was not knowing whose turn it was.
+   Everything needed was already on the client — `::can-act?`, `:night-cursor`,
+   `:awaiting-reaction` — and none of it was rendered: the phase header said
+   \"Nacht\" and left every player to guess whether that meant them.
+
+   Three states, in order of who is being waited on:
+
+   * You owe a reaction. The whole table is stopped on you, so this is red.
+   * You have something you may do. Green, and it says so in words rather than
+     leaving you to infer it from a button being enabled.
+   * You are waiting. Say what for — the role being called, or the names still
+     to answer — because unexplained silence is what players read as a bug.
+
+   Deliberately says nothing at :game-over and in the lobby: there is no turn to
+   take, and a banner that is always present is a banner nobody reads."
+  []
+  (let [phase    @(rf/subscribe [::sub/phase])
+        can-act? @(rf/subscribe [::sub/can-act?])
+        reaction @(rf/subscribe [::sub/awaiting-reaction])
+        cursor   @(rf/subscribe [::sub/night-cursor])
+        waiting  @(rf/subscribe [::sub/waiting-for])
+        me       @(rf/subscribe [::sub/me-view])]
+    (when-not (#{:lobby :game-over} phase)
+      (let [[tone headline detail]
+            (cond
+              reaction
+              ["border-rose-500 bg-rose-950/60 text-rose-100"
+               (t :turn/yours) (t :turn/urgent)]
+
+              can-act?
+              ["border-emerald-500 bg-emerald-950/50 text-emerald-100"
+               (t :turn/yours) (t :turn/hint)]
+
+              :else
+              ["border-slate-700 bg-slate-900/60 text-slate-400"
+               (t :game/waiting)
+               (cond
+                 ;; At night the role being called is the honest answer, and the
+                 ;; only one available: naming the players still to act would leak
+                 ;; which roles are alive, which is why ::waiting-for skips night.
+                 (and (= :night phase) cursor) (t :turn/calling (role-name cursor))
+                 (seq waiting) (str (t :badge/waiting-for) ": " (str/join ", " waiting))
+                 ;; A dead player is not being waited on and never will be, so do
+                 ;; not imply their input is pending.
+                 (false? (:alive? me)) (t :game/dead-hint))])]
+        [:div {:class (str "rounded-xl border-2 px-4 py-3 " tone)}
+         [:div {:class "font-bold"} headline]
+         (when detail [:div {:class "text-sm opacity-90"} detail])]))))
+
 ;; ------------------------------------------------------------- player cards ---
 
 (defn- vote-count [votes id]
@@ -286,7 +377,11 @@
       [:div {:class "flex flex-wrap gap-2"}
        (for [a plain]
          ^{:key (str a)}
-         [btn (action-name a)
+         ;; The ellipsis marks the buttons that do NOT act yet — they arm a
+         ;; choice and wait for a player to be picked. Without it an immediate
+         ;; "I'm done" and a two-step "Accuse…" looked identical, so a tap that
+         ;; only changed the board's mode read as a tap that did nothing.
+         [btn (str (action-name a) (when (needs-target? a) " …"))
           (if (needs-target? a)
             #(if (= armed a) (disarm!) (arm! a))
             #(rf/dispatch [::ev/act a]))
@@ -622,19 +717,48 @@
          [btn (t :game/new-round) #(rf/dispatch [::ev/leave])])])))
 
 (defn game []
+  ;; On a phone this is one column, and its ORDER is a design decision rather
+  ;; than a side effect of the desktop grid. It used to be: role, actions, GM
+  ;; console, then the whole player grid — which on a phone is one full-width
+  ;; card per seat, so at nine players the Chronik sat two or three screens down,
+  ;; below the board. The only record of what the night did was the last thing
+  ;; you could reach, and the chat was easier to find than the story.
+  ;;
+  ;; Now it reads: where are we, is it my turn, who am I, what can I do, what
+  ;; just happened, the board, then talk.
+  ;;
+  ;; `contents` is what makes that possible without touching the desktop layout.
+  ;; Below `lg` the two column wrappers are display:contents, so their children
+  ;; become direct flex items of this container and can be ordered individually;
+  ;; at `lg` they turn back into real columns, each with its own independent
+  ;; height, which is the two-column layout that was already there.
+  ;;
+  ;; If `display: contents` were ever not honoured, the wrappers stay ordinary
+  ;; boxes and the phone falls back to plain DOM order — which is the layout that
+  ;; shipped before this. Worth knowing: the failure mode is the old arrangement,
+  ;; not a broken one.
+  ;;
+  ;; `empty:hidden` is load-bearing, not decoration. Two of these panels render
+  ;; nothing most of the time — game-over except at the end, the GM console for
+  ;; everyone who is not host — and an empty flex item still consumes a `gap-4`.
+  ;; Without it every phone screen carried two mystery gaps.
   [:div {:class "space-y-4"}
    [phase-header]
    [target-prompt]
-   [:div {:class "grid lg:grid-cols-5 gap-4"}
-    [:div {:class "lg:col-span-3 space-y-4"}
-     [game-over-panel]
-     [me-panel]
-     [action-bar]
-     [gm-panel]
-     [player-grid]]
-    [:div {:class "lg:col-span-2 space-y-4"}
-     [log-panel]
-     [chat-panel]]]])
+   [:div {:class "flex flex-col gap-4 lg:grid lg:grid-cols-5 lg:gap-4"}
+    [:div {:class "contents lg:block lg:col-span-3 lg:space-y-4"}
+     [:div {:class "order-1 empty:hidden"} [game-over-panel]]
+     [:div {:class "order-3 empty:hidden"} [me-panel]]
+     [:div {:class "order-4 empty:hidden"} [action-bar]]
+     [:div {:class "order-5 empty:hidden"} [gm-panel]]
+     [:div {:class "order-7 empty:hidden"} [player-grid]]]
+    [:div {:class "contents lg:block lg:col-span-2 lg:space-y-4"}
+     ;; The turn banner is rendered in the RIGHT wrapper so that on desktop it
+     ;; heads the Chronik column, and on a phone `order-2` lifts it to just under
+     ;; the phase header — the first thing you see either way.
+     [:div {:class "order-2 empty:hidden"} [turn-banner]]
+     [:div {:class "order-6 empty:hidden"} [log-panel]]
+     [:div {:class "order-8 empty:hidden"} [chat-panel]]]]])
 
 ;; ---------------------------------------------------------------------- app ---
 
