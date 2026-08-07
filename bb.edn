@@ -83,9 +83,23 @@
            (fs/delete-tree d))}
 
   build:cljs
-  {:doc     "Compile optimized frontend"
+  {:doc     "Compile optimized frontend into a CLEAN output directory"
    :depends [npm-install]
-   :task    (shell "npx shadow-cljs release app")}
+   :task
+   ;; The delete is load-bearing. A release build writes main.js and leaves
+   ;; whatever the last DEV build put there — cljs-runtime/, 986 files and 30 MB
+   ;; of per-namespace output plus the .cljs/.cljc sources its source maps point
+   ;; at. shadow-cljs does not clean between targets, `resources` is on the
+   ;; classpath, so the uberjar packed all of it: a 45 MB jar to ship a 676 KB
+   ;; main.js, with the entire client and engine source inside it.
+   ;;
+   ;; Harmless at runtime — a release main.js is self-contained and never asks
+   ;; for cljs-runtime — which is exactly why it went unnoticed. Cleaning here
+   ;; rather than in `uberjar` means the invariant is "the release output dir
+   ;; contains only what the release build emitted", which is checkable by
+   ;; looking at it.
+   (do (fs/delete-tree "resources/public/js")
+       (shell "npx shadow-cljs release app"))}
 
   build:css
   {:doc     "Compile minified CSS"

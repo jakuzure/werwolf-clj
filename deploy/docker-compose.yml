@@ -1,0 +1,87 @@
+# Prod-parity locally, and the actual production topology on a single Hetzner
+# CX22. Two containers: the game server, and Caddy in front of it for TLS.
+#
+# Usage:
+#   bb docker                       # build werwolf-clj:latest (needs the uberjar)
+#   cp deploy/.env.example deploy/.env && $EDITOR deploy/.env
+#   docker compose -f deploy/docker-compose.yml up -d
+#
+# THE ONE SCALING RULE: room state is an in-memory atom plus a local SQLite
+# file, so there is exactly one app container and there is no rolling deploy.
+# Two would fight over the database file and serve two different halves of the
+# same game. `docker compose up -d` already stops the old container before
+# starting the new one, which is the behaviour we want; do not add `deploy:
+# replicas:` here, and on k3s this is `strategy: {type: Recreate}` with an RWO
+# volume. A Werwolf server is not a scaling problem — a few MB per room and
+# negligible CPU — so this constraint costs nothing until it is deliberately
+# traded away for Postgres and a pub/sub bus.
+
+# Compose names the project after the file's DIRECTORY, which here would be
+# "deploy" — so the event log would live in a volume called `deploy_werwolf-data`
+# and the network in `deploy_werwolf`. Pinned, because the volume name is the
+# thing standing between a `docker compose down -v` typo and somebody's game, and
+# it should say what it holds.
+name: werwolf
+
+services:
+  app:
+    # Matches the tag bb.edn's docker task builds. The build block is here so a
+    # bare `docker compose build` also works, but it hits the same Dockerfile,
+    # which still needs target/*-standalone.jar to exist first.
+    image: werwolf-clj:latest
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      # The event log. This is the only durable state in the system: rooms are a
+      # fold over it, so losing this loses games in progress and nothing else —
+      # but losing it MID-GAME strands a table, which is why it is a named
+      # volume and not a container-local path.
+      - werwolf-data:/data
+    # Deliberately no `ports:`. The app is reachable only through Caddy, so
+    # there is no way to bypass TLS by dialling :3000 on the public IP — the
+    # usual accident when a port is published "just for debugging". Locally,
+    # reach it through Caddy on :80 as well; that is the point of prod-parity.
+    expose:
+      - "3000"
+    networks: [werwolf]
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      # QUIC/HTTP3. Harmless if unused, and Caddy enables HTTP/3 by default —
+      # without this the advertised protocol is unreachable and some clients
+      # spend a moment failing over to TCP.
+      - "443:443/udp"
+    environment:
+      # The single knob: unset (or empty) means plain HTTP on :80 for local
+      # prod-parity; set to a hostname and Caddy provisions a real certificate
+      # from Let's Encrypt on first request. See Caddyfile.
+      WERWOLF_SITE_ADDRESS: ${WERWOLF_SITE_ADDRESS:-:80}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Certificates and OCSP staples. Losing this volume is not fatal but it
+      # re-requests every certificate on boot, which is a fast way to meet
+      # Let's Encrypt's rate limit while debugging something else.
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      app:
+        # Waits for /health, not merely for the process to exist. Without this
+        # Caddy can come up first, and the first player to load the page gets a
+        # 502 from a server that is only a second away from being ready.
+        condition: service_healthy
+    networks: [werwolf]
+
+volumes:
+  werwolf-data:
+  caddy-data:
+  caddy-config:
+
+networks:
+  werwolf:

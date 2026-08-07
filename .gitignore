@@ -12,5 +12,7 @@
 .DS_Store
 /.jj/
 /.env
+# The real secrets for a Compose deploy. deploy/.env.example is the tracked one.
+/deploy/.env
 /.lsp/
 /.clj-kondo/.cache/

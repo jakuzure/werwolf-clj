@@ -1,0 +1,38 @@
+# The build context is the REPO ROOT (see bb.edn's docker task), while the
+# Dockerfile copies a single jar out of target/. Without this file every
+# `docker build` would upload node_modules, the Maven cache and the whole jj
+# store to the daemon before ignoring all of it.
+#
+# Note the deliberate asymmetry: target/ is NOT ignored, because the jar is the
+# one thing the image actually needs.
+
+.git/
+.jj/
+.cpcache/
+.shadow-cljs/
+.lsp/
+.clj-kondo/
+node_modules/
+
+# Game data never belongs in an image. A stray local SQLite file baked into a
+# layer would ship somebody's half-finished game to the server — and, worse,
+# would be shadowed by the /data volume at runtime, so it would sit there
+# invisible and confusing rather than being obviously wrong.
+data/
+*.db
+*.db-shm
+*.db-wal
+
+# Sources are not needed: the jar contains them. Keeping them out means editing
+# a .cljc file cannot invalidate the image layer cache.
+src/
+test/
+dev/
+build/
+resources/
+
+.env
+deploy/.env
+*.md
+.DS_Store
+.nrepl-port

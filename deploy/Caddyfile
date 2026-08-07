@@ -1,0 +1,43 @@
+# One site, one upstream. Caddy is here for exactly two things: automatic TLS,
+# and being a reverse proxy that does not need to be told about WebSockets.
+#
+# The address comes from the environment so this file is identical locally and
+# in production:
+#
+#   unset            -> :80, plain HTTP, for `docker compose up` prod-parity
+#   werwolf.example.com -> automatic Let's Encrypt certificate, HTTP redirected
+#
+# The doubled colon in {$WERWOLF_SITE_ADDRESS::80} is not a typo: the syntax is
+# {$VAR:default} and the default is itself ":80".
+{$WERWOLF_SITE_ADDRESS::80} {
+	encode zstd gzip
+
+	# No `header_up Connection`/`Upgrade` lines, and that is correct rather than
+	# an omission: Caddy 2 forwards protocol upgrades transparently, so the
+	# WebSocket at /api/ws needs no configuration at all. Adding the hop-by-hop
+	# headers by hand — the reflex carried over from nginx — actively breaks it.
+	#
+	# What DOES need saying is the timeout. A Werwolf night is quiet by design:
+	# players stare at the board and send nothing for minutes at a time, and the
+	# client's :client/ping is not frequent enough to lean on. flush_interval -1
+	# disables response buffering, which matters because every server push is a
+	# small frame that must leave immediately rather than waiting for a buffer to
+	# fill — a buffered werewolf phase looks like a frozen game.
+	reverse_proxy app:3000 {
+		flush_interval -1
+
+		# Health-aware, so a restart of the app container drains rather than
+		# handing out 502s for the two seconds the JVM takes to bind.
+		health_uri      /health
+		health_interval 10s
+		health_timeout  2s
+	}
+
+	log {
+		output stdout
+		format console
+		# The default (INFO) logs every request including each static asset.
+		# On a phone-heavy game that is mostly noise; errors are what matter.
+		level ERROR
+	}
+}
