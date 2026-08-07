@@ -1,0 +1,47 @@
+# LiveKit, self-hosted, for the single-VPS deploy. Mounted read-only into the
+# container by docker-compose.yml under the `voice` profile.
+#
+# API keys are NOT here. They come from the LIVEKIT_KEYS environment variable
+# (see deploy/.env.example), because this file is committed and those are secrets.
+
+port: 7880
+
+rtc:
+  # ONE muxed UDP port instead of the 50000-60000 range the plan assumed.
+  #
+  # LiveKit multiplexes every participant's media over a single UDP port when
+  # `udp_port` is set, and that is a much better fit for Docker: publishing ten
+  # thousand ports makes `docker compose up` take minutes and consumes a
+  # userland proxy entry per port. A range only becomes necessary at a scale a
+  # Werwolf server will never reach — one port carries the whole table.
+  #
+  # If this is ever traded back for a range, remember the range must be
+  # published in Compose AND opened in the Hetzner Cloud Firewall, and that
+  # forgetting the firewall half is the failure the plan warns about.
+  udp_port: 7882
+
+  # TCP fallback, for players whose network blocks UDP outright. Slower and
+  # higher latency, but the difference between a laggy voice and none.
+  tcp_port: 7881
+
+  # Required behind Docker's NAT: the container sees a private address, and the
+  # ICE candidates it advertises have to be the address a browser can actually
+  # reach. Without this, connections establish and no audio flows — the classic
+  # self-hosted SFU failure.
+  use_external_ip: true
+
+# Signaling arrives through Caddy, which has already terminated TLS, so LiveKit
+# itself speaks plain HTTP on the internal network and holds no certificates.
+# See the Caddyfile's /livekit/* route.
+
+logging:
+  level: info
+  # JSON would be better for shipping to a log aggregator; there isn't one, and a
+  # human reading `docker compose logs` is the actual consumer.
+  json: false
+
+# No `turn:` block. LiveKit's embedded TURN needs its own certificate and ports
+# (3478/UDP, 5349/TLS), and the TCP fallback above already covers most restrictive
+# networks. If somebody genuinely cannot connect from a corporate network, that is
+# the point to add coturn on 443/TCP — the plan describes it, and it is a
+# deliberate not-yet rather than an oversight.

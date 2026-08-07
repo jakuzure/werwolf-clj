@@ -78,6 +78,44 @@ services:
         condition: service_healthy
     networks: [werwolf]
 
+  # Voice, behind a PROFILE so it is opt-in: `docker compose up -d` brings up
+  # exactly the two services that were verified working, and
+  # `docker compose --profile voice up -d` adds this.
+  #
+  # That separation is the point. Self-hosting an SFU means ICE, a UDP port and a
+  # firewall rule, and debuting it in the same step as the game's first real
+  # deployment would mean two unproven things at once — the plan's own advice
+  # about not debugging game rules and NAT traversal in one session, applied to
+  # the deploy itself. Get the game up, then add voice.
+  livekit:
+    image: livekit/livekit-server:v1.13.5
+    # Pinned to the version the token minting was verified against.
+    command: --config /etc/livekit.yaml
+    restart: unless-stopped
+    profiles: [voice]
+    environment:
+      # "key: secret" — the same key/secret pair given to the app as
+      # LIVEKIT_API_KEY / LIVEKIT_API_SECRET. Kept out of livekit.yaml because
+      # that file is committed.
+      # Quoted, because the value's own form is `key: secret` and an unquoted
+      # scalar containing a colon-space is read by YAML as a nested mapping.
+      LIVEKIT_KEYS: "${LIVEKIT_KEYS:?set LIVEKIT_KEYS in deploy/.env — see .env.example}"
+    volumes:
+      - ./livekit.yaml:/etc/livekit.yaml:ro
+    ports:
+      # Media. These MUST be reachable directly — media never goes through Caddy,
+      # only signalling does — so both need opening in the Hetzner Cloud Firewall.
+      # Forgetting that is the usual reason a self-hosted SFU connects and stays
+      # silent.
+      - "7882:7882/udp"
+      - "7881:7881"
+    # No 7880 published: signalling reaches it through Caddy at /livekit/*, which
+    # is what gives it TLS. Publishing it would also expose an unencrypted
+    # signalling endpoint on the public IP.
+    expose:
+      - "7880"
+    networks: [werwolf]
+
 volumes:
   werwolf-data:
   caddy-data:

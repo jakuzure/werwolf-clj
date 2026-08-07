@@ -98,6 +98,82 @@ DB_PATH=./data/werwolf.db TOKEN_SECRET=$(openssl rand -base64 48) \
   "$JAVA/bin/java" -jar target/*-standalone.jar
 ```
 
+## Voice (optional, and add it second)
+
+Voice is a Compose **profile**, so the default `up -d` is exactly the two services
+that were verified working:
+
+```bash
+docker compose -f deploy/docker-compose.yml --profile voice up -d
+```
+
+Do this only once the plain deploy works. Self-hosting an SFU adds ICE, a UDP port
+and a firewall rule — debuting those in the same step as the game's first
+deployment means two unproven things at once, which is the plan's own advice about
+not debugging game rules and NAT traversal together, applied to the deploy.
+
+Set all five voice variables in `deploy/.env` (see `.env.example`). `LIVEKIT_URL`
+points at **this** site with a `/livekit` path: Caddy proxies signalling there, so
+voice reuses this certificate and needs no second DNS record or subdomain.
+
+### Firewall — the part that fails silently
+
+Media does **not** go through Caddy. It is UDP straight to the host, so beyond
+80/443 you must also open:
+
+- **7882/UDP** — media (one muxed port, see below)
+- **7881/TCP** — fallback for networks that block UDP
+
+Miss these and the symptom is the worst kind: the call connects, the UI looks
+healthy, and nobody can hear anything. If that happens, this is the first thing to
+check.
+
+### One UDP port, not the 50000–60000 range
+
+`deploy/livekit.yaml` sets `rtc.udp_port`, which multiplexes every participant
+over a single port. The plan assumed a range, and a range is a bad fit for Docker:
+publishing ten thousand ports makes `up` take minutes and costs a userland proxy
+entry each. One port carries the whole table at this scale.
+
+### Raise the UDP receive buffer
+
+LiveKit warns about this on boot and it is a real production item, not noise:
+
+```
+UDP receive buffer is too small for a production set-up  {"current": 425984, "suggested": 5000000}
+```
+
+The container shares the host kernel, so it has to be set on the **host** — an
+unprivileged container cannot raise it itself:
+
+```bash
+echo 'net.core.rmem_max=5000000' | sudo tee /etc/sysctl.d/99-livekit.conf
+sudo sysctl --system
+```
+
+Undersized buffers show up as packet loss under load — choppy audio on a full
+table, while a three-person test sounds perfect.
+
+### No TURN yet
+
+`livekit.yaml` ships no `turn:` block. The TCP fallback covers most restrictive
+networks; if somebody genuinely cannot connect from a corporate network, that is
+the point to add coturn on 443/TCP. Deliberate not-yet rather than oversight.
+
+### Verifying it without listening
+
+The credential path can be checked end to end without a microphone. LiveKit
+answers `GET /rtc/validate?access_token=…` with `200 success` for a token it
+honours, and Caddy strips the `/livekit` prefix, so:
+
+```bash
+curl -i "https://werwolf.example.com/livekit/rtc/validate"
+# 401 "no permissions to access the room" — LiveKit's own reply, which proves
+# the proxy path and prefix-stripping are right. A 404 means they are not.
+```
+
+Whether audio actually flows is a browser question, and needs two devices.
+
 ## The one constraint to respect
 
 Room state is an in-memory atom plus a local SQLite file. Therefore **exactly

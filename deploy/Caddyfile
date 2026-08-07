@@ -12,6 +12,28 @@
 {$WERWOLF_SITE_ADDRESS::80} {
 	encode zstd gzip
 
+	# LiveKit signalling, so voice inherits this site's certificate instead of
+	# needing a second DNS record and a second cert for an SFU subdomain.
+	#
+	# `handle_path` strips the prefix, which is what makes it work: the client is
+	# told the server is at wss://<host>/livekit, asks for /livekit/rtc?..., and
+	# LiveKit receives /rtc?... — the path it actually serves. `handle` (without
+	# _path) would forward the prefix intact and every request would 404.
+	#
+	# Only signalling comes through here. Media is UDP straight to the host on
+	# 7882 and never touches Caddy, which is why that port has to be open in the
+	# cloud firewall in its own right.
+	#
+	# 502s here when the `voice` profile is not running are expected and harmless:
+	# nothing requests this path unless the app was configured with a LIVEKIT_URL.
+	handle_path /livekit/* {
+		reverse_proxy livekit:7880 {
+			flush_interval -1
+		}
+	}
+
+	# Everything else is the game.
+	#
 	# No `header_up Connection`/`Upgrade` lines, and that is correct rather than
 	# an omission: Caddy 2 forwards protocol upgrades transparently, so the
 	# WebSocket at /api/ws needs no configuration at all. Adding the hop-by-hop
@@ -23,14 +45,16 @@
 	# disables response buffering, which matters because every server push is a
 	# small frame that must leave immediately rather than waiting for a buffer to
 	# fill — a buffered werewolf phase looks like a frozen game.
-	reverse_proxy app:3000 {
-		flush_interval -1
+	handle {
+		reverse_proxy app:3000 {
+			flush_interval -1
 
-		# Health-aware, so a restart of the app container drains rather than
-		# handing out 502s for the two seconds the JVM takes to bind.
-		health_uri      /health
-		health_interval 10s
-		health_timeout  2s
+			# Health-aware, so a restart of the app container drains rather than
+			# handing out 502s for the two seconds the JVM takes to bind.
+			health_uri      /health
+			health_interval 10s
+			health_timeout  2s
+		}
 	}
 
 	log {
