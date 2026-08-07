@@ -39,7 +39,7 @@
    player's own microphone, not a rule. If a permission table is ever added, the
    server will enforce it on the SFU and this namespace will not need to be
    trusted to cooperate."
-  (:require ["livekit-client" :refer [Room RoomEvent Track]]
+  (:require ["livekit-client" :refer [Room RoomEvent]]
             [re-frame.core :as rf]))
 
 ;; Every JS object below carries a `^js` hint, and that is load-bearing rather
@@ -98,7 +98,18 @@
 (defn- wire! [^js room]
   (.on room (.-TrackSubscribed RoomEvent)
        (fn [^js track _pub ^js participant]
-         (when (= (.-Audio Track) (.-kind track))
+         ;; Compared against the literal wire value, NOT against the SDK's enum.
+         ;;
+         ;; This line read `(.-Audio Track)` and the enum is actually
+         ;; `Track.Kind.Audio`, so it evaluated to `undefined`, never equalled
+         ;; "audio", and no remote track was ever attached. Nothing failed: the SDK
+         ;; connected, published and subscribed exactly as it should, and the game
+         ;; was simply silent. A mistyped property path on a JS object is `undefined`
+         ;; rather than an error, which is the whole hazard of interop.
+         ;;
+         ;; The string cannot silently become undefined, and under :advanced a
+         ;; nested enum access is one more thing that has to survive renaming.
+         (when (= "audio" (.-kind track))
            (attach! track (track-key participant track)))))
   (.on room (.-TrackUnsubscribed RoomEvent)
        (fn [^js track _pub ^js participant]
@@ -122,7 +133,11 @@
    the dictionaries and must not put a browser's English exception on screen."
   [{:keys [url token]}]
   (when-not @room* ; idempotent: a second tap must not open a second microphone
-    (let [^js room (Room. #js {:adaptiveStream true :dynacast true})]
+    ;; adaptiveStream and dynacast are both VIDEO optimisations — quality laddering
+    ;; by element visibility, and pausing unwatched simulcast layers. This app
+    ;; publishes audio and nothing else, so they buy nothing and only add behaviour
+    ;; between a published track and a heard one.
+    (let [^js room (Room. #js {:adaptiveStream false :dynacast false})]
       (reset! room* room)
       (wire! room)
       (-> (.connect room url token)
@@ -147,9 +162,17 @@
     (.disconnect room)))
 
 (defn set-muted!
-  "Mute locally. `setMicrophoneEnabled false` stops publishing rather than
-   sending silence, so a muted player costs the SFU nothing and — more to the
-   point — cannot be heard by accident."
+  "Mute locally.
+
+   `setMicrophoneEnabled false` MUTES the publication; it does not unpublish it.
+   An earlier version of this docstring claimed the opposite, and the browser test
+   disproved it: after muting, the far side still holds the track and simply sees
+   it disabled. Worth stating accurately, because \"the track is gone\" and \"the
+   track is muted\" are different guarantees — the second is the one being made.
+
+   It is still enforced at the source rather than by not rendering something:
+   the microphone stops feeding the publication, so a muted player cannot be
+   heard by accident."
   [muted?]
   (when-let [^js room @room*]
     (.setMicrophoneEnabled ^js (.-localParticipant room) (not muted?))))

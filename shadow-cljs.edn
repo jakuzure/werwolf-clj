@@ -29,6 +29,19 @@
                 :audio {:entries    [werwolf.audio-impl]
                         :depends-on #{:main}}}
 
+   ;; REQUIRED for the split above to work at runtime, not merely to build.
+   ;;
+   ;; Without it `shadow.lazy/load` throws "shadow.loader API was called before
+   ;; shadow.loader.init!" the moment somebody taps to join, and voice never
+   ;; loads — in development or in production. The build succeeds, both modules
+   ;; are emitted, and /js/audio.js is served correctly; nothing about the
+   ;; artifacts hints that the loader was never initialised.
+   ;;
+   ;; Found by test/browser/voice.spec.js, which is the only thing in the project
+   ;; that has ever executed the loading path. Verifying that the chunk was SERVED
+   ;; is not the same as verifying it can be FETCHED.
+   :module-loader true
+
    ;; re-frame-10x is deliberately NOT preloaded. Its panel is an overlay on
    ;; the page itself, and on a phone — which is how this game is actually
    ;; played — it covers the board rather than sitting beside it. To bring it

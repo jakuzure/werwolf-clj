@@ -23,7 +23,31 @@ services:
     image: livekit/livekit-server:v1.13.5
     # Pinned. `latest` would silently change the server API under a permission
     # table that is tested against it.
-    command: --dev --bind 0.0.0.0
+    # `--node-ip 127.0.0.1` is what makes media work at all on a development
+    # machine, and it took a failing browser test to find.
+    #
+    # Signalling is fine without it — that goes over the published :7880 — but ICE
+    # candidates carry an ADDRESS, and by default the container advertises its own
+    # (172.x) or whatever STUN reports as the host's public IP. A browser on this
+    # machine can reach neither: on Docker Desktop there is no route to a container
+    # IP. The symptom is signalling connecting happily and then
+    # `ConnectionError: could not establish pc connection` about fifteen seconds
+    # later.
+    #
+    # 127.0.0.1 is correct precisely BECAUSE the browser is on the host and the UDP
+    # port is published there. It is also why this file is unusable in production,
+    # where `use_external_ip: true` is right — see livekit.yaml.
+    #
+    # A RANGE of UDP ports, not the single muxed port production uses. Two browsers
+    # on this one machine both peer with 127.0.0.1, and with a single port only one
+    # direction of media reliably negotiated — the browser suite caught it as one
+    # participant subscribing and the other never doing so, with which one varying
+    # per run. A port each removes the contention.
+    #
+    # Production keeps the single muxed port (see livekit.yaml): there the peers are
+    # remote and distinguishable by address, and publishing ten thousand ports in
+    # Docker is its own problem.
+    command: --dev --bind 0.0.0.0 --node-ip 127.0.0.1 --udp-port 7882-7892
     restart: unless-stopped
     ports:
       # Signaling + the whole HTTP/Twirp server API.
@@ -32,4 +56,4 @@ services:
       # published anyway so a phone on the same wifi can join the dev room.
       - "7881:7881"
       # RTC over UDP. A single port suffices in dev; production wants a range.
-      - "7882:7882/udp"
+      - "7882-7892:7882-7892/udp"
