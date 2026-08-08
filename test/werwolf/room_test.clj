@@ -638,3 +638,69 @@
       (is (every? :ok? sends))
       (doseq [{:keys [sink]} seats]
         (is (= 40 (count (chats sink))) "everyone saw every public message")))))
+
+;; --------------------------------------------------------- idle sweeping ---
+
+(defn- age-room!
+  "Backdate a room's last activity, so idleness can be tested without waiting."
+  [ctx room-id ms]
+  (swap! (:rooms ctx) update room-id update :last-activity - ms))
+
+(deftest an-abandoned-lobby-is-dropped
+  (with-ctx [ctx]
+    (let [{:keys [room-id sink]} (host-seat! ctx "Anna")]
+      (testing "while somebody is connected it stays, however quiet it gets"
+        (age-room! ctx room-id (* 60 60 1000))
+        (is (empty? (room/sweep-idle! ctx (System/currentTimeMillis)
+                                      {:room-idle-ms 1000 :game-idle-ms 1000})))
+        (is (some? (room/state-of ctx room-id))))
+
+      (testing "but once the last socket has gone and it has sat idle, it goes"
+        (room/detach! ctx sink)
+        (age-room! ctx room-id (* 60 60 1000))
+        (is (= [room-id] (room/sweep-idle! ctx (System/currentTimeMillis)
+                                           {:room-idle-ms 1000 :game-idle-ms 1000})))
+        (is (nil? (room/state-of ctx room-id)) "gone from memory"))
+
+      (testing "and it is no longer offered to anyone arriving"
+        (is (not-any? #(= room-id (:room-id %)) (room/open-rooms ctx)))))))
+
+(deftest a-game-in-progress-gets-a-longer-grace
+  (testing "a locked phone drops its socket, so a table that put their phones
+            down for five minutes looks exactly like an abandoned game — and
+            destroying one mid-evening is far worse than keeping a dead room"
+    (with-ctx [ctx]
+      (let [{:keys [room-id seats]} (table ctx 5)]
+        (start! ctx {:room-id room-id :seats seats})
+        (doseq [{:keys [sink]} seats] (room/detach! ctx sink))
+        (age-room! ctx room-id 60000)
+        (is (empty? (room/sweep-idle! ctx (System/currentTimeMillis)
+                                      {:room-idle-ms 1000 :game-idle-ms (* 30 60 1000)}))
+            "a minute of silence must not end a real game")
+        (is (some? (room/state-of ctx room-id)))
+
+        (testing "though it does go eventually"
+          (age-room! ctx room-id (* 2 60 60 1000))
+          (is (= [room-id] (room/sweep-idle! ctx (System/currentTimeMillis)
+                                             {:room-idle-ms 1000
+                                              :game-idle-ms (* 30 60 1000)}))))))))
+
+(deftest sweeping-forgets-memory-but-keeps-the-log
+  (testing "an unfinished room that was swept comes back on the next boot —
+            forgetting is not deleting, and the event log is the truth"
+    (let [path (tmp-path)]
+      (try
+        (let [ctx (ctx-on path)
+              {:keys [room-id sink seats]} (let [t (table ctx 5)]
+                                             (assoc t :sink (:sink (first (:seats t)))))]
+          (start! ctx {:room-id room-id :seats seats})
+          (doseq [{:keys [sink]} seats] (room/detach! ctx sink))
+          (age-room! ctx room-id (* 24 60 60 1000))
+          (is (= [room-id] (room/sweep-idle! ctx (System/currentTimeMillis)
+                                             {:room-idle-ms 1 :game-idle-ms 1})))
+          (is (nil? (room/state-of ctx room-id)))
+          ;; A brand new registry over the same file IS the restart.
+          (let [ctx2 (ctx-on path)]
+            (is (contains? (set (room/rehydrate! ctx2)) room-id)
+                "the swept game is restored from the log")))
+        (finally (cleanup! path))))))

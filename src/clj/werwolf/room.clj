@@ -31,6 +31,7 @@
    `:send!`, which keeps it testable without a browser and keeps WebSocket
    specifics in ws.clj where they belong."
   (:require [clojure.string :as str]
+            [clojure.tools.logging :as log]
             [werwolf.engine.core :as engine]
             [werwolf.store :as store])
   (:import (java.security SecureRandom)))
@@ -186,7 +187,8 @@
     (let [r' (-> r
                  (assoc :state state')
                  (update :seq + (count events)))]
-      (swap! (:rooms ctx) update room-id merge (select-keys r' [:state :seq]))
+      (swap! (:rooms ctx) update room-id merge
+             (assoc (select-keys r' [:state :seq]) :last-activity now))
       (broadcast! ctx (room-of ctx room-id))
       ;; Last, and still under the lock: the clock gets to react to the new
       ;; phase. Doing it here rather than folding the deadline into this same
@@ -245,7 +247,10 @@
    :sinks      {}
    :chat       []
    :lock       (Object.)
-   :created-at (System/currentTimeMillis)})
+   :created-at (System/currentTimeMillis)
+   ;; Bumped by every commit and every socket coming or going. What `sweep-idle!`
+   ;; reads to decide a room has been abandoned rather than merely gone quiet.
+   :last-activity (System/currentTimeMillis)})
 
 (defn- reserve-code!
   "Claim an unused room code atomically. Checks memory and disk: a finished
@@ -358,7 +363,10 @@
         {:error :unknown-player}
         (let [first-socket? (empty? (get-in r [:sinks pid]))
               r' (update-in r [:sinks pid] (fnil conj #{}) sink)]
-          (swap! (:rooms ctx) assoc-in [room-id :sinks pid] (get-in r' [:sinks pid]))
+          (swap! (:rooms ctx) update room-id
+                 (fn [rm] (when rm (-> rm
+                                       (assoc-in [:sinks pid] (get-in r' [:sinks pid]))
+                                       (assoc :last-activity (System/currentTimeMillis))))))
           (swap! (:index ctx) assoc sink [room-id pid])
           (deliver! ctx sink {:type :room/chat-history :messages (visible-chat r' pid)})
           (if (and first-socket? (not (get-in (:state r) [:players pid :connected?])))
@@ -382,7 +390,10 @@
     (with-room ctx room-id
       (fn [r]
         (let [remaining (disj (get-in r [:sinks pid] #{}) sink)]
-          (swap! (:rooms ctx) assoc-in [room-id :sinks pid] remaining)
+          (swap! (:rooms ctx) update room-id
+                 (fn [rm] (when rm (-> rm
+                                       (assoc-in [:sinks pid] remaining)
+                                       (assoc :last-activity (System/currentTimeMillis))))))
           (when (empty? remaining)
             (apply-server-events! ctx (room-of ctx room-id)
                                   [{:type :player/connection :player pid :connected? false}]))
@@ -502,6 +513,56 @@
           (with-room ctx room-id
             (fn [r] (apply-server-events! ctx r (vec drops)))))))
     (vec ids)))
+
+;; Defined below; sweep-idle! is stated first because it is the interesting one.
+(declare forget-room!)
+
+(def ^:const default-lobby-idle-ms
+  "How long a room with NOBODY CONNECTED may sit before it is dropped.
+
+   Aimed at the lobby: a room somebody opened, never filled and closed the tab on
+   is otherwise listed to every newcomer forever, and each one holds a timer and a
+   slice of memory. Five minutes is long enough to make a coffee between opening a
+   room and telling people the code."
+  (* 5 60 1000))
+
+(def ^:const default-game-idle-ms
+  "The same, for a game already in progress — deliberately much longer.
+
+   A phone that locks its screen drops the WebSocket, so a table that all put
+   their phones down for a few minutes looks exactly like an abandoned game. The
+   log means such a room is genuinely resumable, and destroying one mid-evening is
+   far worse than keeping a dead one in memory for half an hour."
+  (* 30 60 1000))
+
+(defn sweep-idle!
+  "Drop rooms nobody is connected to and nothing has happened in.
+
+   Returns the room ids dropped. The log stays on disk — `forget-room!` only
+   forgets, so a swept game can still be recapped and, if it was unfinished, will
+   be rehydrated on the next boot.
+
+   Two conditions, both required. Idle alone is not enough: a table can sit in
+   silence for a while and still be sitting there. What makes a room abandoned is
+   that NO socket is attached to it."
+  ([ctx now-ms] (sweep-idle! ctx now-ms (:game ctx)))
+  ([ctx now-ms {:keys [room-idle-ms game-idle-ms]}]
+   (let [lobby-limit (or room-idle-ms default-lobby-idle-ms)
+         game-limit  (or game-idle-ms default-game-idle-ms)]
+     (into []
+           (keep (fn [[room-id r]]
+                   (let [connected? (boolean (seq (mapcat val (:sinks r))))
+                         phase      (:phase (:state r))
+                         limit      (if (#{:lobby :game-over nil} phase)
+                                      lobby-limit
+                                      game-limit)
+                         idle       (- now-ms (:last-activity r 0))]
+                     (when (and (not connected?) (> idle limit))
+                       (log/info "dropping idle room" room-id
+                                 (str "(" (quot idle 1000) "s, phase " phase ")"))
+                       (forget-room! ctx room-id)
+                       room-id))))
+           (rooms ctx)))))
 
 (defn forget-room!
   "Drop a room from memory. The log stays on disk — a finished game is still

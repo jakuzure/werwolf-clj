@@ -32,5 +32,13 @@
            ;; first night, so nobody is eliminated before they have said a word.
            ;; true restores the classic Düsterwald rule.
            :first-night-kill? #boolean #or [#env FIRST_NIGHT_KILL "false"]
+           ;; A room nobody is connected to is dropped after this long. Aimed at
+           ;; lobbies somebody opened and closed the tab on: they would otherwise
+           ;; be listed to every newcomer forever.
+           :room-idle-ms    #long #or [#env ROOM_IDLE_MS 300000]
+           ;; The same for a game already under way, and deliberately far longer:
+           ;; a locked phone drops its socket, so a table that put their phones
+           ;; down looks identical to an abandoned game.
+           :game-idle-ms    #long #or [#env GAME_IDLE_MS 1800000]
            :min-players     #long #or [#env MIN_PLAYERS 5]
            :max-players     #long #or [#env MAX_PLAYERS 18]}}

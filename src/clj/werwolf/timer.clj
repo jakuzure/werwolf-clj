@@ -128,6 +128,12 @@
    Takes `now-ms` rather than reading a clock so the whole timer can be tested
    at simulated instants, instantly."
   [ctx now-ms]
+  ;; Housekeeping first, so a room dropped this tick is not also fired at.
+  ;; Failures here must not stop the clock: an unswept room is untidy, a stopped
+  ;; clock is a frozen game.
+  (try
+    (room/sweep-idle! ctx now-ms)
+    (catch Throwable t (log/error t "idle sweep failed")))
   (into []
         (filter (fn [room-id]
                   (try
