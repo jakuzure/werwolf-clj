@@ -2,7 +2,8 @@
 
  :tasks
  {:requires ([babashka.fs :as fs]
-             [babashka.process :as p])
+             [babashka.process :as p]
+             [clojure.string :as str])
 
   ;; ---------- setup ----------
   npm-install
@@ -55,6 +56,31 @@
      ;; Wait on all three. If any exits, its status surfaces; the others are
      ;; torn down by the :shutdown hook rather than left orphaned holding :3000.
      (doseq [proc procs] (deref proc)))}
+
+  dev:livekit
+  {:doc "Start the local LiveKit for voice, advertising this machine's LAN IP.
+
+         The IP matters: LiveKit puts it in its ICE candidates, and a browser
+         that cannot reach it connects the signalling and then sits there until
+         it gives up. 127.0.0.1 works for Chrome on this machine and for nothing
+         else — Firefox filters loopback candidates, and on a phone it IS the
+         phone. The LAN address satisfies all three, so it is computed here
+         rather than left as a thing to remember.
+
+         Stop it with:
+           docker compose -f deploy/livekit.dev.yml down"
+   :task
+   ;; NOTE: no #() here — bb.edn is plain EDN, as the `dev` task's comment says.
+   (let [probe (fn [iface]
+                 (str/trim (str (:out (p/shell {:out :string :continue true}
+                                               "ipconfig" "getifaddr" iface)))))
+         ip    (or (first (remove str/blank? (map probe ["en0" "en1"])))
+                   "127.0.0.1")]
+     (println (str "  LiveKit will advertise " ip
+                   (when (= ip "127.0.0.1")
+                     "  (no LAN address found — Firefox and phones will not connect)")))
+     (shell {:extra-env {"LIVEKIT_DEV_NODE_IP" ip}}
+            "docker compose -f deploy/livekit.dev.yml up -d --force-recreate"))}
 
   ;; ---------- quality ----------
   test

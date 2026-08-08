@@ -23,31 +23,23 @@ services:
     image: livekit/livekit-server:v1.13.5
     # Pinned. `latest` would silently change the server API under a permission
     # table that is tested against it.
-    # `--node-ip 127.0.0.1` is what makes media work at all on a development
-    # machine, and it took a failing browser test to find.
+    # The node IP is what LiveKit advertises in its ICE candidates, and getting
+    # it wrong is the difference between "signalling connects and then nothing
+    # happens" and working audio.
     #
-    # Signalling is fine without it — that goes over the published :7880 — but ICE
-    # candidates carry an ADDRESS, and by default the container advertises its own
-    # (172.x) or whatever STUN reports as the host's public IP. A browser on this
-    # machine can reach neither: on Docker Desktop there is no route to a container
-    # IP. The symptom is signalling connecting happily and then
-    # `ConnectionError: could not establish pc connection` about fifteen seconds
-    # later.
+    # It must be an address the BROWSER can reach. The container's own 172.x is
+    # not one — Docker Desktop gives the host no route to it — and neither is the
+    # public IP that STUN reports. `127.0.0.1` works for Chrome on this machine
+    # and for the browser test suite, but NOT for Firefox, which filters loopback
+    # ICE candidates, and not for a phone, where 127.0.0.1 is the phone.
     #
-    # 127.0.0.1 is correct precisely BECAUSE the browser is on the host and the UDP
-    # port is published there. It is also why this file is unusable in production,
-    # where `use_external_ip: true` is right — see livekit.yaml.
-    #
-    # A RANGE of UDP ports, not the single muxed port production uses. Two browsers
-    # on this one machine both peer with 127.0.0.1, and with a single port only one
-    # direction of media reliably negotiated — the browser suite caught it as one
-    # participant subscribing and the other never doing so, with which one varying
-    # per run. A port each removes the contention.
-    #
-    # Production keeps the single muxed port (see livekit.yaml): there the peers are
-    # remote and distinguishable by address, and publishing ten thousand ports in
-    # Docker is its own problem.
-    command: --dev --bind 0.0.0.0 --node-ip 127.0.0.1 --udp-port 7882-7892
+    # So it is a variable, and `bb dev:livekit` fills it in with this machine's
+    # LAN address, which satisfies every case at once. The default only applies
+    # if you run this file by hand without it.
+    command: >
+      --dev --bind 0.0.0.0
+      --node-ip ${LIVEKIT_DEV_NODE_IP:-127.0.0.1}
+      --udp-port 7882-7892
     restart: unless-stopped
     ports:
       # Signaling + the whole HTTP/Twirp server API.

@@ -71,7 +71,46 @@
     ::ws/send {:type :client/rooms}}))
 (rf/reg-event-db ::disconnected (fn [db _] (assoc db :conn/status :disconnected)))
 
-(rf/reg-event-db ::tick (fn [db _] (assoc db :now (.getTime (js/Date.)))))
+(def ^:const error-ttl-ms
+  "How long an error stays on screen before retiring itself.
+
+   Long enough to read a sentence, short enough that a banner from two minutes ago
+   is not still occupying the top of a phone screen. Errors here are transient by
+   nature — a rejected move, a name you forgot to type — and none of them needs
+   acknowledging."
+  6000)
+
+(defn tick-db
+  "The clock, and where errors go to retire.
+
+   Expiry rides the tick that already runs rather than each error site scheduling
+   its own timeout: the bookkeeping stays in one place, and the race is
+   impossible — a NEW error is stamped fresh the moment it differs from the one
+   being shown, so it gets its own full reading time instead of inheriting the
+   remains of its predecessor's.
+
+   Named and public so all of that is testable without a clock or a registry."
+  [db]
+  (let [now (.getTime (js/Date.))]
+    (cond-> (assoc db :now now)
+      ;; Newly arrived — start its clock. Both tests read the PRE-tick db, so an
+      ;; error stamped on this tick cannot also be retired on it.
+      (and (:error db) (not= (:error db) (:error/shown db)))
+      (assoc :error/shown (:error db) :error/at now)
+
+      (and (:error db)
+           (= (:error db) (:error/shown db))
+           (:error/at db)
+           (> (- now (:error/at db)) error-ttl-ms))
+      (assoc :error nil :error/shown nil :error/at nil))))
+
+(defn dismiss-db
+  "Tapping the ×. Clears the bookkeeping too, or the next identical error would
+   count as still-showing and retire early."
+  [db]
+  (assoc db :error nil :error/shown nil :error/at nil))
+
+(rf/reg-event-db ::tick (fn [db _] (tick-db db)))
 
 ;; Two ways to write a form field, and the difference matters to the input.
 ;;
@@ -95,7 +134,7 @@
 
 (rf/reg-event-db ::form-put (fn [db [_ k v]] (form-put db k v)))
 
-(rf/reg-event-db ::dismiss-error (fn [db _] (assoc db :error nil)))
+(rf/reg-event-db ::dismiss-error (fn [db _] (dismiss-db db)))
 
 (rf/reg-event-db ::toggle-log (fn [db _] (update db :log/show-all? not)))
 

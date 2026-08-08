@@ -393,3 +393,35 @@
            (i18n/log-line :de {} {:type :player/joined :player 7})))
     (is (= "#7 joined"
            (i18n/log-line :en {} {:type :player/joined :player 7})))))
+
+;; ------------------------------------------------------- errors expire ---
+
+(deftest an-error-retires-itself
+  (testing "a banner from two minutes ago is just occupying the top of a phone
+            screen — these are all transient and none needs acknowledging"
+    (let [tick (fn [db] (ev/tick-db db))
+          shown (tick (assoc db :error :name-required))]
+      (is (= :name-required (:error shown)) "still readable on the tick that stamps it")
+      (is (some? (:error/at shown)) "and its clock has started")
+      (testing "and it is gone once it has been up long enough"
+        (let [old (assoc shown :error/at (- (:error/at shown) (inc ev/error-ttl-ms)))]
+          (is (nil? (:error (tick old)))))))))
+
+(deftest a-newer-error-gets-its-own-full-time
+  (testing "otherwise a second failure inherits the remains of the first one's
+            clock and can vanish before it is read"
+    (let [tick (fn [db] (ev/tick-db db))
+          first-err (tick (assoc db :error :name-required))
+          aged (assoc first-err :error/at (- (:error/at first-err) (dec ev/error-ttl-ms)))
+          second-err (tick (assoc aged :error :code-required))]
+      (is (= :code-required (:error second-err)))
+      (is (= :code-required (:error/shown second-err)) "restamped, not inherited")
+      (is (> (:error/at second-err) (:error/at aged))))))
+
+(deftest dismissing-clears-the-bookkeeping
+  (testing "or the next identical error is treated as still-showing and retires early"
+    (let [db' (ev/dismiss-db (assoc db :error :not-allowed :error/shown :not-allowed
+                                    :error/at 1))]
+      (is (nil? (:error db')))
+      (is (nil? (:error/shown db')))
+      (is (nil? (:error/at db'))))))

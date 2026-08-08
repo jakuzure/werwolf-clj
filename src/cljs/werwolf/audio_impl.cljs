@@ -74,6 +74,56 @@
         (.appendChild (.-body js/document) d)
         d)))
 
+;; ------------------------------------------------------------------ cues ---
+;;
+;; Synthesised rather than loaded from a file: two short sine notes need no asset,
+;; no fetch and no decoding, and cannot be the thing that fails on a slow phone.
+;;
+;; Deliberately quiet (gain 0.04). People testing voice are wearing headphones,
+;; and a cue that makes anyone flinch gets the feature turned off.
+
+(defonce ^:private cue-ctx (atom nil))
+
+(defn- cue-context
+  "Created lazily and reused. The first cue always follows a tap — joining — so
+   the context is unlocked by a user gesture, which is what lets later cues (a
+   friend arriving) play with no interaction at all."
+  []
+  (or @cue-ctx
+      (try (reset! cue-ctx (js/AudioContext.))
+           (catch :default _ nil))))
+
+(defn- tone!
+  "One sine note. `at` is an offset in seconds, so a caller can sequence a pair
+   without timers."
+  [^js ctx freq at dur]
+  (let [^js osc  (.createOscillator ctx)
+        ^js gain (.createGain ctx)
+        t0       (+ (.-currentTime ctx) at)]
+    (set! (.-type osc) "sine")
+    (.setValueAtTime (.-frequency osc) freq t0)
+    ;; A tiny fade in and out. A bare gate on a sine is a click, which sounds
+    ;; like a fault rather than a cue.
+    (.setValueAtTime (.-gain gain) 0 t0)
+    (.linearRampToValueAtTime (.-gain gain) 0.04 (+ t0 0.01))
+    (.linearRampToValueAtTime (.-gain gain) 0 (+ t0 dur))
+    (.connect osc gain)
+    (.connect gain (.-destination ctx))
+    (.start osc t0)
+    (.stop osc (+ t0 dur 0.02))))
+
+(defn cue!
+  "A short earcon. `:joined` when you enter the call, `:arrived` when somebody
+   else does — rising for both, but the other person is one quieter note, since it
+   happens without you doing anything and should not interrupt a sentence."
+  [what]
+  (when-let [^js ctx (cue-context)]
+    (case what
+      :joined  (do (tone! ctx 523.25 0    0.10)   ; C5
+                   (tone! ctx 783.99 0.10 0.14))  ; G5
+      :arrived (tone! ctx 659.25 0 0.09)          ; E5
+      nil)))
+
 (defn- attach! [^js track sid]
   (let [^js el (.attach track)]
     (set! (.-autoplay el) true)
@@ -122,6 +172,10 @@
        (fn [speakers]
          (rf/dispatch [:werwolf.events/audio-speakers
                        (speaking-identities speakers)])))
+  ;; Somebody else joined the call. Worth hearing: on a phone the player list is
+  ;; often off-screen, and "did Bob get in?" is otherwise answered by asking.
+  (.on room (.-ParticipantConnected RoomEvent)
+       (fn [_] (cue! :arrived)))
   (.on room (.-Disconnected RoomEvent)
        (fn [_]
          (detach-all!)
@@ -132,7 +186,20 @@
   "Join the call. `on-error` receives a keyword, because the UI renders through
    the dictionaries and must not put a browser's English exception on screen."
   [{:keys [url token]}]
-  (when-not @room* ; idempotent: a second tap must not open a second microphone
+  (cond
+    ;; No microphone exists at all outside a secure context: browsers do not
+    ;; merely refuse permission, they delete `navigator.mediaDevices`. The failure
+    ;; is otherwise "Cannot read properties of undefined (reading getUserMedia)",
+    ;; which sends the reader looking for a bug in the SDK.
+    ;;
+    ;; This is what a phone hits at http://192.168.x.x:3000. Nothing in the app
+    ;; can fix it — it needs HTTPS, or localhost.
+    (or (not js/isSecureContext) (nil? (.-mediaDevices js/navigator)))
+    (rf/dispatch [:werwolf.events/audio-failed :insecure-context])
+
+    @room* nil ; idempotent: a second tap must not open a second microphone
+
+    :else
     ;; adaptiveStream and dynacast are both VIDEO optimisations — quality laddering
     ;; by element visibility, and pausing unwatched simulcast layers. This app
     ;; publishes audio and nothing else, so they buy nothing and only add behaviour
@@ -142,7 +209,11 @@
       (wire! room)
       (-> (.connect room url token)
           (.then (fn [_] (.setMicrophoneEnabled ^js (.-localParticipant room) true)))
-          (.then (fn [_] (rf/dispatch [:werwolf.events/audio-joined])))
+          (.then (fn [_]
+                   ;; After setMicrophoneEnabled, so the cue means "you are in and
+                   ;; publishing" rather than "the socket opened".
+                   (cue! :joined)
+                   (rf/dispatch [:werwolf.events/audio-joined])))
           (.catch (fn [^js e]
                     (js/console.error "audio: join failed" e)
                     (reset! room* nil)

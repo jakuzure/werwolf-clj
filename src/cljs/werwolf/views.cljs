@@ -332,12 +332,19 @@
   []
   (when @(rf/subscribe [::sub/audio-available?])
     (let [state  @(rf/subscribe [::sub/audio-state])
-          muted? @(rf/subscribe [::sub/audio-muted?])]
+          muted? @(rf/subscribe [::sub/audio-muted?])
+          ;; The engine never offers an action with no legal target; the same
+          ;; honesty applies here. Outside a secure context there is no
+          ;; microphone to open, so say that instead of showing a button whose
+          ;; only outcome is an error.
+          secure? (and (exists? js/isSecureContext) js/isSecureContext)]
       [:div {:class "rounded-xl border border-slate-700 bg-slate-900/80 px-4 py-3
                      flex flex-wrap items-center gap-3"}
        [:span {:class "text-sm font-bold uppercase tracking-wide text-slate-400"}
         (t :voice/title)]
-       (case state
+       (case (if secure? state :insecure)
+         :insecure [:span {:class "text-sm text-amber-400/90"}
+                    (t :error/insecure-context)]
          :idle    [btn (t :voice/join) #(rf/dispatch [::ev/join-audio])]
          :joining [:span {:class "text-sm text-slate-400"} (t :voice/joining)]
          :joined  [:<>

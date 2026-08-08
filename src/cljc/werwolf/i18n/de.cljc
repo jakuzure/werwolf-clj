@@ -255,6 +255,9 @@
    ;; Voice failures. A refused microphone gets its own line because it is fixed
    ;; in browser settings, not by tapping again — and it is by far the common one.
    :error/mic-denied       "Kein Zugriff aufs Mikrofon — bitte in den Browser-Einstellungen erlauben"
+   ;; Kein Fehler, den die App beheben kann: ohne HTTPS gibt der Browser gar kein
+   ;; Mikrofon her. Betrifft vor allem Handys, die den Rechner über die IP öffnen.
+   :error/insecure-context "Sprache braucht HTTPS — über eine IP-Adresse ohne Zertifikat gibt der Browser kein Mikrofon frei"
    :error/join-failed      "Sprachverbindung fehlgeschlagen"
    :error/no-such-room     "Diesen Raum gibt es nicht"
    :error/game-in-progress "Die Runde läuft schon"

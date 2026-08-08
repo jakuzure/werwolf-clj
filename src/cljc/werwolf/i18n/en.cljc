@@ -260,6 +260,9 @@
    ;; Voice failures. A refused microphone gets its own line because it is fixed
    ;; in browser settings, not by tapping again — and it is by far the common one.
    :error/mic-denied       "No access to the microphone — please allow it in your browser settings"
+   ;; Not something the app can fix: without HTTPS the browser exposes no
+   ;; microphone at all. Mostly bites phones opening the machine by IP.
+   :error/insecure-context "Voice needs HTTPS — over a plain IP address the browser will not release a microphone"
    :error/join-failed      "Could not connect to voice"
    :error/no-such-room     "There is no such room"
    :error/game-in-progress "That game has already started"
