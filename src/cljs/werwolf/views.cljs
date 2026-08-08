@@ -382,6 +382,11 @@
                          me?          "border-indigo-500 bg-slate-800 "
                          :else        "border-slate-700 bg-slate-800/50 ")
                        (when (and targets (not selectable?) (not picked?)) "opacity-40 "))
+           ;; The second and last test hook. A browser test picking a target has
+           ;; to click a specific seat, and the seat NUMBER is not uniquely
+           ;; identifiable on screen — vote tallies and the clock are numbers too.
+           ;; Reveals nothing: seat ids are public and already on every card.
+           :data-testid (str "seat-" id)
            :on-click (when selectable? #(pick! id))}
      [:div {:class "flex items-start gap-2"}
       ;; Seat number: the one label that never changes and never lies. It also
