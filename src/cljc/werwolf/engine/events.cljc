@@ -300,11 +300,34 @@
   [state {:keys [player target]}]
   (assoc-in state [:night-actions :werewolf-votes player] target))
 
+;; Recorded BEFORE the wolves choose — see the Beschützer's :night-order — so the
+;; guard is a bet placed blind rather than an answer to their pick.
+;;
+;; `:protected` is a GENERIC slot rather than a role-named one, which is what lets
+;; `:werewolf/chose` below consult it without knowing that a Beschützer exists. The
+;; registry is where roles live; a second role that guards someone needs no change
+;; to the kill.
+;;
+;; `:last-protected` is on the PLAYER, not in `:night-actions`, because
+;; `:night-actions` is cleared at dawn and the no-repeat rule has to remember
+;; across nights.
+(defmethod apply-event :beschuetzer/protected
+  [state {:keys [player target]}]
+  (-> state
+      (assoc-in [:night-actions :protected] target)
+      (assoc-in [:players player :last-protected] target)))
+
 (defmethod apply-event :werewolf/chose
   [state {:keys [target]}]
   (-> state
       (assoc-in [:night-actions :werewolf-target] target)
-      (update :pending-deaths (fnil conj []) {:player target :cause :werwolf})))
+      ;; A guarded victim produces NO pending death at all, rather than one that
+      ;; is removed again later the way the Hexe's heal works. The difference
+      ;; matters to everything downstream that reads `:pending-deaths` — the
+      ;; Hexe sees who is dying, and she must not be shown a death that is
+      ;; already prevented.
+      (cond-> (not= target (get-in state [:night-actions :protected]))
+        (update :pending-deaths (fnil conj []) {:player target :cause :werwolf}))))
 
 (defmethod apply-event :hexe/healed
   [state {:keys [player target]}]

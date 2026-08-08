@@ -32,6 +32,7 @@
    adding an engine command should not silently expose it to the network."
   #{:leave :set-locale :start-game
     :amor-link :seherin-inspect :werewolf-vote
+    :beschuetzer-protect
     :hexe-heal :hexe-poison :hexe-pass
     :jaeger-shoot :jaeger-pass
     :ready :nominate :nominate-pass :vote :vote-abstain :advance-phase

@@ -115,6 +115,19 @@
     ;; Resolution happens in phases/auto-events once every wolf has voted.
     :else [{:type :werewolf/voted :player player :target target}]))
 
+(defmethod handle :beschuetzer-protect
+  [state {:keys [player target]}]
+  (cond
+    (not (allowed? state player :beschuetzer-protect))
+    (err :not-allowed {:action :beschuetzer-protect})
+    (not (valid-target? state player :beschuetzer-protect target))
+    (err :invalid-target {:target target})
+    ;; The completion event is not optional bookkeeping: without it the cursor
+    ;; never leaves this role and the night livelocks. The simulation caught it
+    ;; on every table large enough to deal a Beschützer.
+    :else [{:type :beschuetzer/protected :player player :target target}
+           {:type :night/role-completed :role :beschuetzer}]))
+
 (defmethod handle :hexe-heal
   [state {:keys [player target]}]
   (cond

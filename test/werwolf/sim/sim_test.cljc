@@ -65,11 +65,22 @@
            (and (= events (count (:log r)))
                 (= turns (:turns r))
                 (= winner (:winner r))))
-      12 8675309 159 75  :werewolf
-      9  4242    152 65  :werewolf
-      18 777     410 247 :werewolf
+      ;; Re-pinned when the Beschützer joined special-village-priority, which
+      ;; changes the deck for every table big enough to be dealt one.
+      ;;
+      ;; The five-player row is UNCHANGED, and that is the useful part: he was
+      ;; APPENDED to the priority list rather than inserted, so tables already
+      ;; capped below his position deal exactly what they dealt before. A changed
+      ;; row here would have meant the new role had leaked into small games.
+      ;;
+      ;; The nine-player game now goes to the village rather than the wolves,
+      ;; which is the balance shift a nightly veto on the wolves' only move is
+      ;; supposed to produce.
+      12 8675309 373 189 :werewolf
+      9  4242    142 66  :village
+      18 777     387 220 :werewolf
       5  31337   95  39  :werewolf
-      14 90210   317 171 :werewolf)))
+      14 90210   247 125 :werewolf)))
 
 (deftest state-matches-its-schema-at-every-step
   (testing "the closed GameState schema holds through a whole game, so state

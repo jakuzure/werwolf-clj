@@ -37,7 +37,11 @@
    ;; private knowledge this player has accumulated: {target-id role-id}
    [:knows {:optional true} [:map-of PlayerId RoleId]]
    ;; set when a player is killed but the death has not yet been announced
-   [:pending-death {:optional true} [:maybe :keyword]]])
+   [:pending-death {:optional true} [:maybe :keyword]]
+   ;; Who this player guarded last night. On the PLAYER rather than in
+   ;; :night-actions, which is cleared at dawn — the no-repeat rule has to
+   ;; remember across nights.
+   [:last-protected {:optional true} [:maybe PlayerId]]])
 
 (def Reaction
   "An interrupt that must resolve before the phase machine advances."

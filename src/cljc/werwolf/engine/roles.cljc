@@ -93,6 +93,22 @@
     :on-death          :reaction/jaeger-shot
     :max-count         1}
 
+   :beschuetzer
+   {:id                :beschuetzer
+    :team              :village
+    ;; Between the Seherin and the wolves, and that ordering IS the rule: he
+    ;; commits to a target before knowing who the wolves will choose. Guessing
+    ;; is the whole game he plays — a Beschützer who acted after them would
+    ;; simply cancel the night.
+    :night-order       150
+    :night-action      :target/one
+    :knows-teammates?  false
+    ;; He may guard himself, but never the same player two nights running. The
+    ;; repeat ban is what stops one player being permanently immune, which would
+    ;; otherwise be the strongest position in the game.
+    :no-repeat-target? true
+    :max-count         1}
+
    :amor
    {:id                :amor
     :team              :village
@@ -155,8 +171,14 @@
 
 (def special-village-priority
   "Which unique village roles to include as the table grows.
-   Seherin first — the village is close to unplayable without information."
-  [:seherin :hexe :jaeger :amor])
+   Seherin first — the village is close to unplayable without information.
+
+   The Beschützer is LAST on purpose. Appending rather than inserting means every
+   table small enough to have been capped before deals exactly the deck it dealt
+   before, so the change is confined to the larger tables it was added for. He is
+   also the strongest of the specials — a nightly veto on the wolves' only move —
+   and putting him in a six-player game would tilt it."
+  [:seherin :hexe :jaeger :amor :beschuetzer])
 
 (defn compose-roles
   "Return a vector of role ids of length n: the deck to be dealt.

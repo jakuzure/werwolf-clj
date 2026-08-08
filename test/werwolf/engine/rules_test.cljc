@@ -686,3 +686,74 @@
         log (into genesis (:events r))]
     (is (= (e/replay log) (:state r))
         "folding the log must reproduce the live state bit for bit")))
+
+;; ----------------------------------------------------------- Beschützer ---
+;;
+;; He commits BEFORE the wolves choose — that ordering is the whole role. A guard
+;; who acted after them would simply cancel the night.
+;;
+;; Night order in these games is Seherin (100), Beschützer (150), Werwolf (200),
+;; Hexe (300), so the commands below run in that sequence.
+
+(deftest a-guarded-victim-does-not-die
+  (let [s (tu/game-with {0 :beschuetzer 1 :werwolf 2 :dorfbewohner 3 :seherin})
+        s (exec! s {:type :seherin-inspect :player 3 :target 1})
+        s (exec! s {:type :beschuetzer-protect :player 0 :target 2})
+        s (exec! s {:type :werewolf-vote :player 1 :target 2})]
+    (is (true? (get-in s [:players 2 :alive?])) "the guarded player lived")
+    (is (= 0 (tu/count-log s :player/died)) "nobody died")
+    (testing "and the night reads as quiet rather than as a missing entry"
+      (is (pos? (tu/count-log s :night/quiet))))))
+
+(deftest a-guard-on-the-wrong-player-saves-nobody
+  (let [s (tu/game-with {0 :beschuetzer 1 :werwolf 2 :dorfbewohner 3 :seherin})
+        s (exec! s {:type :seherin-inspect :player 3 :target 1})
+        s (exec! s {:type :beschuetzer-protect :player 0 :target 3})
+        s (exec! s {:type :werewolf-vote :player 1 :target 2})]
+    (is (false? (get-in s [:players 2 :alive?])))))
+
+(deftest the-hexe-is-never-shown-a-death-that-was-already-prevented
+  (testing "a guarded victim produces NO pending death rather than one removed
+            again later, because the Hexe reads :pending-deaths to decide on her
+            heal — offering her a save for somebody already safe would waste the
+            potion and tell her something untrue"
+    (let [s (tu/game-with {0 :beschuetzer 1 :werwolf 2 :dorfbewohner 3 :hexe})
+          s (exec! s {:type :beschuetzer-protect :player 0 :target 2})
+          s (exec! s {:type :werewolf-vote :player 1 :target 2})]
+      (is (empty? (:pending-deaths s)))
+      (is (empty? (phases/legal-targets s 3 :hexe-heal))
+          "she is offered nobody to heal"))))
+
+(deftest the-guard-stops-wolves-and-nothing-else
+  (testing "poison is not a werewolf attack, and a shield against everything
+            would make the Hexe's second potion unusable"
+    (let [s (tu/game-with {0 :beschuetzer 1 :werwolf 2 :dorfbewohner 3 :hexe})
+          s (exec! s {:type :beschuetzer-protect :player 0 :target 2})
+          s (exec! s {:type :werewolf-vote :player 1 :target 2})
+          s (exec! s {:type :hexe-poison :player 3 :target 2})
+          s (exec! s {:type :hexe-pass :player 3})]
+      (is (false? (get-in s [:players 2 :alive?]))
+          "guarded against the wolves, poisoned anyway"))))
+
+(deftest he-may-guard-himself
+  (testing "guarding your own door is a real choice and the rules allow it"
+    (let [s (tu/game-with {0 :beschuetzer 1 :werwolf 2 :dorfbewohner 3 :seherin})]
+      (is (contains? (set (phases/legal-targets s 0 :beschuetzer-protect)) 0)))))
+
+(deftest he-may-not-guard-the-same-player-twice-running
+  (testing "without the ban one player is permanently immune, which is the
+            strongest position in the game"
+    (let [s (tu/game-with {0 :beschuetzer 1 :werwolf 2 :dorfbewohner 3 :seherin
+                           4 :dorfbewohner 5 :dorfbewohner})
+          s (exec! s {:type :seherin-inspect :player 3 :target 1})
+          s (exec! s {:type :beschuetzer-protect :player 0 :target 2})
+          s (exec! s {:type :werewolf-vote :player 1 :target 4})
+          s (tu/advance-to-vote s)
+          s (reduce (fn [st pid] (exec! st {:type :vote-abstain :player pid}))
+                    s (alive s))]
+      (is (= :night (:phase s)) "we reached the second night")
+      (is (not (contains? (set (phases/legal-targets s 0 :beschuetzer-protect)) 2))
+          "last night's choice is off the list")
+      (testing "but everyone else still is, himself included"
+        (is (contains? (set (phases/legal-targets s 0 :beschuetzer-protect)) 0))
+        (is (contains? (set (phases/legal-targets s 0 :beschuetzer-protect)) 3))))))

@@ -470,6 +470,7 @@
         (case (:night-cursor state)
           :amor    (if (= 1 (:night state)) #{:amor-link} #{})
           :seherin #{:seherin-inspect}
+          :beschuetzer #{:beschuetzer-protect}
           ;; Wolves may talk among themselves at night (private room at M7).
           :werwolf (if (contains? (get-in state [:night-actions :werewolf-votes] {}) pid)
                      #{:chat}
@@ -572,6 +573,15 @@
       :werewolf-vote   (vec (remove #(= :werewolf (e/team-of-player state %)) living))
       ;; She can only heal someone actually dying tonight.
       :hexe-heal       (mapv :player (filter #(= :werwolf (:cause %)) (:pending-deaths state)))
+      ;; Everyone living, HIMSELF INCLUDED — guarding your own door is a real
+      ;; choice and the rules allow it — except whoever he guarded last night.
+      ;; The ban is read from the registry rather than named here, so a second
+      ;; guarding role would inherit it.
+      :beschuetzer-protect
+      (let [last-target (when (:no-repeat-target? (roles/role :beschuetzer))
+                          (get-in state [:players pid :last-protected]))]
+        (vec (remove #(= % last-target) living)))
+
       :hexe-poison     others
       :jaeger-shoot    others
       :amor-link       (vec living)

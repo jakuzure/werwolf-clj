@@ -64,6 +64,7 @@
    :role/seherin      "Seherin"
    :role/hexe         "Hexe"
    :role/jaeger       "Jäger"
+   :role/beschuetzer  "Beschützer"
    :role/amor         "Amor"
 
    :role-desc/werwolf      "Each night from the second on, you and the pack take a victim."
@@ -71,6 +72,7 @@
    :role-desc/seherin      "The seer. Each night you may learn one player's role."
    :role-desc/hexe         "The witch. One healing potion, one poison, once each per game."
    :role-desc/jaeger       "The hunter. When you die, you take someone with you."
+   :role-desc/beschuetzer  "Each night you guard one player from the werewolves — never the same one twice running."
    :role-desc/amor         "On the first night you choose two players to fall in love."
 
    ;; ----------------------------------------------------------- actions ---
@@ -82,6 +84,7 @@
    :action/amor-link       "Choose the lovers"
    :action/seherin-inspect "Reveal a role"
    :action/werewolf-vote   "Choose the victim"
+   :action/beschuetzer-protect "Guard"
    :action/hexe-heal       "Use the healing potion"
    :action/hexe-poison     "Use the poison"
    :action/hexe-pass       "Use neither potion"

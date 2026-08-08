@@ -53,7 +53,7 @@
 (def role-icon
   "Not language. Kept out of the dictionaries so they cannot drift apart on it."
   {:werwolf "🐺" :dorfbewohner "🏠" :seherin "🔮"
-   :hexe "🧪" :jaeger "🎯" :amor "💘"})
+   :hexe "🧪" :jaeger "🎯" :amor "💘" :beschuetzer "🛡"})
 
 (defn icon-of [role] (get role-icon role "❓"))
 

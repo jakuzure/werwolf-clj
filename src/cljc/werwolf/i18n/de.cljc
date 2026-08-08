@@ -60,6 +60,7 @@
    :role/seherin      "Seherin"
    :role/hexe         "Hexe"
    :role/jaeger       "Jäger"
+   :role/beschuetzer  "Beschützer"
    :role/amor         "Amor"
 
    :role-desc/werwolf      "Du reißt mit den anderen Wölfen jede Nacht ein Opfer — ab der zweiten."
@@ -67,6 +68,7 @@
    :role-desc/seherin      "Jede Nacht darfst du die Rolle eines Mitspielers sehen."
    :role-desc/hexe         "Einmal im Spiel heilen, einmal vergiften."
    :role-desc/jaeger       "Stirbst du, nimmst du einen Mitspieler mit."
+   :role-desc/beschuetzer  "Jede Nacht schützt du einen Mitspieler vor den Werwölfen — nie zweimal hintereinander denselben."
    :role-desc/amor         "In der ersten Nacht bestimmst du zwei Verliebte."
 
    ;; ----------------------------------------------------------- actions ---
@@ -78,6 +80,7 @@
    :action/amor-link       "Verliebte bestimmen"
    :action/seherin-inspect "Rolle aufdecken"
    :action/werewolf-vote   "Opfer wählen"
+   :action/beschuetzer-protect "Schützen"
    :action/hexe-heal       "Heiltrank benutzen"
    :action/hexe-poison     "Gifttrank benutzen"
    :action/hexe-pass       "Keinen Trank benutzen"
