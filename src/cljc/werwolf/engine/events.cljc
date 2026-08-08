@@ -78,7 +78,13 @@
 
       ;; A lover dies of grief. Automatic — needs no input.
       (and lover (alive? state lover))
-      (push-reaction {:type :reaction/lover-follows :player lover :cause :liebe}))))
+      (push-reaction {:type :reaction/lover-follows :player lover :cause :liebe})
+
+      ;; The Bürgermeister names who follows him. Keyed off the TITLE rather than
+      ;; a role, because nobody is dealt this one — which is also why it is here
+      ;; and not in the registry's :on-death.
+      (= pid (:mayor state))
+      (push-reaction {:type :reaction/mayor-succession :player pid}))))
 
 ;; --------------------------------------------------------- apply-event ---
 
@@ -267,6 +273,30 @@
       (assoc :night-cursor nil)
       (publish {:type :night/ended :night (:night state)})))
 
+(defmethod apply-event :election/cast
+  [state {:keys [voter target]}]
+  (assoc-in state [:election-votes voter] target))
+
+(defmethod apply-event :election/resolved
+  [state {:keys [mayor tie?]}]
+  (-> state
+      (assoc :mayor mayor
+             :election-held? true
+             :election-votes {})
+      (publish {:type :election/resolved :mayor mayor :tie? (boolean tie?)})))
+
+(defmethod apply-event :mayor/appointed
+  [state {:keys [player by]}]
+  (-> state
+      (assoc :mayor player)
+      (publish {:type :mayor/appointed :player player :by by})))
+
+(defmethod apply-event :mayor/vacated
+  [state {:keys [by]}]
+  (-> state
+      (assoc :mayor nil)
+      (publish {:type :mayor/vacated :by by})))
+
 (defmethod apply-event :day/began
   [state _]
   (-> state
@@ -364,7 +394,16 @@
                   :cause cause
                   ;; Classic Werwolf reveals the role of the departed.
                   :role (get-in state [:players player :role])})
-        (death-reactions player))))
+        ;; BEFORE the office is emptied below, because `death-reactions` reads
+        ;; `:mayor` to decide whether a succession is owed. Clearing it first is
+        ;; the obvious-looking order and it silently skipped the reaction — the
+        ;; dying Bürgermeister was simply never asked.
+        (death-reactions player)
+        ;; The office empties the moment he dies, ahead of the succession
+        ;; resolving. Leaving it pointing at a corpse would show the table a dead
+        ;; Bürgermeister and, worse, keep weighting a vote he cannot cast. The
+        ;; test reads the ORIGINAL `state`, so this is the pre-death holder.
+        (cond-> (= player (:mayor state)) (assoc :mayor nil)))))
 
 ;; GM-only. Deliberately does NOT undo reactions the death already triggered —
 ;; reviving is an escape hatch for a mistake, not a rules rewind.

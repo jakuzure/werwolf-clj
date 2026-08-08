@@ -115,6 +115,38 @@
     ;; Resolution happens in phases/auto-events once every wolf has voted.
     :else [{:type :werewolf/voted :player player :target target}]))
 
+(defmethod handle :elect
+  [state {:keys [player target]}]
+  (cond
+    (not (allowed? state player :elect))                 (err :not-allowed {:action :elect})
+    (not (valid-target? state player :elect target))     (err :invalid-target {:target target})
+    :else [{:type :election/cast :voter player :target target}]))
+
+(defmethod handle :elect-abstain
+  [state {:keys [player]}]
+  (if-not (allowed? state player :elect-abstain)
+    (err :not-allowed {:action :elect-abstain})
+    [{:type :election/cast :voter player :target nil}]))
+
+;; The outgoing Bürgermeister names his successor, while already dead — the same
+;; shape as the Jäger's shot, and drained by the same reaction stack.
+(defmethod handle :mayor-appoint
+  [state {:keys [player target]}]
+  (cond
+    (not (allowed? state player :mayor-appoint))
+    (err :not-allowed {:action :mayor-appoint})
+    (not (valid-target? state player :mayor-appoint target))
+    (err :invalid-target {:target target})
+    :else [{:type :reaction/popped}
+           {:type :mayor/appointed :player target :by player}]))
+
+(defmethod handle :mayor-decline
+  [state {:keys [player]}]
+  (if-not (allowed? state player :mayor-decline)
+    (err :not-allowed {:action :mayor-decline})
+    [{:type :reaction/popped}
+     {:type :mayor/vacated :by player}]))
+
 (defmethod handle :beschuetzer-protect
   [state {:keys [player target]}]
   (cond

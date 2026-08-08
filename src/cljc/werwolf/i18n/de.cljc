@@ -46,6 +46,7 @@
    ;; ------------------------------------------------------------ phases ---
    :phase/lobby       "Warteraum"
    :phase/night       "Nacht"
+   :phase/election    "Bürgermeisterwahl"
    :phase/day-reveal  "Morgengrauen"
    :phase/discussion  "Beratung"
    :phase/nomination  "Anklage"
@@ -86,6 +87,10 @@
    :action/hexe-pass       "Keinen Trank benutzen"
    :action/jaeger-shoot    "Schuss abgeben"
    :action/jaeger-pass     "Nicht schießen"
+   :action/elect           "Zum Bürgermeister wählen"
+   :action/elect-abstain   "Enthalten"
+   :action/mayor-appoint   "Nachfolge bestimmen"
+   :action/mayor-decline   "Niemanden bestimmen"
    :action/nominate        "Anklagen"
    :action/nominate-pass   "Niemanden anklagen"
    :action/vote            "Verurteilen"
@@ -170,6 +175,7 @@
    :badge/vote        "Stimme"
    :badge/ready       "fertig"
    :badge/decided     "hat gewählt"
+   :badge/mayor       "BM"
    :badge/host        "SL"
    :badge/lover       "verliebt"
    :badge/waiting-for "Es fehlen noch"
@@ -211,6 +217,12 @@
    :log/jaeger-shot   (fn [n t] (str n " erschießt " t))
    :log/lynched       (fn [n] (str "Das Dorf richtet " n))
    :log/tie           "Das Dorf kann sich nicht einigen — niemand stirbt"
+   ;; Die Wahl. Öffentlich, denn der ganze Sinn des Amtes ist, dass der Tisch
+   ;; weiß, wessen Stimme doppelt zählt.
+   :log/mayor-elected   (fn [n] (str n " wurde zum Bürgermeister gewählt"))
+   :log/mayor-none      "Das Dorf konnte sich auf keinen Bürgermeister einigen"
+   :log/mayor-appointed (fn [n] (str n " übernimmt das Amt des Bürgermeisters"))
+   :log/mayor-vacated   "Das Amt des Bürgermeisters bleibt unbesetzt"
    :log/nominated     (fn [n] (str n " wird angeklagt"))
    :log/timed-out     (fn [p] (str "Die Zeit für " p " ist abgelaufen"))
    ;; Was die Spielleitung getan hat. Nur für die Eingriffe, die sonst spurlos

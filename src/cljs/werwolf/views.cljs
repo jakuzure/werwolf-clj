@@ -136,6 +136,7 @@
                         :accused "bg-orange-900 text-orange-200 "
                         :votes   "bg-slate-600 text-slate-100 "
                         :lover   "bg-pink-900 text-pink-200 "
+                        :mayor   "bg-amber-700 text-amber-50 "
                         "bg-slate-700 text-slate-200 "))}
    label])
 
@@ -397,6 +398,9 @@
        [:div {:class "flex flex-wrap gap-1 mt-1"}
         (when me? [pill (t :game/you) :you])
         (when (= id (:host view)) [pill (t :badge/host) :host])
+        ;; The office is public by design — the entire point of it is that the
+        ;; table knows whose vote counts twice.
+        (when (= id (:mayor view)) [pill (t :badge/mayor) :mayor])
         (when-not alive? [pill (t :game/dead) :dead])
         (when (false? connected?) [pill (t :game/absent) :absent])
         (when role [pill (str (i18n/icon-of role) " " (role-name role)) :role])
@@ -419,7 +423,8 @@
 (def ^:private declines
   "The 'no' answers. Grouped apart from the rest so saying no is never hidden
    among the things that kill somebody."
-  #{:ready :hexe-pass :nominate-pass :vote-abstain :jaeger-pass})
+  #{:ready :hexe-pass :nominate-pass :vote-abstain :jaeger-pass
+    :elect-abstain :mayor-decline})
 
 (defn- action-bar []
   (let [actions @(rf/subscribe [::sub/actions])

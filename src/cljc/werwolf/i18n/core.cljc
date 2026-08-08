@@ -179,6 +179,11 @@
       :player/nominated    (t locale :log/nominated (nm target))
       :phase/timed-out     (t locale :log/timed-out (phase-name locale phase))
       :gm/forced           (gm-line locale players entry)
+      :election/resolved   (if (:mayor entry)
+                             (t locale :log/mayor-elected (nm (:mayor entry)))
+                             (t locale :log/mayor-none))
+      :mayor/appointed     (t locale :log/mayor-appointed (nm player))
+      :mayor/vacated       (t locale :log/mayor-vacated)
       :clock/paused        (t locale :log/clock-paused)
       :clock/resumed       (t locale :log/clock-resumed)
       :game/ended          (t locale (case winner

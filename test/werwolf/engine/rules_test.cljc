@@ -488,7 +488,7 @@
 (deftest which-phases-have-a-clock-is-a-rule-not-a-config-value
   (testing "config decides how long a phase lasts; the engine decides whether it
             is timed at all"
-    (is (= #{:night :discussion :nomination :vote :reaction}
+    (is (= #{:election :night :discussion :nomination :vote :reaction}
            (set (keys phases/timed-phases))))
     (doseq [p [:lobby :day-reveal :day-resolve :game-over]]
       (is (nil? (phases/timeout-events {:phase p}))
@@ -757,3 +757,145 @@
       (testing "but everyone else still is, himself included"
         (is (contains? (set (phases/legal-targets s 0 :beschuetzer-protect)) 0))
         (is (contains? (set (phases/legal-targets s 0 :beschuetzer-protect)) 3))))))
+
+;; --------------------------------------------------------- Bürgermeister ---
+;;
+;; A TITLE, not a role: nobody is dealt it. The village elects one on the first
+;; day and it passes by appointment when he dies. His vote counts double, which
+;; is the whole of its power.
+;;
+;; `game-with` suppresses the election by default — see its docstring — so these
+;; pass {:election? true} to actually hold one.
+
+(defn- quiet-table
+  "A game that reaches the election with nothing happening on the way: no night
+   roles at all, and no first-night kill."
+  []
+  (tu/game-with {0 :dorfbewohner 1 :werwolf 2 :dorfbewohner 3 :dorfbewohner}
+                {:first-night-kill? false :election? true}))
+
+(deftest the-village-elects-a-buergermeister-on-the-first-day
+  (let [s (quiet-table)]
+    (is (= :election (:phase s)) "the first day opens with the election")
+    (let [s (-> s
+                (exec! {:type :elect :player 0 :target 2})
+                (exec! {:type :elect :player 1 :target 2})
+                (exec! {:type :elect :player 2 :target 2})
+                (exec! {:type :elect :player 3 :target 0}))]
+      (is (= 2 (:mayor s)))
+      (is (= :discussion (:phase s)) "and the day proper begins")
+      (is (pos? (tu/count-log s :election/resolved))))))
+
+(deftest a-tied-election-elects-nobody
+  (testing "consistent with the lynch, where a tie kills nobody: an arbitrary
+            tiebreak is exactly what players find unfair"
+    (let [s (-> (quiet-table)
+                (exec! {:type :elect :player 0 :target 1})
+                (exec! {:type :elect :player 1 :target 0})
+                (exec! {:type :elect :player 2 :target 3})
+                (exec! {:type :elect :player 3 :target 2}))]
+      (is (nil? (:mayor s)))
+      (is (= :discussion (:phase s)) "the day still begins"))))
+
+(deftest abstaining-in-the-election-is-a-real-answer
+  (let [s (-> (quiet-table)
+              (exec! {:type :elect :player 0 :target 3})
+              (exec! {:type :elect-abstain :player 1})
+              (exec! {:type :elect-abstain :player 2})
+              (exec! {:type :elect-abstain :player 3}))]
+    (is (= 3 (:mayor s)) "one real ballot decides it")))
+
+(deftest the-buergermeister-votes-twice
+  (testing "the entire power of the office, and the reason a tie is rarer with
+            one than without"
+    (let [s (-> (quiet-table)
+                (exec! {:type :elect :player 0 :target 0})
+                (exec! {:type :elect-abstain :player 1})
+                (exec! {:type :elect-abstain :player 2})
+                (exec! {:type :elect-abstain :player 3}))
+          _ (is (= 0 (:mayor s)))
+          s (tu/advance-to-vote s)
+          ;; One each way. Without the double vote this is a tie and nobody dies.
+          s (exec! s {:type :vote :player 0 :target 1})
+          s (exec! s {:type :vote :player 1 :target 0})
+          s (exec! s {:type :vote-abstain :player 2})
+          s (exec! s {:type :vote-abstain :player 3})]
+      (is (false? (get-in s [:players 1 :alive?]))
+          "the mayor's two votes outweigh the single vote against him"))))
+
+(deftest a-tie-without-a-mayor-still-kills-nobody
+  (testing "the control for the test above — same votes, no office"
+    (let [s (-> (quiet-table)
+                (exec! {:type :elect-abstain :player 0})
+                (exec! {:type :elect-abstain :player 1})
+                (exec! {:type :elect-abstain :player 2})
+                (exec! {:type :elect-abstain :player 3}))
+          _ (is (nil? (:mayor s)))
+          s (tu/advance-to-vote s)
+          s (exec! s {:type :vote :player 0 :target 1})
+          s (exec! s {:type :vote :player 1 :target 0})
+          s (exec! s {:type :vote-abstain :player 2})
+          s (exec! s {:type :vote-abstain :player 3})]
+      (is (true? (get-in s [:players 1 :alive?])))
+      (is (true? (get-in s [:players 0 :alive?]))))))
+
+(deftest the-office-empties-the-moment-its-holder-dies
+  (testing "leaving :mayor pointing at a corpse would show the table a dead
+            Bürgermeister and keep weighting a vote he can no longer cast"
+    (let [s (-> (quiet-table)
+                (exec! {:type :elect :player 0 :target 1})
+                (exec! {:type :elect-abstain :player 1})
+                (exec! {:type :elect-abstain :player 2})
+                (exec! {:type :elect-abstain :player 3}))
+          _ (is (= 1 (:mayor s)))
+          s (tu/advance-to-vote s)
+          s (reduce (fn [st pid] (exec! st {:type :vote :player pid :target 1}))
+                    s [0 2 3])
+          s (exec! s {:type :vote-abstain :player 1})]
+      (is (false? (get-in s [:players 1 :alive?])) "the mayor was lynched")
+      (is (not= 1 (:mayor s)) "and the office is not still his"))))
+
+(defn- mayor-lynched
+  "Elect player 2 and hang him. Deliberately a VILLAGER: player 1 is the only
+   wolf, and lynching him would end the game outright — the win check runs before
+   the reaction stack, so there would be no succession to observe."
+  []
+  (-> (quiet-table)
+      (exec! {:type :elect :player 0 :target 2})
+      (exec! {:type :elect-abstain :player 1})
+      (exec! {:type :elect-abstain :player 2})
+      (exec! {:type :elect-abstain :player 3})
+      (tu/advance-to-vote)
+      (as-> s (reduce (fn [st pid] (exec! st {:type :vote :player pid :target 2}))
+                      s [0 1 3]))
+      (exec! {:type :vote-abstain :player 2})))
+
+(deftest a-dying-buergermeister-names-his-successor
+  (let [s (mayor-lynched)]
+    (testing "the succession is a reaction, drained by the same stack as the
+              Jäger's shot — he acts while already dead"
+      (is (false? (get-in s [:players 2 :alive?])))
+      (is (= :reaction (:phase s)))
+      (is (contains? (phases/legal-actions s 2) :mayor-appoint))
+      (let [s (exec! s {:type :mayor-appoint :player 2 :target 3})]
+        (is (= 3 (:mayor s)))
+        (is (pos? (tu/count-log s :mayor/appointed)))))))
+
+(deftest he-may-name-nobody
+  (testing "declining is allowed for the same reason the Jäger may hold his
+            fire: the clock lets him off anyway"
+    (let [s (exec! (mayor-lynched) {:type :mayor-decline :player 2})]
+      (is (nil? (:mayor s)))
+      (is (pos? (tu/count-log s :mayor/vacated))))))
+
+(deftest the-election-happens-once
+  (testing ":election-held? rather than 'is it day 1' alone, so a GM who rewinds
+            the phase cannot re-run it"
+    (let [s (-> (quiet-table)
+                (exec! {:type :elect :player 0 :target 2})
+                (exec! {:type :elect-abstain :player 1})
+                (exec! {:type :elect-abstain :player 2})
+                (exec! {:type :elect-abstain :player 3}))
+          s (exec! s {:type :gm/set-phase :player 0 :phase :day-reveal})]
+      (is (not= :election (:phase s)) "back through dawn, but no second election")
+      (is (= 2 (:mayor s)) "and the office is untouched"))))

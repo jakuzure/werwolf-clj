@@ -16,6 +16,7 @@
   [:enum
    :lobby        ; waiting for players, host may start
    :night        ; roles act in night-order
+   :election     ; day 1 only: the village elects a Bürgermeister
    :day-reveal   ; announce who died overnight
    :discussion   ; free talk, timer running
    :nomination   ; nominate candidates for the lynch
@@ -75,6 +76,16 @@
    ;; absent key: one is a decision, the other is a player we are still waiting
    ;; for. The phase machine needs to tell them apart to know when a vote is done.
    [:votes {:optional true} [:map-of PlayerId [:maybe PlayerId]]]
+   ;; The Bürgermeister: a TITLE, not a role. Nobody is dealt it — the village
+   ;; elects one on the first day and it passes by appointment when he dies. His
+   ;; vote counts double, which is the whole of its power.
+   [:mayor {:optional true} [:maybe PlayerId]]
+   ;; Ballots for that election, same shape as :votes. A nil target is a
+   ;; recorded abstention, for the same reason it is in the lynch.
+   [:election-votes {:optional true} [:map-of PlayerId [:maybe PlayerId]]]
+   ;; So the election happens once and only once, even if day 1 is revisited by
+   ;; a GM override.
+   [:election-held? {:optional true} :boolean]
    [:nominations {:optional true} [:set PlayerId]]
    ;; Players who have finished nominating — whether they named someone or
    ;; explicitly declined. Same distinction as above: "I accuse nobody" is an

@@ -8,7 +8,7 @@
             [werwolf.engine.events :as e]
             [werwolf.engine.phases :as phases]))
 
-(defn- game-with* [assignments first-night-kill?]
+(defn- game-with* [assignments first-night-kill? election?]
   (let [n (count assignments)
         s (engine/new-game {:room-id "TEST" :host 0 :seed 1 :min-players 5
                             :first-night-kill? first-night-kill?})
@@ -20,6 +20,12 @@
      (phases/settle
       (-> s
           (e/apply-event {:type :game/started :assignments assignments})
+          (cond-> (not election?)
+            ;; Mark the Bürgermeister election as already held, so day 1 goes
+            ;; straight to discussion. Almost every test here is about night
+            ;; mechanics or the lynch, and making each of them run an election
+            ;; first would be noise. Pass {:election? true} to exercise it.
+            (assoc :election-held? true))
           (e/apply-event {:type :night/began :night 1}))))))
 
 (defn game-with
@@ -34,8 +40,9 @@
 
    Pass `{:first-night-kill? false}` to exercise the shipped rule."
   ([assignments] (game-with assignments {}))
-  ([assignments {:keys [first-night-kill?] :or {first-night-kill? true}}]
-   (game-with* assignments first-night-kill?)))
+  ([assignments {:keys [first-night-kill? election?]
+                 :or   {first-night-kill? true election? false}}]
+   (game-with* assignments first-night-kill? election?)))
 
 (defn exec!
   "Run a command, THROWING on rejection. Tests must not silently no-op — that is

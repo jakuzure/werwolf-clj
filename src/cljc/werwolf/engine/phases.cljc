@@ -116,6 +116,12 @@
   (let [living (e/living-ids state)]
     (and (seq living) (every? #(contains? (:votes state) %) living))))
 
+(defn- election-done?
+  "Every living player has cast a ballot for Bürgermeister or abstained."
+  [state]
+  (let [living (e/living-ids state)]
+    (and (seq living) (every? #(contains? (:election-votes state {}) %) living))))
+
 (defn- wolves-all-voted? [state]
   (let [wolves (e/living-with-role state :werwolf)
         votes  (get-in state [:night-actions :werewolf-votes] {})]
@@ -128,16 +134,27 @@
    nobody voted. Abstentions (nil target) are ignored.
 
    Ties deliberately kill nobody: that is the classic rule, and it keeps an
-   arbitrary tiebreak — which players would find unfair — out of the engine."
-  [votes]
-  (let [counts (->> (vals votes) (remove nil?) frequencies)]
-    (if (empty? counts)
-      {:target nil :tie? false}
-      (let [best (apply max (vals counts))
-            top  (->> counts (filter #(= best (val %))) (map key) sort vec)]
-        (if (= 1 (count top))
-          {:target (first top) :tie? false}
-          {:target nil :tie? true})))))
+   arbitrary tiebreak — which players would find unfair — out of the engine.
+
+   `mayor`, when given, votes twice. That is the entire power of the office, and
+   it is applied HERE rather than by stuffing a second ballot into `:votes`,
+   which would make the vote counts shown to players disagree with the tally and
+   the log disagree with both."
+  ([votes] (tally votes nil))
+  ([votes mayor]
+   (let [counts (reduce (fn [m [voter target]]
+                          (if (nil? target)
+                            m
+                            (update m target (fnil + 0) (if (= voter mayor) 2 1))))
+                        {}
+                        votes)]
+     (if (empty? counts)
+       {:target nil :tie? false}
+       (let [best (apply max (vals counts))
+             top  (->> counts (filter #(= best (val %))) (map key) sort vec)]
+         (if (= 1 (count top))
+           {:target (first top) :tie? false}
+           {:target nil :tie? true}))))))
 
 (defn wolf-tally
   "Werewolves must converge on one victim. Unlike the village lynch, a tie here
@@ -265,7 +282,10 @@
 
           ;; The Jäger's shot needs input. If he is disconnected we still must
           ;; not deadlock, so the server/GM can force it; here we just park.
-          :reaction/jaeger-shot
+          ;; Both of these need a human. Parking is identical, so they share a
+          ;; branch: the Jäger picks who he takes with him, the outgoing
+          ;; Bürgermeister picks who succeeds him.
+          (:reaction/jaeger-shot :reaction/mayor-succession)
           (when (not= :reaction phase)
             [{:type :phase/changed
               :phase  :reaction
@@ -283,7 +303,23 @@
 
         :night (night-auto state)
 
-        :day-reveal [{:type :day/began}]
+        ;; The election happens once, on the first day, before anybody has
+        ;; argued — which is how it goes at a table, where it is half a formality
+        ;; and half the first read on the room. `:election-held?` rather than
+        ;; "is it day 1" alone, so a GM who rewinds the phase cannot re-run it.
+        :day-reveal
+        (if (and (= 1 (:night state)) (not (:election-held? state)))
+          [{:type :phase/changed :phase :election :deadline nil}]
+          [{:type :day/began}])
+
+        ;; Nobody is elected on a tie. Consistent with the lynch, where a tie
+        ;; kills nobody: an arbitrary tiebreak is exactly what players find
+        ;; unfair, and the village simply goes without.
+        :election
+        (when (election-done? state)
+          (let [{:keys [target tie?]} (tally (:election-votes state {}))]
+            [{:type :election/resolved :mayor target :tie? tie?}
+             {:type :day/began}]))
 
         ;; Discussion has nothing to resolve, so it ends when everybody says
         ;; they are finished. Without this the table talks itself out in forty
@@ -313,7 +349,7 @@
         (if (:vote-resolved? state)
           ;; Lynch death has been applied by now (branch above), so night can begin.
           [{:type :night/began :night (inc (:night state))}]
-          (let [{:keys [target tie?]} (tally (:votes state))]
+          (let [{:keys [target tie?]} (tally (:votes state) (:mayor state))]
             [{:type :vote/resolved :target target :tie? tie?}]))
 
         nil))))
@@ -350,7 +386,8 @@
    deadline by design: the lobby waits for the host, :day-reveal and
    :day-resolve are instantaneous narrator steps, and :game-over waits for
    nobody."
-  {:night      :night-secs
+  {:election   :election-secs
+   :night      :night-secs
    :discussion :discussion-secs
    :nomination :nomination-secs
    :vote       :vote-secs
@@ -384,8 +421,16 @@
                             evs)))))
 
               ;; The Jäger who never fires simply does not fire — the shot is
-              ;; his to take, not the server's to guess.
+              ;; his to take, not the server's to guess. Same for a
+              ;; Bürgermeister who names nobody: the office falls vacant.
               :reaction [{:type :reaction/popped}]
+
+              ;; Uncast ballots are abstentions, exactly as in the lynch, so the
+              ;; election resolves on whatever was actually cast.
+              :election
+              (let [{:keys [target tie?]} (tally (:election-votes state {}))]
+                [{:type :election/resolved :mayor target :tie? tie?}
+                 {:type :day/began}])
 
               ;; The day marches on regardless. Uncast votes are abstentions,
               ;; which is what `tally` already does with them.
@@ -450,7 +495,13 @@
       ;; before the general dead-players-may-only-chat rule below.
       (= :reaction phase)
       (let [r (peek (:reactions state))]
-        (if (and (= :reaction/jaeger-shot (:type r)) (= pid (:player r)))
+        (if (and (= :reaction/mayor-succession (:type r)) (= pid (:player r)))
+          ;; He is dead and choosing his successor. Declining is allowed for the
+          ;; same reason the Jäger may hold his fire: the clock lets him off
+          ;; anyway, so refusing a button would only punish whoever is paying
+          ;; attention.
+          #{:mayor-appoint :mayor-decline :chat}
+          (if (and (= :reaction/jaeger-shot (:type r)) (= pid (:player r)))
           ;; He may talk while he aims. The whole table is waiting on him and
           ;; everyone else is chatting; silencing exactly the player being
           ;; waited for is arbitrary. Chat routing still sends him to the dead
@@ -459,8 +510,8 @@
           ;; And he may decline. The clock already lets him off if he says
           ;; nothing, so refusing him a button to say the same thing on purpose
           ;; would only punish the player who is paying attention.
-          #{:jaeger-shoot :jaeger-pass :chat}
-          #{:chat}))
+            #{:jaeger-shoot :jaeger-pass :chat}
+            #{:chat})))
 
       ;; Otherwise the dead may watch and talk, never act.
       (not (:alive? player)) #{:chat}
@@ -480,6 +531,13 @@
                      (pos? (get-in player [:resources :gifttrank] 0)) (conj :hexe-poison))
           #{})
         #{})
+
+      ;; Abstaining is a real answer here too, and for the same reason as in the
+      ;; lynch: without a button the only way to decline is silence, which is
+      ;; indistinguishable from a lost connection.
+      (= :election phase)
+      (cond-> #{:chat}
+        (not (contains? (:election-votes state {}) pid)) (conj :elect :elect-abstain))
 
       (= :discussion phase)
       (cond-> #{:chat}
@@ -523,16 +581,21 @@
    to fire, while already dead. The rest are not acting at all: talking,
    choosing what language to read the game in, and walking out of a game that
    is already over."
-  (into #{:chat :jaeger-shoot :jaeger-pass :leave} always-allowed))
+  (into #{:chat :jaeger-shoot :jaeger-pass :leave
+          ;; A dead Bürgermeister names who follows him. Like the Jäger's shot,
+          ;; this is an act performed while already dead.
+          :mayor-appoint :mayor-decline}
+        always-allowed))
 
 (def no-target-actions
   "Commands that carry no :target. Everything else needs at least one legal
    target to be offerable at all."
   #{:start-game :leave :set-locale :chat :advance-phase :ready
     :gm/pause :gm/resume :gm/add-time
-    ;; The four ways to decline. Each is a deliberate 'no', which is why they
-    ;; are commands at all rather than the absence of one.
-    :hexe-pass :nominate-pass :vote-abstain :jaeger-pass})
+    ;; The ways to decline. Each is a deliberate 'no', which is why they are
+    ;; commands at all rather than the absence of one.
+    :hexe-pass :nominate-pass :vote-abstain :jaeger-pass
+    :elect-abstain :mayor-decline})
 
 (declare legal-targets legal-choices)
 
@@ -585,6 +648,12 @@
       :hexe-poison     others
       :jaeger-shoot    others
       :amor-link       (vec living)
+      ;; Anyone living, HIMSELF INCLUDED — standing for the office is a normal
+      ;; thing to do and hiding it would just push the vote to a proxy.
+      :elect           (vec living)
+      ;; Anyone living but himself: he is dead, and naming a corpse would leave
+      ;; the office empty in a way that reads as a bug rather than a choice.
+      :mayor-appoint   others
       :nominate        others
       ;; MUST be sorted: :nominations is a set, and set iteration order differs
       ;; between Clojure and ClojureScript. Returning it unsorted made the

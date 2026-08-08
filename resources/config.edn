@@ -21,6 +21,10 @@
            :nomination-secs #long #or [#env NOMINATION_SECS 90]
            :vote-secs       #long #or [#env VOTE_SECS 60]
            :night-secs      #long #or [#env NIGHT_SECS 45]
+           ;; The Bürgermeister election, day one only. Short: it is half a
+           ;; formality and half the first read on the room, and a long clock
+           ;; here just delays the game everybody came for.
+           :election-secs   #long #or [#env ELECTION_SECS 60]
            ;; Generous: the Jäger has just been told he is dead and the whole
            ;; table is waiting on him.
            :reaction-secs   #long #or [#env REACTION_SECS 30]

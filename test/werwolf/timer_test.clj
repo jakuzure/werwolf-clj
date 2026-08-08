@@ -12,7 +12,7 @@
             [werwolf.timer :as timer]))
 
 (def game-cfg
-  {:discussion-secs 300 :nomination-secs 90 :vote-secs 60
+  {:election-secs 60 :discussion-secs 300 :nomination-secs 90 :vote-secs 60
    :night-secs 45 :reaction-secs 30})
 
 (def t0 1700000000000)
@@ -48,12 +48,19 @@
 
 (defn- skip-night!
   "Walk the night to its end with GM overrides, so day-phase tests do not depend
-   on how the Seherin happens to play."
+   on how the Seherin happens to play.
+
+   Also walks through the Bürgermeister election, which sits between the first
+   dawn and the first discussion. Every test below wants the day proper, and
+   none of them is about the election — it is resolved by letting its clock
+   expire, which is an abstention from everybody and elects nobody."
   [ctx room-id]
   (loop [guard 0]
     (when (and (= :night (phase ctx room-id)) (< guard 12))
       (room/submit! ctx room-id 0 {:type :gm/skip-role})
-      (recur (inc guard)))))
+      (recur (inc guard))))
+  (when (= :election (phase ctx room-id))
+    (timer/tick! ctx (inc (deadline ctx room-id)))))
 
 ;; ------------------------------------------------------------- reconciliation ---
 ;;

@@ -19,7 +19,7 @@
             [werwolf.token :as token]))
 
 (def game-cfg
-  {:discussion-secs 300 :nomination-secs 90 :vote-secs 60
+  {:election-secs 60 :discussion-secs 300 :nomination-secs 90 :vote-secs 60
    :night-secs 45 :reaction-secs 30})
 
 (def tokens-cfg {:secret "test-secret-that-is-long-enough" :ttl-mins 720})

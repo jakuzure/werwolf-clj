@@ -49,6 +49,7 @@
    ;; ------------------------------------------------------------ phases ---
    :phase/lobby       "Lobby"
    :phase/night       "Night"
+   :phase/election    "Mayoral election"
    :phase/day-reveal  "Dawn"
    :phase/discussion  "Discussion"
    :phase/nomination  "Accusations"
@@ -90,6 +91,10 @@
    :action/hexe-pass       "Use neither potion"
    :action/jaeger-shoot    "Take the shot"
    :action/jaeger-pass     "Hold your fire"
+   :action/elect           "Elect as Bürgermeister"
+   :action/elect-abstain   "Abstain"
+   :action/mayor-appoint   "Name a successor"
+   :action/mayor-decline   "Name nobody"
    :action/nominate        "Accuse"
    :action/nominate-pass   "Accuse nobody"
    :action/vote            "Condemn"
@@ -177,6 +182,7 @@
    :badge/vote        "vote"
    :badge/ready       "done"
    :badge/decided     "has chosen"
+   :badge/mayor       "BM"
    :badge/host        "GM"
    :badge/lover       "in love"
    :badge/waiting-for "Still waiting on"
@@ -218,6 +224,12 @@
    :log/jaeger-shot   (fn [n t] (str n " shoots " t))
    :log/lynched       (fn [n] (str "The village condemns " n))
    :log/tie           "The village cannot agree — nobody dies"
+   ;; The election. Public, because the entire point of the office is that the
+   ;; table knows whose vote counts twice.
+   :log/mayor-elected   (fn [n] (str n " was elected Bürgermeister"))
+   :log/mayor-none      "The village could not agree on a Bürgermeister"
+   :log/mayor-appointed (fn [n] (str n " takes over as Bürgermeister"))
+   :log/mayor-vacated   "The office of Bürgermeister is left empty"
    :log/nominated     (fn [n] (str n " stands accused"))
    :log/timed-out     (fn [p] (str "Time ran out for " p))
    ;; What the game master actually did. Only for the overrides that would

@@ -148,6 +148,10 @@
      :log         (vec (:log state))
      :votes       (or (:votes state) {})
      :nominations (or (:nominations state) #{})
+     ;; Public, and necessarily so: the whole point of the office is that the
+     ;; table knows whose vote counts twice. Election ballots in progress are
+     ;; NOT published — see :election-votes, which is deliberately absent.
+     :mayor       (:mayor state)
      ;; Who has already spoken. Public — seeing that the table is waiting on two
      ;; specific people is most of what makes a timed phase bearable — and safe:
      ;; these are player ids, and no role can be inferred from having decided.
