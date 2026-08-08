@@ -578,7 +578,13 @@
       [:div {:class "text-4xl"} (i18n/icon-of role)]
       [:div {:class "min-w-0"}
        [:div {:class "text-xs uppercase tracking-wide text-slate-400"} (t :game/your-role)]
-       [:div {:class "text-2xl font-bold leading-tight"} (role-name role)]]
+       ;; The one test hook in the client. A browser test has to learn which role
+       ;; it was dealt in order to drive the game at all, and finding it by DOM
+       ;; position would break on the next layout change. Reading it here is not
+       ;; a redaction hole: this is the player's OWN role, which is the one thing
+       ;; their view is guaranteed to contain.
+       [:div {:data-testid "my-role"
+              :class "text-2xl font-bold leading-tight"} (role-name role)]]
       (when-not (:alive? me)
         [:div {:class "ml-auto"} [pill (t :game/dead) :dead]])]
      [:p {:class "text-sm text-slate-300 mt-2"} (role-desc role)]

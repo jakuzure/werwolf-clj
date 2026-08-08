@@ -4,6 +4,68 @@
 // matters more than abstraction.
 
 const { expect } = require('@playwright/test');
+const transit = require('transit-js');
+
+const reader = transit.reader('json');
+const kw = (s) => transit.keyword(s);
+
+/**
+ * Parse a server frame, or null if it is not readable transit.
+ *
+ * Frames are inspected STRUCTURALLY rather than by matching role words in the
+ * raw text. A regex cannot tell a role from a role BELONGING to somebody: an
+ * earlier version flagged the LiveKit room name `werwolf-ply3` and the public
+ * `:night-cursor`, neither of which is a leak. This mirrors what the engine's own
+ * `foreign-roles-in-view` does — walk the structure and ask whose role it is.
+ */
+function readFrame(raw) {
+  try { return reader.read(raw); } catch (_) { return null; }
+}
+
+const get = (m, k) => (m && m.get ? m.get(kw(k)) : undefined);
+
+/**
+ * Every (player-id, role) pair a page was told about that belongs to SOMEBODY
+ * ELSE, across all its frames. Empty is the property the architecture exists to
+ * guarantee.
+ *
+ * `:known-roles` is the one sanctioned channel — a Seherin's inspections, and
+ * every role once the game is over — so a leak is anything in it naming another
+ * player, plus any `:role` hanging off another player's entry in `:players`.
+ */
+function foreignRoles(frames, myId) {
+  const found = [];
+  for (const raw of frames) {
+    const msg = readFrame(raw);
+    if (!msg || String(get(msg, 'type')) !== ':room/view') continue;
+    const view = get(msg, 'view');
+    if (!view) continue;
+
+    const known = get(view, 'known-roles');
+    if (known && known.forEach) {
+      known.forEach((role, pid) => {
+        if (pid !== myId) found.push({ pid, role: String(role), via: 'known-roles' });
+      });
+    }
+    const players = get(view, 'players');
+    if (players && players.forEach) {
+      players.forEach((p, pid) => {
+        const r = get(p, 'role');
+        if (r != null && pid !== myId) found.push({ pid, role: String(r), via: 'players' });
+      });
+    }
+  }
+  return found;
+}
+
+/** This page's own seat, read from :server/welcome. */
+function myIdFrom(frames) {
+  for (const raw of frames) {
+    const msg = readFrame(raw);
+    if (msg && String(get(msg, 'type')) === ':server/welcome') return get(msg, 'player-id');
+  }
+  return null;
+}
 
 // The UI opens in German unconditionally — see werwolf.events/default-locale — so
 // selectors use the German copy. Centralised here so a wording change is one edit,
@@ -59,18 +121,29 @@ async function joinRoom(page, name, code) {
   await expect(page.getByRole('button', { name: DE.leave })).toBeVisible();
 }
 
-/** Seat `names.length` players in one room; returns {code, pages}. */
+/**
+ * Seat `names.length` players in one room; returns {code, pages, frames}.
+ *
+ * `frames[i]` collects every frame the server sent page i, and the listener is
+ * attached BEFORE the page navigates — `page.on('websocket')` only fires for
+ * sockets opened afterwards, so capturing later silently yields nothing. That
+ * cost a debugging round: the redaction assertions passed against an empty array
+ * and looked like clean frames.
+ */
 async function seatTable(browser, names) {
   const pages = [];
+  const frames = [];
   for (const _ of names) {
     const ctx = await browser.newContext({ permissions: ['microphone'] });
-    pages.push(await ctx.newPage());
+    const page = await ctx.newPage();
+    frames.push(captureFrames(page));
+    pages.push(page);
   }
   const code = await createRoom(pages[0], names[0]);
   for (let i = 1; i < names.length; i++) {
     await joinRoom(pages[i], names[i], code);
   }
-  return { code, pages };
+  return { code, pages, frames };
 }
 
 async function closeAll(pages) {
@@ -96,4 +169,5 @@ async function liveKitUp(request, url = 'http://localhost:7880') {
 
 module.exports = {
   DE, captureFrames, landOn, createRoom, joinRoom, seatTable, closeAll, liveKitUp,
+  readFrame, foreignRoles, myIdFrom,
 };
