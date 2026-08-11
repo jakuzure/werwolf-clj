@@ -61,6 +61,7 @@
    :role/seherin      "Seherin"
    :role/hexe         "Hexe"
    :role/jaeger       "Jäger"
+   :role/weisser-werwolf "Weißer Werwolf"
    :role/beschuetzer  "Beschützer"
    :role/amor         "Amor"
 
@@ -69,6 +70,7 @@
    :role-desc/seherin      "Jede Nacht darfst du die Rolle eines Mitspielers sehen."
    :role-desc/hexe         "Einmal im Spiel heilen, einmal vergiften."
    :role-desc/jaeger       "Stirbst du, nimmst du einen Mitspieler mit."
+   :role-desc/weisser-werwolf "Du jagst mit den Wölfen — und jede zweite Nacht reißt du einen von ihnen. Du gewinnst nur allein."
    :role-desc/beschuetzer  "Jede Nacht schützt du einen Mitspieler vor den Werwölfen — nie zweimal hintereinander denselben."
    :role-desc/amor         "In der ersten Nacht bestimmst du zwei Verliebte."
 
@@ -82,6 +84,8 @@
    :action/seherin-inspect "Rolle aufdecken"
    :action/werewolf-vote   "Opfer wählen"
    :action/beschuetzer-protect "Schützen"
+   :action/weisser-kill    "Einen Wolf reißen"
+   :action/weisser-pass    "Heute keinen Wolf reißen"
    :action/hexe-heal       "Heiltrank benutzen"
    :action/hexe-poison     "Gifttrank benutzen"
    :action/hexe-pass       "Keinen Trank benutzen"
@@ -209,6 +213,7 @@
    :log/died-liebe    (fn [n] (str n " folgt der großen Liebe in den Tod"))
    :log/died-lynch    (fn [n] (str n " wurde vom Dorf gerichtet"))
    :log/died-jaeger   (fn [n] (str n " wurde vom Jäger erschossen"))
+   :log/died-weisser  (fn [n] (str n " wurde vom Weißen Werwolf gerissen"))
    :log/died-gm       (fn [n] (str n " wurde von der Spielleitung aus dem Spiel genommen"))
    :log/died          (fn [n] (str n " ist gestorben"))
 
@@ -241,6 +246,7 @@
    :log/win-village   "Das Dorf hat gewonnen"
    :log/win-werewolf  "Die Werwölfe haben gewonnen"
    :log/win-lovers    "Die Verliebten haben gewonnen"
+   :log/win-weisser   "Der Weiße Werwolf hat allein gewonnen"
 
    ;; Plural roll-ups for the Chronik. Separate entries because the verb agrees
    ;; with the subject, which a count spliced into the singular form cannot do.

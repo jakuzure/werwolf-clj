@@ -33,6 +33,7 @@
   #{:leave :set-locale :start-game
     :amor-link :seherin-inspect :werewolf-vote
     :beschuetzer-protect
+    :weisser-kill :weisser-pass
     :elect :elect-abstain :mayor-appoint :mayor-decline
     :hexe-heal :hexe-poison :hexe-pass
     :jaeger-shoot :jaeger-pass

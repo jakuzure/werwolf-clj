@@ -65,6 +65,7 @@
    :role/seherin      "Seherin"
    :role/hexe         "Hexe"
    :role/jaeger       "Jäger"
+   :role/weisser-werwolf "Weißer Werwolf"
    :role/beschuetzer  "Beschützer"
    :role/amor         "Amor"
 
@@ -73,6 +74,7 @@
    :role-desc/seherin      "The seer. Each night you may learn one player's role."
    :role-desc/hexe         "The witch. One healing potion, one poison, once each per game."
    :role-desc/jaeger       "The hunter. When you die, you take someone with you."
+   :role-desc/weisser-werwolf "You hunt with the wolves — and every second night you tear one of them apart. You win alone."
    :role-desc/beschuetzer  "Each night you guard one player from the werewolves — never the same one twice running."
    :role-desc/amor         "On the first night you choose two players to fall in love."
 
@@ -86,6 +88,8 @@
    :action/seherin-inspect "Reveal a role"
    :action/werewolf-vote   "Choose the victim"
    :action/beschuetzer-protect "Guard"
+   :action/weisser-kill    "Tear apart a wolf"
+   :action/weisser-pass    "Spare them tonight"
    :action/hexe-heal       "Use the healing potion"
    :action/hexe-poison     "Use the poison"
    :action/hexe-pass       "Use neither potion"
@@ -216,6 +220,7 @@
    :log/died-liebe    (fn [n] (str n " follows their love into death"))
    :log/died-lynch    (fn [n] (str n " was condemned by the village"))
    :log/died-jaeger   (fn [n] (str n " was shot by the Jäger"))
+   :log/died-weisser  (fn [n] (str n " was torn apart by the Weißer Werwolf"))
    :log/died-gm       (fn [n] (str n " was removed by the game master"))
    :log/died          (fn [n] (str n " died"))
 
@@ -248,6 +253,7 @@
    :log/win-village   "The village wins"
    :log/win-werewolf  "The werewolves win"
    :log/win-lovers    "The lovers win"
+   :log/win-weisser   "The Weißer Werwolf wins alone"
 
    :log/group-ready        (fn [names] (str names " are done"))
    :log/group-passed       (fn [names] (str names " accuse nobody"))

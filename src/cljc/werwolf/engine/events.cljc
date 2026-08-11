@@ -359,6 +359,19 @@
       (cond-> (not= target (get-in state [:night-actions :protected]))
         (update :pending-deaths (fnil conj []) {:player target :cause :werwolf}))))
 
+(defmethod apply-event :weisser/killed
+  [state {:keys [target]}]
+  (-> state
+      (assoc-in [:night-actions :weisser-target] target)
+      ;; Its own cause, deliberately not :werwolf. The Hexe's heal cancels a
+      ;; werewolf death, and this is not one — a wolf torn apart by the white one
+      ;; is not something the village's witch gets to undo.
+      (update :pending-deaths (fnil conj []) {:player target :cause :weisser})))
+
+(defmethod apply-event :weisser/passed
+  [state {:keys [player]}]
+  (assoc-in state [:night-actions :weisser-passed] player))
+
 (defmethod apply-event :hexe/healed
   [state {:keys [player target]}]
   (-> state

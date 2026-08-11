@@ -899,3 +899,91 @@
           s (exec! s {:type :gm/set-phase :player 0 :phase :day-reveal})]
       (is (not= :election (:phase s)) "back through dawn, but no second election")
       (is (= 2 (:mayor s)) "and the office is untouched"))))
+
+;; ------------------------------------------------------ Weißer Werwolf ---
+;;
+;; Dealt as a werewolf and playing for nobody. He wakes with the pack, they cannot
+;; eat him, the village does not win while he lives — and every second night he
+;; removes one of them.
+
+(defn- white-table
+  "Wolf 1, white wolf 2, two villagers. Classic first night so the pack acts."
+  []
+  (tu/game-with {0 :dorfbewohner 1 :werwolf 2 :weisser-werwolf 3 :dorfbewohner}))
+
+(deftest he-sleeps-on-odd-nights
+  (testing "every SECOND night: a wolf-killer who acted nightly would dismantle
+            his own pack before the village noticed anything"
+    (let [s (white-table)]
+      (is (= 1 (:night s)))
+      (is (not (contains? (set (phases/night-queue s)) :weisser-werwolf))
+          "no turn on night one"))))
+
+(deftest he-wakes-on-even-nights-and-may-only-take-a-wolf
+  (let [s (white-table)
+        ;; Night 1: the pack eats a villager, and he has no turn.
+        s (exec! s {:type :werewolf-vote :player 1 :target 0})
+        s (exec! s {:type :werewolf-vote :player 2 :target 0})
+        s (tu/advance-to-vote s)
+        s (reduce (fn [st pid] (exec! st {:type :vote-abstain :player pid}))
+                  s (alive s))]
+    (is (= :night (:phase s)))
+    (is (= 2 (:night s)))
+    (testing "now it is his night"
+      (is (contains? (set (phases/night-queue s)) :weisser-werwolf)))
+    (testing "and only werewolves are on his list — himself excepted"
+      (let [targets (set (phases/legal-targets s 2 :weisser-kill))]
+        (is (= #{1} targets)
+            (str "expected only the other wolf, got " targets))))))
+
+(deftest his-kill-is-not-the-hexes-to-undo
+  (testing "her heal cancels a WEREWOLF death, and his is not one — a wolf torn
+            apart by the white one is not something the village's witch gets to
+            undo"
+    (let [s (tu/game-with {0 :dorfbewohner 1 :werwolf 2 :weisser-werwolf 3 :hexe})
+          ;; Night one: the pack eats the villager. He has no turn on odd nights.
+          s (exec! s {:type :werewolf-vote :player 1 :target 0})
+          s (exec! s {:type :werewolf-vote :player 2 :target 0})
+          s (exec! s {:type :hexe-pass :player 3})
+          s (tu/advance-to-vote s)
+          s (reduce (fn [st pid] (exec! st {:type :vote-abstain :player pid}))
+                    s (alive s))
+          _ (is (= 2 (:night s)) "reached the second night")
+          ;; Night two: the pack hunts first — his turn is after theirs.
+          s (exec! s {:type :werewolf-vote :player 1 :target 3})
+          s (exec! s {:type :werewolf-vote :player 2 :target 3})
+          ;; And now he turns on the pack.
+          s (exec! s {:type :weisser-kill :player 2 :target 1})]
+      (is (some #(and (= 1 (:player %)) (= :weisser (:cause %))) (:pending-deaths s))
+          "queued under his own cause, not the pack's")
+      (is (not-any? #(= 1 (:player %)) (phases/legal-targets s 3 :hexe-heal))
+          "so the Hexe is not offered him")
+      (testing "while the pack's own victim IS hers to save"
+        (is (some #{3} (phases/legal-targets s 3 :hexe-heal)))))))
+
+(deftest the-pack-cannot-eat-him
+  (testing "he is one of them as far as targeting goes — dealt :werewolf"
+    (let [s (white-table)]
+      (is (not (contains? (set (phases/legal-targets s 1 :werewolf-vote)) 2))))))
+
+(deftest the-village-does-not-win-while-he-lives
+  (let [s (white-table)
+        ;; Lynch the ordinary wolf; the white one remains.
+        s (exec! s {:type :werewolf-vote :player 1 :target 0})
+        s (exec! s {:type :werewolf-vote :player 2 :target 0})
+        s (tu/advance-to-vote s)
+        s (reduce (fn [st pid] (exec! st {:type :vote :player pid :target 1}))
+                  s (remove #{1} (alive s)))
+        s (exec! s {:type :vote-abstain :player 1})]
+    (is (false? (get-in s [:players 1 :alive?])))
+    (is (nil? (:winner s)) "a wolf still walks, whatever colour he is")))
+
+(deftest wolves-only-is-not-a-win-while-he-is-among-them
+  (testing "he still owes them a betrayal, and calling the pack winners would rob
+            him of the game he was playing for"
+    (let [s (tu/game-with {0 :werwolf 1 :weisser-werwolf})]
+      ;; A two-player table of nothing but wolves.
+      (is (nil? (phases/winner s)) "the night is not over")
+      (testing "and once he is alone, it is his"
+        (let [s (assoc-in s [:players 0 :alive?] false)]
+          (is (= :weisser-werwolf (phases/winner s))))))))

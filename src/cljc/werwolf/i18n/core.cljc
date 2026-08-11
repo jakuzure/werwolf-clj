@@ -53,7 +53,8 @@
 (def role-icon
   "Not language. Kept out of the dictionaries so they cannot drift apart on it."
   {:werwolf "🐺" :dorfbewohner "🏠" :seherin "🔮"
-   :hexe "🧪" :jaeger "🎯" :amor "💘" :beschuetzer "🛡"})
+   :hexe "🧪" :jaeger "🎯" :amor "💘" :beschuetzer "🛡"
+   :weisser-werwolf "🐺"})
 
 (defn icon-of [role] (get role-icon role "❓"))
 
@@ -113,6 +114,7 @@
    :liebe   :log/died-liebe
    :lynch   :log/died-lynch
    :jaeger  :log/died-jaeger
+   :weisser :log/died-weisser
    :gm      :log/died-gm})
 
 (def ^:private gm-action-keys
@@ -189,6 +191,7 @@
       :game/ended          (t locale (case winner
                                        :werewolf :log/win-werewolf
                                        :lovers   :log/win-lovers
+                                       :weisser-werwolf :log/win-weisser
                                        :log/win-village))
       ;; A newer server may log something this client has never heard of. Show
       ;; the raw type rather than a blank line: visible is debuggable.

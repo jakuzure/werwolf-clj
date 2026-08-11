@@ -39,10 +39,18 @@
   "Which team has won, or nil if the game continues.
 
    Order matters: the lovers' win overrides everything, because a wolf and a
-   villager in love beat both of their original teams."
+   villager in love beat both of their original teams.
+
+   The Weißer Werwolf is the third exception, and the only one that can DELAY a
+   victory rather than grant one. He is dealt as a werewolf — the village does not
+   win while he lives, and the pack cannot eat him — but he wins alone. So a table
+   of nothing but wolves is NOT a werewolf victory while he is among them: he
+   still owes them a betrayal, and declaring the pack winners would rob him of the
+   game he was playing for."
   [state]
   (let [living (e/living-ids state)
-        lovers (set (:lovers state))]
+        lovers (set (:lovers state))
+        whites (set (e/living-with-role state :weisser-werwolf))]
     (cond
       (empty? living) :village ; mutual annihilation — the village is not overrun
 
@@ -55,16 +63,29 @@
       (let [ts (teams-alive state)]
         (cond
           (not (contains? ts :werewolf)) :village
-          (= ts #{:werewolf})            :werewolf
+
+          (= ts #{:werewolf})
+          (cond
+            ;; Last one standing: exactly what he was after.
+            (and (= 1 (count living)) (seq whites)) :weisser-werwolf
+            ;; Wolves only, but he is still in the room — the night is not over.
+            (seq whites) nil
+            :else :werewolf)
+
           :else nil)))))
 
 ;; ------------------------------------------------- night turn ordering ---
 
 (defn- role-can-act? [state role-id]
-  (let [{:keys [first-night-only? skips-first-night?]} (roles/role role-id)
+  (let [{:keys [first-night-only? skips-first-night? acts-on-even-nights?]}
+        (roles/role role-id)
         first-night? (= 1 (:night state))]
     (and (seq (e/living-with-role state role-id))
          (or (not first-night-only?) first-night?)
+         ;; Every second night, from the second. Named in the registry rather
+         ;; than here, so this reads as a property of a role and not as a rule
+         ;; about one.
+         (or (not acts-on-even-nights?) (even? (:night state 0)))
          ;; Roles that sleep through night 1, unless this room opted back into
          ;; the classic rule. No role is named here on purpose — the fact that
          ;; the wolves are the ones who sleep lives in the registry.
@@ -122,8 +143,17 @@
   (let [living (e/living-ids state)]
     (and (seq living) (every? #(contains? (:election-votes state {}) %) living))))
 
+(defn- pack
+  "Everyone who hunts with the wolves: the werewolf TEAM, not the werewolf role.
+
+   The Weißer Werwolf is dealt as a werewolf and wakes with them, so he votes on
+   the victim like any of them. Keying this on the role instead left him unable to
+   act during their turn while the night waited for a vote he was never offered."
+  [state]
+  (filterv #(= :werewolf (e/team-of-player state %)) (e/living-ids state)))
+
 (defn- wolves-all-voted? [state]
-  (let [wolves (e/living-with-role state :werwolf)
+  (let [wolves (pack state)
         votes  (get-in state [:night-actions :werewolf-votes] {})]
     (and (seq wolves) (every? #(contains? votes %) wolves))))
 
@@ -196,13 +226,20 @@
       (= "gm" (namespace action))))
 
 (defn- nobody-can-act?
-  "True when no living holder of `role-id` has any usable action.
+  "True when nobody who acts on `role-id`'s turn has any usable action left.
 
    This is the general safety net behind the night: ANY role whose turn can
    become impossible would otherwise stall the game forever. Relying on a
-   per-role special case is what let the exhausted-Seherin deadlock through."
+   per-role special case is what let the exhausted-Seherin deadlock through.
+
+   Holders are whoever ACTS on that turn, which for the wolves means the whole
+   pack. Keyed on the role instead, the wolves' turn ended the moment the
+   ordinary wolves had voted — the Weißer Werwolf was still owed a vote, was
+   still being offered one, and the night closed with no kill at all."
   [state role-id]
-  (let [holders (e/living-with-role state role-id)]
+  (let [holders (if (= :werwolf role-id)
+                  (pack state)
+                  (e/living-with-role state role-id))]
     (or (empty? holders)
         (every? (fn [pid]
                   (empty? (remove not-really-acting? (legal-actions state pid))))
@@ -437,12 +474,20 @@
               [{:type :phase/changed :phase (next-phase phase) :deadline nil}])))))
 
 (defn- night-actor?
-  "Is pid one of the players whose role is currently on the night cursor?"
+  "Is pid one of the players whose role is currently on the night cursor?
+
+   With one exception, and it is a rule rather than a convenience: the wolves'
+   turn belongs to the whole PACK, which includes the Weißer Werwolf. He hunts
+   with them — his own turn, two hours later in the night order, is where he turns
+   on them."
   [state pid]
-  (let [cursor (:night-cursor state)]
+  (let [cursor (:night-cursor state)
+        role   (get-in state [:players pid :role])]
     (and cursor
-         (= cursor (get-in state [:players pid :role]))
-         (get-in state [:players pid :alive?]))))
+         (get-in state [:players pid :alive?])
+         (or (= cursor role)
+             (and (= :werwolf cursor)
+                  (= :werewolf (e/team-of-player state pid)))))))
 
 (defn host-actions
   "GM powers, which belong to the room's host and are NOT lost on death.
@@ -522,7 +567,12 @@
           :amor    (if (= 1 (:night state)) #{:amor-link} #{})
           :seherin #{:seherin-inspect}
           :beschuetzer #{:beschuetzer-protect}
+          ;; He may decline, like the Hexe and the Jäger: removing a wolf tonight
+          ;; is a judgement about timing, and a role whose only option is to act
+          ;; has no decision to make.
+          :weisser-werwolf #{:weisser-kill :weisser-pass :chat}
           ;; Wolves may talk among themselves at night (private room at M7).
+          ;; The whole pack votes, the white one included — see `night-actor?`.
           :werwolf (if (contains? (get-in state [:night-actions :werewolf-votes] {}) pid)
                      #{:chat}
                      #{:werewolf-vote :chat})
@@ -595,7 +645,7 @@
     ;; The ways to decline. Each is a deliberate 'no', which is why they are
     ;; commands at all rather than the absence of one.
     :hexe-pass :nominate-pass :vote-abstain :jaeger-pass
-    :elect-abstain :mayor-decline})
+    :elect-abstain :mayor-decline :weisser-pass})
 
 (declare legal-targets legal-choices)
 
@@ -645,6 +695,11 @@
                           (get-in state [:players pid :last-protected]))]
         (vec (remove #(= % last-target) living)))
 
+      ;; His own pack, himself excepted. He is the only role that targets
+      ;; werewolves, which is the whole of his threat.
+      :weisser-kill    (vec (remove #(= % pid)
+                                    (filter #(= :werewolf (e/team-of-player state %))
+                                            living)))
       :hexe-poison     others
       :jaeger-shoot    others
       :amor-link       (vec living)

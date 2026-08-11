@@ -78,11 +78,18 @@
       ;; election then moved that row too, which is expected and is the
       ;; difference between the two changes: a role reaches some tables, a phase
       ;; reaches all of them.
-      12 8675309 297 161 :werewolf
+      ;; Re-pinned again for the Weißer Werwolf, who replaces a wolf from twelve
+      ;; players up: the 5 and 9 rows are untouched, and every row at 12+ moved.
+      ;; The same shape as the Beschützer — a role reaches the tables it is dealt
+      ;; to, and no others.
+      ;; The fourteen-player row is now won by the Weißer Werwolf, which is worth
+      ;; keeping as a pinned case: it is the only fingerprint that exercises the
+      ;; solo victory end to end.
+      12 8675309 258 137 :village
       9  4242    111 44  :werewolf
-      18 777     377 231 :werewolf
+      18 777     464 277 :werewolf
       5  31337   97  36  :werewolf
-      14 90210   368 215 :village)))
+      14 90210   452 230 :weisser-werwolf)))
 
 (deftest state-matches-its-schema-at-every-step
   (testing "the closed GameState schema holds through a whole game, so state
@@ -106,3 +113,16 @@
         (is (nil? (h/replay-mismatch r))
             (str "replay diverged for seed " seed ": "
                  (pr-str (h/replay-mismatch r))))))))
+
+(deftest the-weisser-werwolf-can-actually-win
+  (testing "his is the only SOLO win condition, and the only one that can DELAY a
+            victory: a table of nothing but wolves is not a werewolf win while he
+            is among them. If that delay were wrong the games would either hang or
+            he would never win at all, so the summary is the evidence."
+    (let [{:keys [summary]} (h/play-many 120)
+          winners (:winners summary)]
+      (is (pos? (get winners :weisser-werwolf 0))
+          (str "he never won in 120 games: " (pr-str winners)))
+      (testing "and he has not taken the game over either"
+        (is (pos? (get winners :village 0)))
+        (is (pos? (get winners :werewolf 0)))))))

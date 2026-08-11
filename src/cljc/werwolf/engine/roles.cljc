@@ -93,6 +93,24 @@
     :on-death          :reaction/jaeger-shot
     :max-count         1}
 
+   :weisser-werwolf
+   {:id                :weisser-werwolf
+    ;; DEALT as a werewolf, and that is not a compromise — it is how he works. He
+    ;; wakes with the pack, they count him as one of their own, they cannot eat
+    ;; him, and the village does not win while he lives. His betrayal is a
+    ;; separate WIN CONDITION rather than a separate team; see phases/winner.
+    :team              :werewolf
+    ;; After the pack, so he is choosing which of them to remove having already
+    ;; seen their victim — and before the Hexe, so she still sees the pack's kill
+    ;; and can decide about her heal. His own kill is not hers to cancel.
+    :night-order       250
+    :night-action      :target/one
+    :knows-teammates?  true
+    ;; Every SECOND night, from the second. A wolf-killer who acted nightly would
+    ;; simply dismantle his own team before the village noticed anything.
+    :acts-on-even-nights? true
+    :max-count         1}
+
    :beschuetzer
    {:id                :beschuetzer
     :team              :village
@@ -180,14 +198,28 @@
    and putting him in a six-player game would tilt it."
   [:seherin :hexe :jaeger :amor :beschuetzer])
 
+(def ^:const weisser-werwolf-from
+  "Table size at which one of the werewolves is the Weißer Werwolf instead.
+
+   He REPLACES a wolf rather than joining as an extra, so the pack stays the size
+   the composition table says — what changes is that one of them is playing for
+   himself. Twelve, because he needs a pack big enough that removing one of them
+   every other night is a strategy rather than immediate suicide: at two wolves he
+   is simply killing the only ally he has."
+  12)
+
 (defn compose-roles
   "Return a vector of role ids of length n: the deck to be dealt.
    Pure and deterministic — shuffling happens elsewhere with a seeded RNG."
   [n]
   (let [wolves   (get default-composition n (max 1 (quot n 4)))
+        white?   (and (>= n weisser-werwolf-from) (>= wolves 2))
+        pack     (if white?
+                   (into [:weisser-werwolf] (repeat (dec wolves) :werwolf))
+                   (vec (repeat wolves :werwolf)))
         specials (vec (take (max 0 (min (count special-village-priority)
                                         (- n wolves 1)))
                             special-village-priority))
         villagers (- n wolves (count specials))]
-    (into (into (vec (repeat wolves :werwolf)) specials)
+    (into (into pack specials)
           (repeat villagers :dorfbewohner))))

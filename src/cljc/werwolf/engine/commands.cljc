@@ -160,6 +160,21 @@
     :else [{:type :beschuetzer/protected :player player :target target}
            {:type :night/role-completed :role :beschuetzer}]))
 
+(defmethod handle :weisser-kill
+  [state {:keys [player target]}]
+  (cond
+    (not (allowed? state player :weisser-kill)) (err :not-allowed {:action :weisser-kill})
+    (not (valid-target? state player :weisser-kill target)) (err :invalid-target {:target target})
+    :else [{:type :weisser/killed :player player :target target}
+           {:type :night/role-completed :role :weisser-werwolf}]))
+
+(defmethod handle :weisser-pass
+  [state {:keys [player]}]
+  (if-not (allowed? state player :weisser-pass)
+    (err :not-allowed {:action :weisser-pass})
+    [{:type :weisser/passed :player player}
+     {:type :night/role-completed :role :weisser-werwolf}]))
+
 (defmethod handle :hexe-heal
   [state {:keys [player target]}]
   (cond

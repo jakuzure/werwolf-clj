@@ -10,7 +10,11 @@
 
 (def PlayerId :int)
 (def RoleId (into [:enum] (sort roles/all-ids)))
-(def Team [:enum :village :werewolf :lovers])
+(def Team
+  "Win conditions, not only dealt teams. `:lovers` and `:weisser-werwolf` are
+   never dealt — the first is created at runtime by Amor, the second is a solo
+   victory available to a player dealt as a werewolf."
+  [:enum :village :werewolf :lovers :weisser-werwolf])
 
 (def Phase
   [:enum
