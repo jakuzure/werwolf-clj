@@ -40,17 +40,34 @@
 
 (defn- teammates
   "Players whose role pid is entitled to know, excluding pid.
-   Only roles flagged :knows-teammates? (i.e. werewolves) learn each other."
+
+   Only roles flagged :knows-teammates? learn each other, and they learn everyone
+   on their TEAM rather than everyone with their exact role. That distinction is
+   the Weißer Werwolf: he is dealt a different role but hunts with the pack, and
+   comparing roles left him unable to see them and them unable to see him — while
+   he sat in their chat channel, which routes by team."
   [state pid]
-  (let [role-id (get-in state [:players pid :role])]
-    (if (and role-id (:knows-teammates? (roles/role role-id)))
+  (let [role-id (get-in state [:players pid :role])
+        team    (roles/team-of role-id)]
+    (if (and role-id team (:knows-teammates? (roles/role role-id)))
       (->> (:players state)
            (filter (fn [[other p]]
                      (and (not= other pid)
-                          (= role-id (:role p)))))
+                          (:role p)
+                          (= team (roles/team-of (:role p))))))
            (map key)
            set)
       #{})))
+
+(defn- role-as-seen-by-teammates
+  "What a teammate is shown as. Usually simply their role.
+
+   `:appears-as` in the registry is the exception, and exists for exactly one
+   reason: the pack must know the Weißer Werwolf hunts with them without learning
+   that he is the one who will turn on them. Reading it here rather than naming
+   the role keeps view.cljc free of rules about specific roles."
+  [role-id]
+  (or (:appears-as (roles/role role-id)) role-id))
 
 (defn- lover-of [state pid]
   (when-let [ls (:lovers state)]
@@ -78,7 +95,9 @@
 
       :else
       (let [own      (when (:role me) {pid (:role me)})
-            mates    (into {} (map (fn [id] [id (get-in state [:players id :role])]))
+            mates    (into {} (map (fn [id]
+                                     [id (role-as-seen-by-teammates
+                                          (get-in state [:players id :role]))]))
                            (teammates state pid))
             ;; Roles the player has actively learned (Seherin's inspections).
             learned  (into {} (:knows me {}))

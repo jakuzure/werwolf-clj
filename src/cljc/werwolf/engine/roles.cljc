@@ -109,6 +109,13 @@
     ;; Every SECOND night, from the second. A wolf-killer who acted nightly would
     ;; simply dismantle his own team before the village noticed anything.
     :acts-on-even-nights? true
+    ;; What the OTHER wolves see when they look at him: an ordinary werewolf.
+    ;;
+    ;; They must know he hunts with them — he shares their chat and their turn, so
+    ;; pretending otherwise would be transparent — and must NOT know he is the one
+    ;; who will turn on them. That asymmetry IS the role. He sees their true roles;
+    ;; `:appears-as` only masks what they see of him.
+    :appears-as        :werwolf
     :max-count         1}
 
    :beschuetzer

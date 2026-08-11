@@ -169,3 +169,24 @@
       ;; check-invariants already asserts redaction after every event, so a
       ;; clean run here is a clean run for redaction across ~5000 states.
       (is (every? :ok? games)))))
+
+(deftest the-pack-knows-him-but-not-what-he-is
+  (testing "the Weißer Werwolf hunts with the wolves and shares their chat, so
+            pretending they cannot see him would be transparent. What they must
+            NOT learn is that he is the one who will turn on them — that asymmetry
+            is the whole role."
+    (let [s (tu/game-with {0 :werwolf 1 :weisser-werwolf 2 :dorfbewohner 3 :seherin})
+          wolf-sees  (view/revealed-roles s 0)
+          white-sees (view/revealed-roles s 1)]
+      (testing "the ordinary wolf sees a wolf where the white one sits"
+        (is (= :werwolf (get wolf-sees 1))
+            (str "he was shown " (get wolf-sees 1))))
+      (testing "while the white one sees the pack for what it is"
+        (is (= :werwolf (get white-sees 0))))
+      (testing "and neither of them learns anything about the village"
+        (is (nil? (get wolf-sees 2)))
+        (is (nil? (get wolf-sees 3)))
+        (is (nil? (get white-sees 2)))
+        (is (nil? (get white-sees 3))))
+      (testing "the village learns nothing either way"
+        (is (empty? (dissoc (view/revealed-roles s 2) 2)))))))
