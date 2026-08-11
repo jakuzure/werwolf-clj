@@ -30,12 +30,17 @@
 
 (defn deal
   "Assign roles deterministically from the game's seed.
-   Returns {:assignments {pid role} :seed advanced-seed}."
+   Returns {:assignments {pid role} :centre [..] :seed advanced-seed}.
+
+   Only the players' cards are shuffled. The centre is fixed by composition rather
+   than being whatever fell out of the shuffle — see `roles/centre-extras` for why
+   a random middle produces tables nobody asked for."
   [state]
   (let [ids  (vec (sort (keys (:players state))))
-        deck (roles/compose-roles (count ids))
+        {:keys [deck centre]} (roles/compose-deck (count ids))
         [seed' shuffled] (rng/shuffle (:seed state) deck)]
     {:assignments (zipmap ids shuffled)
+     :centre      centre
      :seed        seed'}))
 
 ;; -------------------------------------------------------------- handle ---
@@ -82,8 +87,8 @@
   [state {:keys [player]}]
   (if-not (allowed? state player :start-game)
     (err :not-allowed {:action :start-game})
-    (let [{:keys [assignments seed]} (deal state)]
-      [{:type :game/started :assignments assignments :seed seed}
+    (let [{:keys [assignments centre seed]} (deal state)]
+      [{:type :game/started :assignments assignments :centre centre :seed seed}
        {:type :night/began :night 1}])))
 
 ;; ---- night actions ----
@@ -159,6 +164,25 @@
     ;; on every table large enough to deal a Beschützer.
     :else [{:type :beschuetzer/protected :player player :target target}
            {:type :night/role-completed :role :beschuetzer}]))
+
+(defmethod handle :dieb-take
+  [state {:keys [player role]}]
+  (cond
+    (not (allowed? state player :dieb-take)) (err :not-allowed {:action :dieb-take})
+    ;; Validated against `legal-choices`, not against the centre directly: the
+    ;; engine already has one place that decides what a choice may be, and a
+    ;; second copy here is a second thing to keep in step.
+    (not (contains? (set (phases/legal-choices state :dieb-take)) role))
+    (err :invalid-choice {:role role})
+    :else [{:type :dieb/took :player player :role role}
+           {:type :night/role-completed :role :dieb}]))
+
+(defmethod handle :dieb-keep
+  [state {:keys [player]}]
+  (if-not (allowed? state player :dieb-keep)
+    (err :not-allowed {:action :dieb-keep})
+    [{:type :dieb/kept :player player}
+     {:type :night/role-completed :role :dieb}]))
 
 (defmethod handle :weisser-kill
   [state {:keys [player target]}]

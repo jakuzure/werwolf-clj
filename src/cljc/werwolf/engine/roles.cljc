@@ -134,6 +134,25 @@
     :no-repeat-target? true
     :max-count         1}
 
+   :dieb
+   {:id                :dieb
+    ;; Village while he holds the card, and that is all he is: a Dieb who keeps it
+    ;; has no power at all. What he plays for depends on what he takes.
+    :team              :village
+    ;; First of all, ahead of Amor — he must know what he IS before anybody acts
+    ;; on it, and Amor may well link him.
+    :night-order       25
+    ;; Neither a player nor a pair: he points at one of two CARDS. The choice
+    ;; travels under :role, which `proto/choice-key` already knows how to carry —
+    ;; the same machinery the GM overrides use.
+    :night-action      :choice/one-card
+    :first-night-only? true
+    :knows-teammates?  false
+    ;; Two extra cards go into the deck when he is dealt, and the two nobody gets
+    ;; are what he chooses between.
+    :extra-cards       2
+    :max-count         1}
+
    :amor
    {:id                :amor
     :team              :village
@@ -194,6 +213,13 @@
    priority order) and then plain Dorfbewohner."
   {5 1, 6 1, 7 2, 8 2, 9 2, 10 2, 11 3, 12 3, 13 3, 14 3, 15 4, 16 4, 17 4, 18 4})
 
+(def ^:const dieb-from
+  "Table size at which a Dieb is dealt.
+
+   Ten, because his two spare cards make the deck n+2 and the composition has to
+   have room to spare them without thinning the village to nothing."
+  10)
+
 (def special-village-priority
   "Which unique village roles to include as the table grows.
    Seherin first — the village is close to unplayable without information.
@@ -224,9 +250,38 @@
         pack     (if white?
                    (into [:weisser-werwolf] (repeat (dec wolves) :werwolf))
                    (vec (repeat wolves :werwolf)))
-        specials (vec (take (max 0 (min (count special-village-priority)
-                                        (- n wolves 1)))
-                            special-village-priority))
+        thief?   (>= n dieb-from)
+        specials (cond-> (vec (take (max 0 (min (count special-village-priority)
+                                                (- n wolves 1)))
+                                    special-village-priority))
+                   thief? (conj :dieb))
         villagers (- n wolves (count specials))]
     (into (into pack specials)
           (repeat villagers :dorfbewohner))))
+
+(def ^:const centre-extras
+  "The two cards that go into the middle when a Dieb is dealt.
+
+   One wolf and one villager, fixed rather than drawn from the deck. Drawing the
+   leftovers at random reads more like the cardboard game, but it can put the
+   Dieb himself — or the only Seherin — in the middle, which produces a table
+   nobody asked for and is very hard to explain to the people playing it.
+   This way the choice is always the interesting one: join the wolves, or stay
+   what you are.
+
+   A consequence worth naming: because the two are never both wolves, the
+   Düsterwald clause obliging him to take a card when they are is unreachable,
+   and is therefore not implemented. He may always decline."
+  [:werwolf :dorfbewohner])
+
+(defn compose-deck
+  "The full deal: `{:deck [n roles] :centre [roles]}`.
+
+   The centre is empty unless a Dieb is in the deck, in which case it holds the
+   two cards he chooses between. Separating them here means `deal` shuffles only
+   what players receive — the centre is not a lottery, so a game is not decided by
+   which two cards happened to fall out of it."
+  [n]
+  (let [deck (compose-roles n)]
+    {:deck   deck
+     :centre (if (some #{:dieb} deck) (vec centre-extras) [])}))

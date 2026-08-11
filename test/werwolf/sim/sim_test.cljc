@@ -85,11 +85,13 @@
       ;; The fourteen-player row is now won by the Weißer Werwolf, which is worth
       ;; keeping as a pinned case: it is the only fingerprint that exercises the
       ;; solo victory end to end.
-      12 8675309 258 137 :village
+      ;; Re-pinned once more for the Dieb, who is dealt from ten players up: the 5
+      ;; and 9 rows are untouched again, and every row at 10+ moved.
+      12 8675309 418 219 :village
       9  4242    111 44  :werewolf
-      18 777     464 277 :werewolf
+      18 777     356 188 :werewolf
       5  31337   97  36  :werewolf
-      14 90210   452 230 :weisser-werwolf)))
+      14 90210   377 208 :werewolf)))
 
 (deftest state-matches-its-schema-at-every-step
   (testing "the closed GameState schema holds through a whole game, so state

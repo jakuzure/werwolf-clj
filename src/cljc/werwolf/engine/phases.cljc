@@ -566,6 +566,11 @@
         (case (:night-cursor state)
           :amor    (if (= 1 (:night state)) #{:amor-link} #{})
           :seherin #{:seherin-inspect}
+          ;; Take a card or keep his own. He may always decline: the Düsterwald
+          ;; clause forcing his hand when both cards are wolves cannot arise here,
+          ;; because the centre is one wolf and one villager by construction — see
+          ;; roles/centre-extras.
+          :dieb        #{:dieb-take :dieb-keep}
           :beschuetzer #{:beschuetzer-protect}
           ;; He may decline, like the Hexe and the Jäger: removing a wolf tonight
           ;; is a judgement about timing, and a role whose only option is to act
@@ -645,7 +650,9 @@
     ;; The ways to decline. Each is a deliberate 'no', which is why they are
     ;; commands at all rather than the absence of one.
     :hexe-pass :nominate-pass :vote-abstain :jaeger-pass
-    :elect-abstain :mayor-decline :weisser-pass})
+    :elect-abstain :mayor-decline :weisser-pass
+    ;; Keeping his own card is a decision, not the absence of one.
+    :dieb-keep})
 
 (declare legal-targets legal-choices)
 
@@ -740,6 +747,14 @@
    Whether the action is offered at all is `host-actions`' business."
   [state action]
   (case action
+    ;; The two cards nobody was dealt. This is how they reach the Dieb at all —
+    ;; `:centre` is never published as room state, and `:choices` is built only
+    ;; from the actions a player actually holds, so nobody else sees them.
+    ;;
+    ;; Sorted for the same reason `assignable-ids` is: this list crosses the wire
+    ;; and is indexed into by a select control, so an unstable order would make two
+    ;; clients disagree and could make a replay platform-dependent.
+    :dieb-take        (vec (sort (:centre state [])))
     :gm/set-phase     (vec (sort (keys next-phase)))
     ;; Only the role currently being called — skipping a role that is not
     ;; speaking would silently mark its turn done for the rest of the night.

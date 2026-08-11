@@ -10,7 +10,8 @@
             [werwolf.engine.events :as e]
             [werwolf.engine.phases :as phases]
             [werwolf.engine.rng :as rng]
-            [werwolf.engine.view :as view]))
+            [werwolf.engine.view :as view]
+            [werwolf.proto :as proto]))
 
 (def ^:const max-turns
   "A real game of 18 finishes well inside this. Hitting it means a livelock."
@@ -78,6 +79,21 @@
               rest-t (vec (remove #{a} targets))
               [s2 b] (rng/rand-nth s1 rest-t)]
           [s2 {:type :amor-link :player pid :a a :b b}]))
+
+      ;; An action that names a CHOICE rather than a seat: a card, a role, a phase.
+      ;; Which key it travels under comes from `proto/choice-key` rather than being
+      ;; decided here, for the same reason the client reads it from there — one
+      ;; place owns that vocabulary.
+      ;;
+      ;; Until the Dieb there was no non-GM action of this shape, and the GM ones
+      ;; are excluded, so this path had never run: the simulation reported his
+      ;; perfectly legal turn as `legal-actions` offering an unusable action.
+      (proto/choice-key action)
+      (let [choices (vec (phases/legal-choices state action))]
+        (if (empty? choices)
+          [seed nil]
+          (let [[s1 c] (rng/rand-nth seed choices)]
+            [s1 {:type action :player pid (proto/choice-key action) c}])))
 
       ;; Everything else is "pick one legal target".
       :else

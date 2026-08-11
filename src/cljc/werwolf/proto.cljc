@@ -34,6 +34,7 @@
     :amor-link :seherin-inspect :werewolf-vote
     :beschuetzer-protect
     :weisser-kill :weisser-pass
+    :dieb-take :dieb-keep
     :elect :elect-abstain :mayor-appoint :mayor-decline
     :hexe-heal :hexe-poison :hexe-pass
     :jaeger-shoot :jaeger-pass
@@ -52,7 +53,10 @@
 
    Actions absent from this map take no choice. An action may take BOTH a target
    and a choice; `:gm/reassign-role` names a player and the role to give them."
-  {:gm/skip-role     :role
+  {;; The Dieb points at a CARD, not a player, so his choice travels the same way
+   ;; a GM override's does.
+   :dieb-take        :role
+   :gm/skip-role     :role
    :gm/set-phase     :phase
    :gm/reassign-role :role})
 

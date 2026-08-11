@@ -205,7 +205,7 @@
       (publish {:type :host/changed :host host})))
 
 (defmethod apply-event :game/started
-  [state {:keys [assignments seed]}]
+  [state {:keys [assignments centre seed]}]
   (-> (reduce (fn [s [pid role-id]]
                 (-> s
                     (assoc-in [:players pid :role] role-id)
@@ -216,7 +216,7 @@
                                 (roles/initial-resources role-id)))))
               state
               assignments)
-      (assoc :night 0 :winner nil)
+      (assoc :night 0 :winner nil :centre (vec centre))
       ;; Carry the advanced seed so any later randomness stays reproducible.
       (cond-> seed (assoc :seed seed))
       (publish {:type :game/started :players (count assignments)})))
@@ -358,6 +358,37 @@
       ;; already prevented.
       (cond-> (not= target (get-in state [:night-actions :protected]))
         (update :pending-deaths (fnil conj []) {:player target :cause :werwolf}))))
+
+(defmethod apply-event :dieb/took
+  [state {:keys [player role]}]
+  (let [old (get-in state [:players player :role])]
+    (-> state
+        (assoc-in [:players player :role] role)
+        ;; The new role's one-shot resources come with the card. Nothing is taken
+        ;; away: he was a Dieb, and a Dieb has nothing to lose.
+        (cond-> (roles/initial-resources role)
+          (assoc-in [:players player :resources] (roles/initial-resources role)))
+        ;; His old card goes back to the middle, replacing the one he took. Not
+        ;; bookkeeping for its own sake — it keeps `:centre` the same size, and it
+        ;; is the honest record of a swap rather than a gift.
+        (assoc :centre (vec (replace {role old} (:centre state []))))
+        ;; NOT PUBLISHED AT ALL, and not merely stripped of the role.
+        ;;
+        ;; The log is inside every player's view, so an entry saying "somebody took
+        ;; a card" names the Dieb as surely as one saying which card it was — and
+        ;; at a table the narrator wakes him in silence. Every other night action
+        ;; is private for the same reason: the Seherin's look, the Beschützer's
+        ;; guard and the Hexe's potions publish nothing either.
+        ;;
+        ;; He is recorded in `:night-actions` so the phase machine can see the turn
+        ;; is done, which is state and not narration.
+        (assoc-in [:night-actions :dieb] player))))
+
+(defmethod apply-event :dieb/kept
+  [state {:keys [player]}]
+  ;; Also unpublished — see above. Keeping the card is as much of a tell as
+  ;; swapping it.
+  (assoc-in state [:night-actions :dieb] player))
 
 (defmethod apply-event :weisser/killed
   [state {:keys [target]}]

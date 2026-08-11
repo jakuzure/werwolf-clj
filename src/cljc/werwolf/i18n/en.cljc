@@ -67,6 +67,7 @@
    :role/jaeger       "Jäger"
    :role/weisser-werwolf "Weißer Werwolf"
    :role/beschuetzer  "Beschützer"
+   :role/dieb         "Dieb"
    :role/amor         "Amor"
 
    :role-desc/werwolf      "Each night from the second on, you and the pack take a victim."
@@ -76,6 +77,7 @@
    :role-desc/jaeger       "The hunter. When you die, you take someone with you."
    :role-desc/weisser-werwolf "You hunt with the wolves — and every second night you tear one of them apart. You win alone."
    :role-desc/beschuetzer  "Each night you guard one player from the werewolves — never the same one twice running."
+   :role-desc/dieb         "On the first night you see two leftover cards and may take one — or stay a Dieb."
    :role-desc/amor         "On the first night you choose two players to fall in love."
 
    ;; ----------------------------------------------------------- actions ---
@@ -90,6 +92,8 @@
    :action/beschuetzer-protect "Guard"
    :action/weisser-kill    "Tear apart a wolf"
    :action/weisser-pass    "Spare them tonight"
+   :action/dieb-take       "Take a card"
+   :action/dieb-keep       "Keep your own card"
    :action/hexe-heal       "Use the healing potion"
    :action/hexe-poison     "Use the poison"
    :action/hexe-pass       "Use neither potion"

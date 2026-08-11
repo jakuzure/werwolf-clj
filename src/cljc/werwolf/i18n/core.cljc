@@ -54,7 +54,7 @@
   "Not language. Kept out of the dictionaries so they cannot drift apart on it."
   {:werwolf "🐺" :dorfbewohner "🏠" :seherin "🔮"
    :hexe "🧪" :jaeger "🎯" :amor "💘" :beschuetzer "🛡"
-   :weisser-werwolf "🐺"})
+   :weisser-werwolf "🐺" :dieb "🃏"})
 
 (defn icon-of [role] (get role-icon role "❓"))
 

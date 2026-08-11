@@ -71,6 +71,10 @@
    ;; Rule variant: false (default) means no werewolf turn on night 1.
    [:first-night-kill? {:optional true} :boolean]
    [:lovers {:optional true} [:maybe [:set PlayerId]]]
+   ;; The two cards nobody was dealt, which the Dieb chooses between on the first
+   ;; night. Empty in games without one. PRIVATE to him — `view-for` publishes it
+   ;; only through his own `:choices`, never as room state.
+   [:centre {:optional true} [:vector :keyword]]
    [:reactions [:vector Reaction]]            ; stack, drained LIFO
    [:pending-deaths [:vector [:map [:player PlayerId] [:cause :keyword]]]]
    ;; night bookkeeping, cleared at dawn

@@ -987,3 +987,85 @@
       (testing "and once he is alone, it is his"
         (let [s (assoc-in s [:players 0 :alive?] false)]
           (is (= :weisser-werwolf (phases/winner s))))))))
+
+;; ----------------------------------------------------------------- Dieb ---
+;;
+;; Two extra cards go into the deck when he is dealt, and the two nobody receives
+;; are what he chooses between on the first night. He acts before everyone.
+
+(defn- thief-table []
+  (-> (tu/game-with {0 :dieb 1 :werwolf 2 :dorfbewohner 3 :seherin})
+      (assoc :centre [:werwolf :dorfbewohner])))
+
+(deftest he-chooses-first-of-all
+  (let [s (thief-table)]
+    (is (= :dieb (:night-cursor s))
+        "ahead of Amor and everyone else — he must know what he IS before anybody
+         acts on it")))
+
+(deftest he-is-offered-the-two-cards-nobody-was-dealt
+  (let [s (thief-table)]
+    (is (= [:dorfbewohner :werwolf] (phases/legal-choices s :dieb-take))
+        "sorted, because this list crosses the wire")
+    (testing "and both ways out are on the table"
+      (is (contains? (phases/legal-actions s 0) :dieb-take))
+      (is (contains? (phases/legal-actions s 0) :dieb-keep)))))
+
+(deftest taking-a-card-changes-what-he-is
+  (let [s (exec! (thief-table) {:type :dieb-take :player 0 :role :werwolf})]
+    (is (= :werwolf (tu/role-of s 0)))
+    (testing "and his own card goes back to the middle, replacing what he took"
+      (is (= #{:dieb :dorfbewohner} (set (:centre s)))))
+    (testing "so he is a wolf for every purpose that matters"
+      (is (= :werewolf (engine/team-of-player s 0)))
+      (is (not (contains? (set (phases/legal-targets s 1 :werewolf-vote)) 0))
+          "the pack cannot eat him now"))))
+
+(deftest taking-a-card-brings-its-resources
+  (let [s (-> (tu/game-with {0 :dieb 1 :werwolf 2 :dorfbewohner 3 :seherin})
+              (assoc :centre [:hexe :dorfbewohner])
+              (exec! {:type :dieb-take :player 0 :role :hexe}))]
+    (is (= :hexe (tu/role-of s 0)))
+    (is (= 1 (get-in s [:players 0 :resources :heiltrank])))
+    (is (= 1 (get-in s [:players 0 :resources :gifttrank])))))
+
+(deftest he-may-keep-his-own-card
+  (testing "the Düsterwald clause forcing his hand when both cards are wolves
+            cannot arise here — the centre is one wolf and one villager by
+            construction — so declining is always available"
+    (let [s (exec! (thief-table) {:type :dieb-keep :player 0})]
+      (is (= :dieb (tu/role-of s 0)))
+      (is (= [:werwolf :dorfbewohner] (:centre s)) "the middle is untouched")
+      (is (not= :dieb (:night-cursor s)) "and his turn is over either way"))))
+
+(deftest his-choice-is-never-in-the-log
+  (testing "the log is inside every player's view, so an entry saying he took a
+            card names the Dieb as surely as one saying WHICH — and at a table the
+            narrator wakes him in silence"
+    (doseq [cmd [{:type :dieb-take :player 0 :role :werwolf}
+                 {:type :dieb-keep :player 0}]]
+      (let [s (exec! (thief-table) cmd)
+            types (set (tu/log-types s))]
+        (is (not (contains? types :dieb/took)) (str cmd))
+        (is (not (contains? types :dieb/kept)) (str cmd))
+        (is (not-any? #(= :dieb (:role %)) (:log s))
+            "and no entry mentions the role at all")))))
+
+(deftest nobody-else-sees-the-middle
+  (testing ":centre is state, not something published — it reaches him only
+            through his own :choices, which are built from the actions HE holds"
+    (let [s (thief-table)]
+      (is (nil? (:centre (engine/view-for s 1))) "no wolf sees it")
+      (is (nil? (:centre (engine/view-for s 2))))
+      (is (empty? (get-in (engine/view-for s 2) [:choices :dieb-take]))
+          "and it is not smuggled in through somebody else's choices")
+      (testing "while the Dieb himself is offered exactly the two cards"
+        (is (= [:dorfbewohner :werwolf]
+               (get-in (engine/view-for s 0) [:choices :dieb-take])))))))
+
+(deftest a-card-not-in-the-middle-is-refused
+  (testing "validated against legal-choices rather than against anything the
+            client sends — a hand-crafted frame must not conjure a role"
+    (let [[_ err] (tu/try-exec (thief-table)
+                               {:type :dieb-take :player 0 :role :seherin})]
+      (is (= :invalid-choice (:error err))))))

@@ -63,6 +63,7 @@
    :role/jaeger       "Jäger"
    :role/weisser-werwolf "Weißer Werwolf"
    :role/beschuetzer  "Beschützer"
+   :role/dieb         "Dieb"
    :role/amor         "Amor"
 
    :role-desc/werwolf      "Du reißt mit den anderen Wölfen jede Nacht ein Opfer — ab der zweiten."
@@ -72,6 +73,7 @@
    :role-desc/jaeger       "Stirbst du, nimmst du einen Mitspieler mit."
    :role-desc/weisser-werwolf "Du jagst mit den Wölfen — und jede zweite Nacht reißt du einen von ihnen. Du gewinnst nur allein."
    :role-desc/beschuetzer  "Jede Nacht schützt du einen Mitspieler vor den Werwölfen — nie zweimal hintereinander denselben."
+   :role-desc/dieb         "In der ersten Nacht siehst du zwei übrige Karten und darfst eine davon nehmen — oder Dieb bleiben."
    :role-desc/amor         "In der ersten Nacht bestimmst du zwei Verliebte."
 
    ;; ----------------------------------------------------------- actions ---
@@ -86,6 +88,8 @@
    :action/beschuetzer-protect "Schützen"
    :action/weisser-kill    "Einen Wolf reißen"
    :action/weisser-pass    "Heute keinen Wolf reißen"
+   :action/dieb-take       "Karte nehmen"
+   :action/dieb-keep       "Eigene Karte behalten"
    :action/hexe-heal       "Heiltrank benutzen"
    :action/hexe-poison     "Gifttrank benutzen"
    :action/hexe-pass       "Keinen Trank benutzen"
