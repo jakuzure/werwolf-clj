@@ -504,14 +504,26 @@
   [ctx]
   (let [ids (store/unfinished-room-ids (:ds ctx))]
     (doseq [room-id ids]
-      (when-let [{:keys [state] n :seq} (store/load-game (:ds ctx) room-id)]
+      (when-let [{:keys [state updated-at] n :seq} (store/load-game (:ds ctx) room-id)]
         (swap! (:rooms ctx) assoc room-id
                (assoc (fresh-room room-id) :state state :seq n))
         (let [drops (for [[pid p] (sort-by key (:players state))
                           :when (:connected? p)]
                       {:type :player/connection :player pid :connected? false})]
           (with-room ctx room-id
-            (fn [r] (apply-server-events! ctx r (vec drops)))))))
+            (fn [r] (apply-server-events! ctx r (vec drops)))))
+        ;; AFTER the drops, deliberately. `fresh-room` stamps :last-activity with
+        ;; now and appending the drops stamps it again, so a room abandoned weeks
+        ;; ago would look brand new to `sweep-idle!` and get a fresh five minutes
+        ;; on EVERY boot — restart often enough and it is never swept at all. A
+        ;; boot is not activity; the last write to the log is.
+        ;;
+        ;; Read before the drops are appended, since appending moves updated_at.
+        ;; A server that restarts repeatedly therefore measures from its previous
+        ;; boot rather than from the real last play, which is the right way to be
+        ;; wrong: it only ever delays a sweep.
+        (when updated-at
+          (swap! (:rooms ctx) update room-id assoc :last-activity updated-at))))
     (vec ids)))
 
 ;; Defined below; sweep-idle! is stated first because it is the interesting one.

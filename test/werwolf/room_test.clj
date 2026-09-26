@@ -6,6 +6,7 @@
    `:send!`: every assertion below is about what a specific player received,
    which is the only question that matters for a hidden-role game."
   (:require [clojure.java.io :as io]
+            [next.jdbc :as jdbc]
             [clojure.set :as set]
             [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]
@@ -684,6 +685,33 @@
           (is (= [room-id] (room/sweep-idle! ctx (System/currentTimeMillis)
                                              {:room-idle-ms 1000
                                               :game-idle-ms (* 30 60 1000)}))))))))
+
+(deftest a-restart-does-not-refresh-an-abandoned-room
+  (testing "a boot is not activity. A lobby nobody has touched for a day must be
+            swept by the restart that finds it, not handed a fresh five minutes —
+            a server that restarts more often than the threshold would otherwise
+            never sweep anything at all"
+    (let [path (tmp-path)]
+      (try
+        (let [ctx (ctx-on path)
+              {:keys [room-id sink]} (host-seat! ctx "Anna")
+              day-ago (- (System/currentTimeMillis) (* 24 60 60 1000))]
+          (room/detach! ctx sink)
+          ;; Backdate the LOG, not the in-memory room: the point is what a
+          ;; brand new registry over this file believes.
+          (jdbc/execute-one! (:ds ctx)
+                             ["UPDATE rooms SET updated_at = ? WHERE room_id = ?"
+                              day-ago room-id])
+          (let [ctx2 (ctx-on path)]
+            (is (contains? (set (room/rehydrate! ctx2)) room-id))
+            (is (< (Math/abs (- (:last-activity (get @(:rooms ctx2) room-id)) day-ago))
+                   1000)
+                "the room remembers when it was really last touched")
+            (is (= [room-id] (room/sweep-idle! ctx2 (System/currentTimeMillis)
+                                               {:room-idle-ms (* 5 60 1000)
+                                                :game-idle-ms (* 30 60 1000)}))
+                "and goes on the first sweep, at the real thresholds")))
+        (finally (cleanup! path))))))
 
 (deftest sweeping-forgets-memory-but-keeps-the-log
   (testing "an unfinished room that was swept comes back on the next boot —

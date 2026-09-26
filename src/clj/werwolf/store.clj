@@ -103,12 +103,20 @@
        (mapv #(edn/read-string (:payload %)))))
 
 (defn load-game
-  "Rehydrate a room's game state, or nil if the room has no events."
+  "Rehydrate a room's game state, or nil if the room has no events.
+
+   `:updated-at` is when the room last saw a write, which is what tells a
+   rebooting server how long the room has ALREADY been abandoned — without it
+   every restart hands a dead room a fresh grace period."
   [ds room-id]
   (let [events (load-events ds room-id)]
     (when (seq events)
-      {:state (engine/replay events)
-       :seq   (count events)})))
+      {:state      (engine/replay events)
+       :seq        (count events)
+       :updated-at (:updated_at (jdbc/execute-one!
+                                 ds ["SELECT updated_at FROM rooms WHERE room_id = ?"
+                                     room-id]
+                                 opts))})))
 
 (defn room-exists? [ds room-id]
   (some? (jdbc/execute-one! ds ["SELECT 1 FROM rooms WHERE room_id = ?" room-id] opts)))
