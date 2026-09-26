@@ -72,5 +72,10 @@
 
   :build
   {:extra-paths ["build"]
-   :deps        {io.github.clojure/tools.build {:mvn/version "0.10.7"}}
+   ;; Clojure pinned here too. `-T` REPLACES :deps, so without this the build
+   ;; runs on whatever Clojure the installed CLI defaults to — different on
+   ;; every machine, and absent from deps-lock.json, which is what made the
+   ;; offline nix build fail.
+   :deps        {io.github.clojure/tools.build {:mvn/version "0.10.7"}
+                 org.clojure/clojure           {:mvn/version "1.12.0"}}
    :ns-default  build}}}

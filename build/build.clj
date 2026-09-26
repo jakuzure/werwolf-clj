@@ -6,7 +6,9 @@
 (def lib 'werwolf/werwolf-clj)
 
 ;; jj-colocated repos can legitimately have zero git commits; don't fail the build.
-(def revs (try (b/git-count-revs nil) (catch Exception _ "0")))
+;; Under nix there is no real git history either: clj-nix's stand-in git makes
+;; git-count-revs return nil rather than throw, which named the jar "0.1.null".
+(def revs (or (try (b/git-count-revs nil) (catch Exception _ nil)) "0"))
 (def version (format "0.1.%s" revs))
 (def class-dir "target/classes")
 (def uber-file (format "target/%s-%s-standalone.jar" (name lib) version))

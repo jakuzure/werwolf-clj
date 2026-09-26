@@ -21,3 +21,7 @@
 # `bb test:browser` and sometimes tens of MB.
 /test-results/
 /playwright-report/
+
+# nix build output links.
+/result
+/result-*
