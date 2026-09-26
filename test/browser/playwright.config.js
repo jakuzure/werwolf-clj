@@ -40,6 +40,10 @@ module.exports = defineConfig({
     // this, which is why voice testing on real devices needs the deployed TLS.
     permissions: ['microphone'],
     launchOptions: {
+      // Slow the driver down so a human can follow a game playing itself:
+      //   WERWOLF_TEST_SLOWMO=300 npx playwright test ... --headed
+      // Zero by default, so the suite stays as fast as it ever was.
+      slowMo: Number(process.env.WERWOLF_TEST_SLOWMO || 0),
       args: [
         // Synthetic audio in place of a microphone: a device that always exists
         // and always produces a signal, so voice can be verified without
@@ -52,7 +56,10 @@ module.exports = defineConfig({
       ],
     },
     trace: 'retain-on-failure',
-    video: 'off',
+    // Off by default: a video per test is slow and nobody watches a green run.
+    // WERWOLF_TEST_VIDEO=1 records every test to test-results/, which is how you
+    // get a game playing itself as a file you can send somebody.
+    video: process.env.WERWOLF_TEST_VIDEO ? 'on' : 'off',
   },
 
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],

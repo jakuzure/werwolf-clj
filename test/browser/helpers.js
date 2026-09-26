@@ -134,7 +134,15 @@ async function seatTable(browser, names) {
   const pages = [];
   const frames = [];
   for (const _ of names) {
-    const ctx = await browser.newContext({ permissions: ['microphone'] });
+    // `use.video` in the config only reaches contexts Playwright makes for the
+    // `page` fixture. These are ours, so recording has to be asked for here or
+    // WERWOLF_TEST_VIDEO=1 silently produces nothing.
+    const ctx = await browser.newContext({
+      permissions: ['microphone'],
+      ...(process.env.WERWOLF_TEST_VIDEO
+        ? { recordVideo: { dir: 'test-results/videos' } }
+        : {}),
+    });
     const page = await ctx.newPage();
     frames.push(captureFrames(page));
     pages.push(page);
