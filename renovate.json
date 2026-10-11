@@ -21,8 +21,9 @@
   ],
   "packageRules": [
     {
-      "description": "Mend's shared Renovate gets rate-limited by Maven Central (\"Maven Central rate limiting detected despite Redis caching\"). Google's mirror serves the same artifacts and metadata without Sonatype's per-user limits. Clojars stays first, since most Clojure libraries live there.",
+      "description": "Mend's shared Renovate gets rate-limited by Maven Central (\"Maven Central rate limiting detected despite Redis caching\", and the \"Release interceptor failed\" that follows from the same 429s). Google's mirror serves the same artifacts and metadata without Sonatype's per-user limits. deps.edn goes through the `clojure` datasource, not `maven`, which is why matching only `maven` did nothing. Clojars stays first, since most Clojure libraries live there.",
       "matchDatasources": [
+        "clojure",
         "maven"
       ],
       "registryUrls": [
