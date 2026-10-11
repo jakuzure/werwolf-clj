@@ -5,9 +5,14 @@ const { test, expect } = require('@playwright/test');
 const { version } = require('../../package.json');
 const { landOn } = require('./helpers');
 
-test('the start screen shows the package.json version', async ({ page }) => {
+const commit = require('child_process')
+  .execSync('git rev-parse --short=7 HEAD').toString().trim();
+
+test('the start screen shows the version and the commit it was built from', async ({ page }) => {
   await landOn(page);
-  await expect(page.getByTestId('app-version')).toHaveText(`v${version}`);
+  await expect(page.getByTestId('app-version')).toHaveText(`v${version} · ${commit}`);
+  await expect(page.getByTestId('app-version').getByRole('link', { name: commit }))
+    .toHaveAttribute('href', `https://github.com/jakuzure/werwolf-clj/commit/${commit}`);
 });
 
 // The headers that make a deploy visible without a hard reload. Without them,

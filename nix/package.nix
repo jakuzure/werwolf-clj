@@ -14,6 +14,7 @@
 , nodejs_22
 , jdk21_headless
 , version
+, commit
 }:
 
 let
@@ -57,6 +58,10 @@ mkCljBin {
   jdkRunner = jdk21_headless;
 
   nativeBuildInputs = [ nodejs_22 ];
+
+  # Read by werwolf.build-info at compile time. The sandbox has no git history,
+  # so the flake hands the revision in.
+  WERWOLF_COMMIT = commit;
 
   # Same memory cap the Dockerfile uses: a fraction of whatever the service is
   # allowed, so a systemd MemoryMax is respected instead of overrun.

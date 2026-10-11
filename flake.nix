@@ -32,6 +32,7 @@
     {
       packages = forAll (system: pkgs: rec {
         werwolf = pkgs.callPackage ./nix/package.nix {
+          commit = self.shortRev or self.dirtyShortRev or "unknown";
           # package.json is the single source of the version; release-please
           # bumps it when a release PR is merged. The commit is appended so two
           # builds between releases never share a name.

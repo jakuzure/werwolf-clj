@@ -11,7 +11,7 @@
   (:require [clojure.tools.logging :as log]
             [integrant.core :as ig]
             [org.httpkit.server :as hk]
-            [werwolf.build-info :refer [package-version]]
+            [werwolf.build-info :refer [build-commit package-version]]
             [werwolf.config :as config]
             [werwolf.http :as http]
             [werwolf.livekit :as livekit]
@@ -93,7 +93,7 @@
                                     ;; A stoppable server object rather than a
                                     ;; bare stop function.
                                     :legacy-return-value? false})]
-    (log/info (str "werwolf-clj " (package-version) " listening on http://" host ":" (hk/server-port srv)))
+    (log/info (str "werwolf-clj " (package-version) " (" (build-commit) ") listening on http://" host ":" (hk/server-port srv)))
     srv))
 
 (defmethod ig/halt-key! ::server [_ server]
