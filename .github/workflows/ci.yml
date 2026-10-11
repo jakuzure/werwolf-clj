@@ -18,7 +18,7 @@ jobs:
       # Only to push a regenerated deps-lock.json back to a Renovate branch.
       contents: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           # On a Renovate PR, check out the branch itself rather than the merge
           # commit, so a regenerated lockfile can be committed back to it. Empty
@@ -54,7 +54,7 @@ jobs:
   test:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: DeterminateSystems/nix-installer-action@v23
       - uses: DeterminateSystems/magic-nix-cache-action@v15
 
