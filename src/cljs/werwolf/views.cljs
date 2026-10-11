@@ -220,10 +220,7 @@
     [btn (t :landing/join) #(rf/dispatch [::ev/join-room]) {:tone :ghost}]]
    ;; Which build is running: the first question when a friend reports a bug.
    [:div {:class "text-center text-xs text-slate-600" :data-testid "app-version"}
-    (str "v" build-info/version " · ")
-    (if-let [url build-info/commit-url]
-      [:a {:href url :target "_blank" :rel "noopener" :class "underline"} build-info/commit]
-      build-info/commit)]])
+    (str "v" build-info/version " · " build-info/commit)]])
 
 ;; ---------------------------------------------------------------- targeting ---
 ;;

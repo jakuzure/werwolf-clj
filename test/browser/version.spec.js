@@ -11,8 +11,7 @@ const commit = require('child_process')
 test('the start screen shows the version and the commit it was built from', async ({ page }) => {
   await landOn(page);
   await expect(page.getByTestId('app-version')).toHaveText(`v${version} · ${commit}`);
-  await expect(page.getByTestId('app-version').getByRole('link', { name: commit }))
-    .toHaveAttribute('href', `https://github.com/jakuzure/werwolf-clj/commit/${commit}`);
+  await expect(page.getByTestId('app-version').getByRole('link')).toHaveCount(0);
 });
 
 // The headers that make a deploy visible without a hard reload. Without them,
