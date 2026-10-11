@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   build:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     permissions:
       # Only to push a regenerated deps-lock.json back to a Renovate branch.
       contents: write
@@ -52,7 +52,7 @@ jobs:
         run: nix build .#werwolf -L
 
   test:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v6
       - uses: DeterminateSystems/nix-installer-action@v23
