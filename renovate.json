@@ -21,6 +21,16 @@
   ],
   "packageRules": [
     {
+      "description": "Mend's shared Renovate gets rate-limited by Maven Central (\"Maven Central rate limiting detected despite Redis caching\"). Google's mirror serves the same artifacts and metadata without Sonatype's per-user limits. Clojars stays first, since most Clojure libraries live there.",
+      "matchDatasources": [
+        "maven"
+      ],
+      "registryUrls": [
+        "https://repo.clojars.org/",
+        "https://maven-central.storage-download.googleapis.com/maven2/"
+      ]
+    },
+    {
       "description": "Same as nixconfig: routine action updates merge themselves.",
       "matchManagers": [
         "github-actions"
