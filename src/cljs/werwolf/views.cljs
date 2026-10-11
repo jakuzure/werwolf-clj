@@ -22,6 +22,7 @@
   (:require [clojure.string :as str]
             [re-frame.core :as rf]
             [reagent.core :as r]
+            [werwolf.build-info :as build-info]
             [werwolf.events :as ev]
             [werwolf.i18n.core :as i18n]
             [werwolf.proto :as proto]
@@ -216,7 +217,10 @@
    [open-rooms]
    [:div {:class "space-y-3"}
     [field :code (t :landing/code) {:on-enter [::ev/join-room] :maxlength 4}]
-    [btn (t :landing/join) #(rf/dispatch [::ev/join-room]) {:tone :ghost}]]])
+    [btn (t :landing/join) #(rf/dispatch [::ev/join-room]) {:tone :ghost}]]
+   ;; Which build is running: the first question when a friend reports a bug.
+   [:div {:class "text-center text-xs text-slate-600" :data-testid "app-version"}
+    (str "v" build-info/version)]])
 
 ;; ---------------------------------------------------------------- targeting ---
 ;;
