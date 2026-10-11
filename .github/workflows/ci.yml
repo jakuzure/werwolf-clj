@@ -1,0 +1,65 @@
+# Builds the nix package (which is also the deploy artifact for lain) and runs
+# the JVM and ClojureScript suites. The browser suite stays local: it needs a
+# real browser and is an order of magnitude slower.
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    permissions:
+      # Only to push a regenerated deps-lock.json back to a Renovate branch.
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          # On a Renovate PR, check out the branch itself rather than the merge
+          # commit, so a regenerated lockfile can be committed back to it. Empty
+          # means the default, which also keeps PRs from forks working.
+          ref: ${{ startsWith(github.head_ref, 'renovate/') && github.head_ref || '' }}
+
+      - uses: DeterminateSystems/nix-installer-action@v23
+      - uses: DeterminateSystems/magic-nix-cache-action@v15
+
+      # Renovate bumps deps.edn but cannot run nix on Mend's side, so the clj-nix
+      # lockfile would go stale and the offline build would fail on a missing
+      # artifact. Regenerate it here. renovate.json lists this bot under
+      # gitIgnoredAuthors, so Renovate keeps managing the branch afterwards.
+      #
+      # Deliberately Renovate-only: a person who changes deps.edn should see the
+      # build fail and regenerate it themselves, as flake.nix documents.
+      - name: Regenerate deps-lock.json on Renovate branches
+        if: github.event_name == 'pull_request' && startsWith(github.event.pull_request.head.ref, 'renovate/')
+        run: |
+          nix run github:jlesquembre/clj-nix#deps-lock -- --alias-exclude dev
+          if git diff --quiet -- deps-lock.json; then
+            echo "deps-lock.json already current"
+          else
+            git config user.name  "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "chore(deps): regenerate deps-lock.json" -- deps-lock.json
+            git push
+          fi
+
+      - name: Build
+        run: nix build .#werwolf -L
+
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: DeterminateSystems/nix-installer-action@v23
+      - uses: DeterminateSystems/magic-nix-cache-action@v15
+
+      - name: JVM suite
+        run: nix shell nixpkgs#babashka nixpkgs#clojure nixpkgs#jdk21_headless -c bb test
+
+      - name: ClojureScript suite
+        run: nix shell nixpkgs#babashka nixpkgs#clojure nixpkgs#jdk21_headless nixpkgs#nodejs_22 -c bb test:cljs

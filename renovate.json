@@ -1,0 +1,64 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    "helpers:pinGitHubActionDigests",
+    ":semanticCommits"
+  ],
+  "timezone": "Europe/Berlin",
+  "nix": {
+    "enabled": true
+  },
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": [
+      "before 5am on monday"
+    ],
+    "automerge": true
+  },
+  "gitIgnoredAuthors": [
+    "41898282+github-actions[bot]@users.noreply.github.com"
+  ],
+  "packageRules": [
+    {
+      "description": "Same as nixconfig: routine action updates merge themselves.",
+      "matchManagers": [
+        "github-actions"
+      ],
+      "groupName": "github actions",
+      "matchUpdateTypes": [
+        "minor",
+        "patch",
+        "digest",
+        "pinDigest"
+      ],
+      "automerge": true
+    },
+    {
+      "description": "Every deps.edn bump needs deps-lock.json regenerated, which CI does on the PR branch. One PR for all of them means one regeneration instead of a dozen racing each other.",
+      "matchManagers": [
+        "deps-edn"
+      ],
+      "groupName": "clojure dependencies"
+    },
+    {
+      "description": "The browser test tooling moves together and never ships to players.",
+      "matchPackageNames": [
+        "@playwright/test",
+        "@tailwindcss/cli",
+        "tailwindcss",
+        "shadow-cljs",
+        "transit-js"
+      ],
+      "groupName": "frontend build tooling"
+    },
+    {
+      "description": "The LiveKit server images in both compose files, and the client SDK, are tested against each other. Bump them in one PR and test voice before merging.",
+      "matchPackageNames": [
+        "livekit/livekit-server",
+        "livekit-client"
+      ],
+      "groupName": "livekit"
+    }
+  ]
+}
