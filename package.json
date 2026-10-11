@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "license": "MIT",
-  "description": "Browser-based Werwolf (Die Werwölfe von Düsterwald) — ClojureScript frontend",
+  "description": "Werwölfe von Finsterbach: the social deduction game Werewolf, in the browser",
   "devDependencies": {
     "@playwright/test": "^1.62.1",
     "@tailwindcss/cli": "^4.3.3",

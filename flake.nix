@@ -6,7 +6,7 @@
   #   nix flake check       # the module evaluates
   #
   # The Docker/Compose path in deploy/ is untouched and still how the Mac runs it.
-  description = "werwolf-clj: Die Werwölfe von Düsterwald in the browser";
+  description = "Werwölfe von Finsterbach: the social deduction game Werewolf, in the browser";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";

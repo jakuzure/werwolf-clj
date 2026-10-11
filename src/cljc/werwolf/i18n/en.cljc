@@ -12,7 +12,7 @@
 
 (def dict
   {;; ------------------------------------------------------------- shell ---
-   :app/title         "Werewolves of Millers Hollow"
+   :app/title         "Werewolves of Finsterbach"
 
    :conn/connecting   "connecting…"
    :conn/connected    "connected"

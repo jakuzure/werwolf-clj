@@ -9,7 +9,7 @@
 
 (def dict
   {;; ------------------------------------------------------------- shell ---
-   :app/title         "Werwölfe von Düsterwald"
+   :app/title         "Werwölfe von Finsterbach"
 
    :conn/connecting   "verbinde…"
    :conn/connected    "verbunden"
