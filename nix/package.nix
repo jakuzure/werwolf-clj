@@ -78,6 +78,7 @@ mkCljBin {
   meta = {
     description = "Browser-based Werwolf game server";
     mainProgram = "werwolf-clj";
+    license = lib.licenses.mit;
     platforms = lib.platforms.unix;
   };
 }
