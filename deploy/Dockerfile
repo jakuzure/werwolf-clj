@@ -19,7 +19,7 @@
 # NoSuchMethodError: newVirtualThreadPerTaskExecutor, from deep inside integrant
 # where it looks like anything but a JDK mismatch. Keep this at or above the
 # version that builds the jar.
-FROM eclipse-temurin:21-jre-noble
+FROM eclipse-temurin:25-jre-noble
 
 # curl is for the healthcheck and nothing else. This base image already ships it,
 # so the install is a no-op today and the line is here to keep it that way: a
