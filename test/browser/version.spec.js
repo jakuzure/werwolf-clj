@@ -9,3 +9,17 @@ test('the start screen shows the package.json version', async ({ page }) => {
   await landOn(page);
   await expect(page.getByTestId('app-version')).toHaveText(`v${version}`);
 });
+
+// The headers that make a deploy visible without a hard reload. Without them,
+// nix's 1970 file timestamps made browsers cache the bundle for years.
+test('the bundle is revalidated on every load', async ({ request }) => {
+  for (const path of ['/', '/js/main.js', '/css/main.css']) {
+    const res = await request.get(path);
+    expect(res.status(), path).toBe(200);
+    expect(res.headers()['cache-control'], path).toBe('no-cache');
+    expect(res.headers()['etag'], path).toMatch(/^"[0-9a-f]{32}"$/);
+    expect(res.headers()['last-modified'], path).toBeUndefined();
+    const again = await request.get(path, { headers: { 'if-none-match': res.headers()['etag'] } });
+    expect(again.status(), `${path} unchanged`).toBe(304);
+  }
+});
