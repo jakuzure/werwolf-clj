@@ -318,11 +318,6 @@
       "hash": "sha256-kjrKCtp4rAXY3eZXZQABApyEge1kyahbC7M/+1keEKs="
     },
     {
-      "mvn-path": "com/google/code/findbugs/jsr305/3.0.2/jsr305-3.0.2.pom",
-      "mvn-repo": "https://repo1.maven.org/maven2/",
-      "hash": "sha256-GYidvfGyVLJgGl7mRbgUepdGRIgil2hMeYr+XWPXjf4="
-    },
-    {
       "mvn-path": "com/google/google/5/google-5.pom",
       "mvn-repo": "https://repo1.maven.org/maven2/",
       "hash": "sha256-4J00XnPKP7yn8+BfMN63Tp053Wt5qT/ujFEfI0F7aCg="
