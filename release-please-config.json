@@ -1,0 +1,13 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "bootstrap-sha": "26362bc4d5c5b059e5f7d706eb71f149e442812a",
+  "include-component-in-tag": false,
+  "bump-minor-pre-major": true,
+  "packages": {
+    ".": {
+      "release-type": "node",
+      "package-name": "werwolf-clj",
+      "changelog-path": "CHANGELOG.md"
+    }
+  }
+}
