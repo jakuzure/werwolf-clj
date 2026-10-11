@@ -84,10 +84,18 @@
 
    Passing this to `room/registry` is what makes deadlines appear: every
    committed change re-reconciles the clock, so no code path that moves a phase
-   has to remember to touch the timer."
-  [game-cfg]
-  (fn [ctx room-id]
-    (reconcile! ctx game-cfg room-id (System/currentTimeMillis))))
+   has to remember to touch the timer.
+
+   `clock` returns the current instant in ms. Production passes none and gets
+   the wall clock. A test that drives `tick!` with simulated instants must pass
+   the same simulated clock: otherwise a deadline re-armed after a timeout is
+   measured from real time while the test ticks in simulated time, and on a fast
+   machine, where all of it fits in one millisecond, the fresh deadline is
+   already due at the simulated instant."
+  ([game-cfg] (hook game-cfg #(System/currentTimeMillis)))
+  ([game-cfg clock]
+   (fn [ctx room-id]
+     (reconcile! ctx game-cfg room-id (clock)))))
 
 (defn fire!
   "Resolve one room if its deadline has passed. Returns true if it fired."

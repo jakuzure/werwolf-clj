@@ -25,14 +25,25 @@
   (doseq [suffix ["" "-wal" "-shm"]] (io/delete-file (str path suffix) true)))
 
 (defn- ctx-on
-  "A registry WITH a clock installed — the hook is what makes deadlines appear."
+  "A registry WITH a clock installed — the hook is what makes deadlines appear.
+
+   The hook's clock is the wall clock unless a test pins it with `at!`, which a
+   test must do when it ticks the same simulated instant twice: see timer/hook."
   [path]
-  (room/registry {:ds (store/open {:dbtype "sqlite" :dbname path})
-                  :send! (fn [s msg] (swap! s conj msg))
-                  ;; Classic first night: one test walks to the wolves' turn to
-                  ;; check that a timed-out pack still eats.
-                  :game {:first-night-kill? true}
-                  :after-commit (timer/hook game-cfg)}))
+  (let [pinned (atom nil)]
+    (assoc (room/registry {:ds (store/open {:dbtype "sqlite" :dbname path})
+                           :send! (fn [s msg] (swap! s conj msg))
+                           ;; Classic first night: one test walks to the wolves'
+                           ;; turn to check that a timed-out pack still eats.
+                           :game {:first-night-kill? true}
+                           :after-commit (timer/hook game-cfg
+                                                     #(or @pinned (System/currentTimeMillis)))})
+           ::pinned pinned)))
+
+(defn- at!
+  "Pin the clock deadlines are re-armed from to a simulated instant."
+  [ctx ms]
+  (reset! (::pinned ctx) ms))
 
 (defmacro with-ctx [[binding] & body]
   `(let [path# (tmp-path), ~binding (ctx-on path#)]
@@ -150,6 +161,11 @@
         (room/submit! ctx room-id 0 {:type :start-game})
         (let [d (deadline ctx room-id)
               now (inc d)]
+          ;; Without this the next role's deadline is armed from the wall
+          ;; clock, which on a fast CI runner is still the millisecond the game
+          ;; started in: due at `now`, so the second tick fired it. Flaky in CI,
+          ;; never locally.
+          (at! ctx now)
           (is (= [room-id] (timer/tick! ctx now)))
           (is (empty? (timer/tick! ctx now)) "the same instant does not fire twice")
           (is (= 1 (count (filter #(= :phase/timed-out (:type %))
