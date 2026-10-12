@@ -10,6 +10,7 @@
             [werwolf.engine.events :as e]
             [werwolf.engine.phases :as phases]
             [werwolf.engine.rng :as rng]
+            [werwolf.engine.roles :as roles]
             [werwolf.engine.view :as view]
             [werwolf.proto :as proto]))
 
@@ -51,15 +52,48 @@
 
    `:host-absent? true` opens the room with its host already gone and flagged,
    as the server's ticker would leave it, so the random walk gets to take his
-   seat — or not — at any point the engine offers it."
+   seat — or not — at any point the engine offers it.
+
+   `:deck` puts the Spielleiter's deck on the table before the start, as the
+   event his command would have produced — so it is in the log and replays."
   ([n seed] (sim-genesis n seed {}))
-  ([n seed {:keys [narrated? host-absent?]}]
+  ([n seed {:keys [narrated? host-absent? deck]}]
    (cond-> (into [(cond-> {:type :game/created :room-id "SIM" :host 0 :seed seed :min-players 5}
                     narrated? (assoc :narrated? true :timer? false))]
                  (map (fn [i] {:type :player/joined :player i :name (str "P" i) :locale :de}))
                  (range (if narrated? (inc n) n)))
+     ;; The deck first: chosen by the host before he went missing, which is the
+     ;; only order a real room could produce both in.
+     deck         (conj {:type :deck/set :deck deck})
      host-absent? (into [{:type :player/connection :player 0 :connected? false :at 0}
                          {:type :host/absent}]))))
+
+(defn random-deck
+  "A deck a Spielleiter might choose for n players, drawn from `seed`: a pack of
+   one to a third of the table, then each other special on a coin flip.
+
+   Valid by construction rather than by retry — every card is added only if the
+   deck still fits — because a generator that sometimes produced unplayable
+   decks would test the start rule's refusal, which the deck tests already do,
+   instead of the games the refusal lets through. Decks the automatic
+   composition never deals are the point: a Dieb at four, a lone wolf among
+   fifteen, a Weißer Werwolf with a single packmate, no Seherin at all."
+  [n seed]
+  (let [hunter (first (filter roles/hunts? roles/special-ids))
+        [s1 w] (rng/rand-int seed (max 1 (quot n 3)))
+        start  {hunter (min (inc w) (dec n))}
+        [s2 order] (rng/shuffle s1 (remove #{hunter} roles/special-ids))]
+    (first
+     (reduce (fn [[deck s] id]
+               (let [[s' coin] (rng/rand-int s 2)
+                     deck'     (update deck id (fnil inc 0))]
+                 (if (and (= 1 coin)
+                          (<= (get deck' id) (or (roles/max-count id) 1))
+                          (nil? (roles/deck-problem deck' n)))
+                   [deck' s']
+                   [deck s'])))
+             [start s2]
+             order))))
 
 (defn new-sim-game
   "A game in the lobby with n joined players, plus its genesis event log."
@@ -254,7 +288,12 @@
    the deadlock check is most worth running on."
   ([n seed] (play-game n seed {}))
   ([n seed opts]
-   (let [[start genesis] (new-sim-game n seed opts)]
+   (let [opts (cond-> opts
+                ;; `:random-deck? true` plays a deck the Spielleiter chose rather
+                ;; than the one the table size deals — still a pure function of
+                ;; the seed, so a failing custom game reproduces like any other.
+                (:random-deck? opts) (assoc :deck (random-deck n seed)))
+         [start genesis] (new-sim-game n seed opts)]
      (loop [state start, s seed, turns 0, history [], log genesis]
        (let [violations (check-invariants state)]
          (cond

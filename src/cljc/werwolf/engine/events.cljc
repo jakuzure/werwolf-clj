@@ -332,6 +332,29 @@
       (dissoc :password-hash)
       (publish {:type :room/unlocked})))
 
+(defmethod apply-event :deck/set
+  ;; The Spielleiter chose the roles. The whole deck every time rather than a
+  ;; delta, so an entry is a fact that stands on its own: a replay, a reader of
+  ;; the Chronik and a client that missed a frame all learn the same deck from
+  ;; the last one.
+  ;;
+  ;; Public, and with the deck in it. At a real table the composition is said
+  ;; out loud before anyone looks at a card — it is what everybody reasons from
+  ;; — and it is role COUNTS keyed by role, which name no player at all.
+  [state {:keys [deck]}]
+  (let [deck (roles/normalise-deck deck)]
+    (-> state
+        (assoc :deck deck)
+        (publish {:type :deck/set :deck deck}))))
+
+(defmethod apply-event :deck/auto
+  ;; Back to the composition the table size decides. Dissoc rather than nil:
+  ;; absent is how every reader, and every older log, spells "automatic".
+  [state _]
+  (-> state
+      (dissoc :deck)
+      (publish {:type :deck/auto})))
+
 (defmethod apply-event :game/started
   [state {:keys [assignments centre seed]}]
   (-> (reduce (fn [s [pid role-id]]

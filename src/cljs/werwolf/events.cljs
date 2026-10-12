@@ -69,6 +69,10 @@
    ;; Filled in by :server/media once seated. Reset on leave, so a credential for
    ;; the last room is never carried into the next one.
    :audio       nil
+   ;; The deck the host's last stepper tap SENT and the server has not yet
+   ;; shown back. See `deck-step-fx` — without it, two quick taps both counted
+   ;; from the same view and the second was lost.
+   :deck/draft  nil
    ;; The phase chime. A preference of this device, not of any room — which is
    ;; why `unseat` leaves it alone. Overwritten from storage by ::init.
    :sound/on?   true})
@@ -339,6 +343,37 @@
  (fn [_ [_ action kvs]]
    {::ws/send {:type :client/command :cmd (into {:type action} kvs)}}))
 
+(defn deck-step-fx
+  "One stepper tap: the next deck, sent whole, counted from the deck this page
+   last SENT if the server has not shown it back yet, otherwise from the view.
+
+   Counting from the view alone lost taps. Two quick taps on + both read the
+   same view — the answer to the first had not arrived — so both sent 'one
+   more than now', the second was the same deck again, and the host saw his
+   second wolf vanish. On a phone, two quick taps is how a stepper is used.
+
+   The draft is not a second source of truth: it is what this page has asked
+   for and not yet been told. The server's view clears it the moment it agrees
+   (`:room/view`), and any refusal clears it too (`:server/error`)."
+  [{:keys [db]} [_ role delta limit]]
+  (let [view (:view db)
+        base (or (:deck/draft db) (:deck view) (sub/deck-from-preview (:deck-preview view)))
+        next (sub/deck-step base role delta limit)]
+    (when (not= next base)
+      {:db (assoc db :deck/draft next)
+       ::ws/send {:type :client/command :cmd {:type :gm/set-deck :deck next}}})))
+
+(rf/reg-event-fx ::deck-step deck-step-fx)
+
+(rf/reg-event-fx
+ ::deck-auto
+ ;; Back to the automatic deck. Drops any draft on the way: a tap still in
+ ;; flight is superseded by this, and a draft outliving it would make the next
+ ;; 'Eigene Auswahl' count from a deck the host has already abandoned.
+ (fn [{:keys [db]} _]
+   {:db (assoc db :deck/draft nil)
+    ::ws/send {:type :client/command :cmd {:type :gm/auto-deck}}}))
+
 (rf/reg-event-fx
  ::set-locale
  ;; Both: locally so the landing screen switches before there is a seat to
@@ -522,6 +557,7 @@
          ;; leaving you on a room screen with nothing on it.
          :view/seq nil
          :view nil
+         :deck/draft nil
          :me {:room-id room-id :player-id player-id :host? host?}
          :join/password? false
          ;; Nor its half-confirmed leave. `leave-fx` clears that on the way out,
@@ -555,7 +591,12 @@
     ;; Views may legitimately arrive out of order, so an older one must never
     ;; overwrite a newer. This is precisely what :seq is for.
     (and n (:view/seq db) (< n (:view/seq db))) db
-    :else (assoc db :view view :view/seq n :screen :room)))
+    :else (cond-> (assoc db :view view :view/seq n :screen :room)
+            ;; The server has caught up with the last stepper tap, or the lobby
+            ;; is over and there is nothing left to choose.
+            (or (= (:deck view) (:deck/draft db))
+                (not= :lobby (:phase view)))
+            (assoc :deck/draft nil))))
 
 (defmethod handle-server :room/chat [db msg]
   (update db :chat (fn [c] (vec (take-last 300 (conj (vec c) msg))))))
@@ -587,8 +628,9 @@
     :else
     ;; :seat/pending? is released for every refusal, these included — a retry
     ;; with the password is a NEW request, and a lock left held would drop it as
-    ;; a double tap.
-    (cond-> (assoc db :error code :seat/pending? false)
+    ;; a double tap. A refused deck leaves no draft behind: the next tap must
+    ;; count from what the server holds, not from what it just turned down.
+    (cond-> (assoc db :error code :seat/pending? false :deck/draft nil)
       (password-errors code)
       (assoc :join/password? true)
 

@@ -14,6 +14,7 @@
    colour are not language."
   (:require [clojure.string :as str]
             [tongue.core :as tongue]
+            [werwolf.engine.roles :as roles]
             [werwolf.i18n.de :as de]
             [werwolf.i18n.en :as en]))
 
@@ -85,6 +86,9 @@
    :game/narrated-set :gm
    :room/locked      :gm
    :room/unlocked    :gm
+   ;; Loud: what is in the deck is the first thing a table reasons from.
+   :deck/set          :gm
+   :deck/auto         :gm
    ;; Bookkeeping. Real, auditable, and not what anyone opens the Chronik for.
    :phase/timed-out  :muted
    :player/ready     :muted
@@ -108,6 +112,39 @@
 (def loud?
   "Entries worth showing when the Chronicle is filtered to consequences."
   (complement #{:muted}))
+
+;; -------------------------------------------------------------------- deck ---
+
+(def deck-order
+  "The order a composition is read in: the specials as the lobby's menu lists
+   them, then the villagers who fill the rest. From the registry, so a new role
+   needs no line here."
+  (conj roles/special-ids roles/villager))
+
+(defn deck-entries
+  "A composition `{role n}` as `[[role n] ...]` in `deck-order`, zeros dropped.
+   Never iterate the map itself: its order differs between Clojure and
+   ClojureScript, and two players would read the deck in two orders."
+  [counts]
+  (vec (keep (fn [r] (let [n (get counts r 0)] (when (pos? n) [r n]))) deck-order)))
+
+(defn deck-summary
+  "'2× Werwolf, Seherin, Hexe'. A single card goes without its count — 'Seherin',
+   not '1× Seherin', because nobody at a table says it that way."
+  [locale counts]
+  (if-let [es (seq (deck-entries counts))]
+    (str/join ", " (map (fn [[r n]] (str (when (> n 1) (str n "× ")) (role-name locale r))) es))
+    (t locale :deck/only-villagers)))
+
+(defn deck-problem-text
+  "Why the deck cannot be dealt, in a sentence. `specials` and `players` only
+   matter for the one problem that is about numbers."
+  [locale problem specials players]
+  (case problem
+    :too-many-roles (t locale :deck/problem-too-many-roles specials players)
+    :no-werewolf    (t locale :deck/problem-no-werewolf)
+    :no-villager    (t locale :deck/problem-no-villager)
+    nil))
 
 ;; ---------------------------------------------------------------- log lines ---
 
@@ -185,6 +222,8 @@
       ;; else, by construction — see apply-event :room/password-set.
       :room/locked         (t locale :log/room-locked)
       :room/unlocked       (t locale :log/room-unlocked)
+      :deck/set            (t locale :log/deck-set (deck-summary locale (:deck entry)))
+      :deck/auto           (t locale :log/deck-auto)
       :night/began         (t locale :log/night-began)
       ;; Published without the ids on purpose: THAT there are lovers is public,
       ;; WHO they are is not. See apply-event :amor/linked.
@@ -237,6 +276,14 @@
 
 (defn- actor-of [e] (or (:player e) (:voter e)))
 
+(def ^:private superseding
+  "Entry types where only the last of a run still means anything. A host
+   building a deck one stepper at a time logs every step, and every step is the
+   whole deck — so a run of them is one decision, and it says what the last one
+   says. Collapsing them by count would name the FIRST deck, which is the one
+   nobody is going to play."
+  #{:deck/set})
+
 (defn- group-line
   "One line for a run of same-type entries, naming everyone in it.
 
@@ -263,9 +310,9 @@
        (filter (fn [e] (or show-all? (loud? (::tone e)))))
        (partition-by :type)
        (mapcat (fn [run]
-                 (if (< (count run) 2)
-                   [{:tone (::tone (first run))
-                     :text (log-line locale players (first run))}]
+                 (if (or (< (count run) 2) (superseding (:type (first run))))
+                   [{:tone (::tone (last run))
+                     :text (log-line locale players (last run))}]
                    [{:tone (::tone (first run))
                      :text (group-line locale players run)
                      :count (count run)}])))

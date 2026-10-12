@@ -74,9 +74,13 @@
                  {:type :gm/toggle-narrated}
                  {:type :gm/toggle-timer}
                  {:type :gm/transfer-host :target 2}
-                 {:type :gm/reassign-role :target 2 :role :hexe}]]
+                 {:type :gm/reassign-role :target 2 :role :hexe}
+                 {:type :gm/set-deck :deck {:werwolf 2 :seherin 1 :dieb 0}}
+                 {:type :gm/set-deck :deck {}}
+                 {:type :gm/auto-deck}]]
       (is (proto/valid-client-message? (as-wire cmd)) (pr-str cmd)))
-    (doseq [a [:begin-night :gm/toggle-narrated :gm/toggle-timer]]
+    (doseq [a [:begin-night :gm/toggle-narrated :gm/toggle-timer
+               :gm/set-deck :gm/auto-deck]]
       (is (contains? phases/no-target-actions a)
           (str a " names nobody, so it must be offerable without a target")))))
 
@@ -115,3 +119,21 @@
                                                 :password secret})]
       (is (seq why))
       (is (not (re-find #"Geheim" (pr-str why)))))))
+
+(deftest a-deck-is-bounded-on-the-wire
+  (testing "the deck is the one command payload that is a whole map, so its
+            shape is held at the door: counts a table could hold, keyed by
+            keywords, and no more entries than a deck has roles to name. What
+            those keywords may BE is the engine's business — see
+            `roles/deck-errors` — because the registry is not wire vocabulary"
+    (doseq [deck [{:werwolf -1}
+                  {:werwolf 19}
+                  {:werwolf 1.5}
+                  {"werwolf" 1}
+                  {:werwolf nil}
+                  [[:werwolf 1]]
+                  (into {} (map (fn [i] [(keyword (str "r" i)) 1])) (range 17))]]
+      (is (not (proto/valid-client-message? (as-wire {:type :gm/set-deck :deck deck})))
+          (pr-str deck)))
+    (is (proto/valid-client-message?
+         (as-wire {:type :gm/set-deck :deck {:werwolf 18}})))))

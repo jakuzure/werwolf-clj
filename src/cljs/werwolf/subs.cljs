@@ -6,6 +6,7 @@
    answers arrive in `:view` already decided, because the server is the only
    thing entitled to decide them."
   (:require [re-frame.core :as rf]
+            [werwolf.engine.roles :as roles]
             [werwolf.i18n.core :as i18n]))
 
 (rf/reg-sub ::conn-status (fn [db _] (:conn/status db)))
@@ -339,3 +340,66 @@
          not-empty)))
 
 (rf/reg-sub ::latest-news :<- [::log] (fn [log _] (latest-news log)))
+
+;; ---- the deck ----
+;;
+;; What is in the game, as the server composed it. Nothing below decides whether
+;; a deck is playable — `:deck-problem` arrives decided — or what a role may
+;; number: `:deck-roles` carries each limit. These only lay the answer out.
+
+(defn deck-step
+  "The deck after one tap of a stepper: `role` up or down by one, never below
+   nought, never past the limit the server published. Zeros are dropped, the way
+   the server stores them, so a deck that went up and back down is equal to
+   the one it started as.
+
+   The whole deck, not the delta, is what gets sent — see `:gm/set-deck`."
+  [deck role delta limit]
+  (let [n (+ (get deck role 0) delta)
+        n (cond-> (max 0 n) limit (min limit))]
+    (if (pos? n) (assoc (or deck {}) role n) (dissoc (or deck {}) role))))
+
+(defn deck-from-preview
+  "Where 'Eigene Auswahl' starts: the automatic deck for this table, specials
+   only. A host who switches over sees the cards he would have had and changes
+   what he wants, rather than starting from an empty table."
+  [preview]
+  (dissoc (:dealt preview) roles/villager))
+
+(defn deck-panel
+  "Everything the Rollen panel draws, from the view alone.
+
+     :custom?   the host chose this deck (otherwise it is the automatic one)
+     :rows      one per special the menu offers: role, count, limit, and whether
+                each stepper still has somewhere to go
+     :dealt     the full composition players are dealt, villagers included,
+                as ordered [role n] pairs
+     :fill      how many villagers fill the deck
+     :centre    the Dieb's two cards, apart from the hands
+     :villager  which card fills, so the view need not name it
+     :problem   why the deck cannot be dealt, or nil — the server's word
+     :specials  cards the host chose, and :table the seats they must fit"
+  [{:keys [deck deck-preview deck-roles deck-problem players narrator]} draft]
+  ;; A tap still in flight shows as the count it asked for — see
+  ;; `events/deck-step-fx` — so the number under the host's thumb moves when he
+  ;; taps. Everything else is the server's: the composition, the filler and the
+  ;; problem wait for the view.
+  (let [counts (or draft deck (deck-from-preview deck-preview))]
+    {:custom?  (some? deck)
+     :rows     (mapv (fn [{:keys [role] limit :max}]
+                       (let [n (get counts role 0)]
+                         {:role role :n n :max limit
+                          :can-add? (or (nil? limit) (< n limit))
+                          :can-remove? (pos? n)}))
+                     deck-roles)
+     :dealt    (i18n/deck-entries (:dealt deck-preview))
+     :fill     (get-in deck-preview [:dealt roles/villager] 0)
+     :centre   (i18n/deck-entries (:centre deck-preview))
+     :problem  deck-problem
+     :villager roles/villager
+     :specials (reduce + 0 (vals counts))
+     :table    (count (remove #(= % narrator) (keys players)))}))
+
+(rf/reg-sub ::deck-draft (fn [db _] (:deck/draft db)))
+(rf/reg-sub ::deck-panel :<- [::view] :<- [::deck-draft]
+            (fn [[v draft] _] (deck-panel v draft)))

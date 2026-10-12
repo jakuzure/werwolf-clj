@@ -75,6 +75,23 @@
    :lobby/make-narrator      "Zum Spielleiter machen"
    :lobby/make-host          "Spielleitung übergeben"
 
+   ;; Die Rollen. Gewählt werden nur die besonderen Karten — die Dorfbewohner
+   ;; füllen auf, was übrig bleibt, und sind darum keine Entscheidung.
+   :deck/title          "Rollen"
+   :deck/auto           "Automatisch"
+   :deck/custom         "Eigene Auswahl"
+   :deck/auto-hint      "Die Rollen richten sich nach der Zahl der Mitspieler."
+   :deck/custom-hint    "Die Spielleitung hat die Rollen gewählt."
+   :deck/fill           "füllen die übrigen Plätze"
+   :deck/centre         "Mitte (für den Dieb)"
+   :deck/in-game        "Im Spiel"
+   :deck/more           (fn [r] (str r " hinzufügen"))
+   :deck/less           (fn [r] (str r " entfernen"))
+   :deck/only-villagers "nur Dorfbewohner"
+   :deck/problem-too-many-roles (fn [roles n] (str "Zu viele Rollen (" roles ") für " n " Spieler"))
+   :deck/problem-no-werewolf    "Mindestens ein Werwolf muss mitspielen"
+   :deck/problem-no-villager    "Mindestens eine Karte muss zum Dorf gehören"
+
    ;; ------------------------------------------------------------ phases ---
    :phase/lobby       "Warteraum"
    :phase/setup       "Rollenvergabe"
@@ -142,6 +159,8 @@
    :action/gm-toggle-narrated "Spielleiter-Modus (SL)"
    :action/gm-toggle-timer "Zeitlimit an/aus (SL)"
    :action/gm-transfer-host "Spielleitung übergeben (SL)"
+   :action/gm-set-deck     "Rollen wählen (SL)"
+   :action/gm-auto-deck    "Rollen automatisch (SL)"
    :action/gm-force-kill   "Töten (SL)"
    :action/gm-revive       "Wiederbeleben (SL)"
    :action/gm-skip-role    "Rolle überspringen (SL)"
@@ -315,6 +334,8 @@
    ;; Dass sich das Schloss geändert hat, nie der Schlüssel.
    :log/room-locked   "Die Runde ist jetzt mit einem Passwort geschützt"
    :log/room-unlocked "Die Runde braucht kein Passwort mehr"
+   :log/deck-set      (fn [d] (str "Die Spielleitung wählt die Rollen: " d))
+   :log/deck-auto     "Die Rollen richten sich wieder nach der Zahl der Mitspieler"
    :log/amor-linked   "Amor hat zwei Verliebte bestimmt"
    :log/night-began   "Die Nacht bricht an"
    :log/night-quiet-first "Die erste Nacht bleibt ruhig — niemand stirbt"
@@ -420,6 +441,11 @@
    :error/invalid-choice   "Diese Wahl ist nicht erlaubt"
    :error/no-such-player   "Diesen Mitspieler gibt es nicht"
    :error/unknown-role     "Diese Rolle gibt es nicht"
+   :error/invalid-deck     "Ungültige Rollenauswahl"
+   :error/invalid-count    "Ungültige Anzahl"
+   :error/too-many-of-role "So viele Karten dieser Rolle gibt es nicht"
+   :error/deck-too-large   "So viele Karten passen an keinen Tisch"
+   :error/deck-unplayable  "Mit diesen Rollen kann das Spiel nicht beginnen"
    :error/distinct-targets-required "Bitte zwei verschiedene Mitspieler"
    :error/unsupported-locale "Diese Sprache gibt es nicht"
    :error/unknown-command  "Unbekannter Befehl"

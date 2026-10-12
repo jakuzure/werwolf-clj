@@ -811,3 +811,76 @@
   (testing "Node has no AudioContext; neither do some old browsers. Neither may throw."
     (is (nil? (chime/play! :night)))
     (is (nil? (chime/unlock!)))))
+
+;; ------------------------------------------------------------------ deck ---
+
+(deftest a-stepper-sends-the-whole-next-deck
+  (is (= {:werwolf 2 :seherin 1} (sub/deck-step {:werwolf 1 :seherin 1} :werwolf 1 nil)))
+  (testing "down to nought drops the role, the way the server stores it"
+    (is (= {:werwolf 1} (sub/deck-step {:werwolf 1 :seherin 1} :seherin -1 1))))
+  (testing "never below nought, never past the limit the server published"
+    (is (= {} (sub/deck-step {} :hexe -1 1)))
+    (is (= {:hexe 1} (sub/deck-step {:hexe 1} :hexe 1 1))))
+  (testing "a nil deck — the automatic one — is somewhere to start from"
+    (is (= {:amor 1} (sub/deck-step nil :amor 1 1)))))
+
+(deftest custom-starts-from-the-automatic-deck
+  (is (= {:werwolf 2 :seherin 1}
+         (sub/deck-from-preview {:dealt {:werwolf 2 :seherin 1 :dorfbewohner 3}
+                                 :centre {}}))))
+
+(deftest the-roles-panel-is-laid-out-from-the-view
+  (let [view {:deck {:werwolf 2 :dieb 1}
+              :deck-preview {:dealt {:werwolf 2 :dieb 1 :dorfbewohner 1}
+                             :centre {:werwolf 1 :dorfbewohner 1}}
+              :deck-roles [{:role :werwolf :max nil} {:role :dieb :max 1}
+                           {:role :seherin :max 1}]
+              :deck-problem nil
+              :players {0 {} 1 {} 2 {} 3 {} 4 {}}
+              :narrator 0}
+        p (sub/deck-panel view nil)]
+    (is (:custom? p))
+    (is (= [{:role :werwolf :n 2 :max nil :can-add? true :can-remove? true}
+            {:role :dieb :n 1 :max 1 :can-add? false :can-remove? true}
+            {:role :seherin :n 0 :max 1 :can-add? true :can-remove? false}]
+           (:rows p)))
+    (is (= [[:werwolf 2] [:dieb 1] [:dorfbewohner 1]] (:dealt p))
+        "in the menu's order, villagers last — never the map's own order")
+    (is (= 1 (:fill p)))
+    (is (= [[:werwolf 1] [:dorfbewohner 1]] (:centre p)) "the middle, apart")
+    (is (= 3 (:specials p)))
+    (is (= 4 (:table p)) "the Spielleiter is in the room, not at the table")
+    (testing "and the automatic deck reads its counts from the preview"
+      (let [p (sub/deck-panel (dissoc view :deck) nil)]
+        (is (not (:custom? p)))
+        (is (= 2 (:n (first (:rows p)))))))))
+
+(deftest quick-taps-on-a-stepper-all-count
+  (testing "two taps before the server answers the first must make two wolves,
+            not send 'one more than the view' twice"
+    (let [db (assoc seated :view {:phase :lobby :deck {:werwolf 1}})
+          fx1 (ev/deck-step-fx {:db db} [::ev/deck-step :werwolf 1 nil])
+          fx2 (ev/deck-step-fx {:db (:db fx1)} [::ev/deck-step :werwolf 1 nil])]
+      (is (= {:werwolf 2} (get-in fx1 [:werwolf.ws/send :cmd :deck])))
+      (is (= {:werwolf 3} (get-in fx2 [:werwolf.ws/send :cmd :deck])))
+      (is (= :gm/set-deck (get-in fx2 [:werwolf.ws/send :cmd :type])))
+      (testing "the panel shows the count asked for while it is in flight"
+        (is (= 3 (:n (first (:rows (sub/deck-panel
+                                     {:deck {:werwolf 1}
+                                      :deck-roles [{:role :werwolf :max nil}]}
+                                     (:deck/draft (:db fx2)))))))))
+      (testing "the server catching up clears the draft; an older view does not"
+        (let [db (:db fx2)
+              behind (ev/handle-server db {:type :room/view :seq 2
+                                           :view {:phase :lobby :deck {:werwolf 2}}})
+              caught (ev/handle-server behind {:type :room/view :seq 3
+                                               :view {:phase :lobby :deck {:werwolf 3}}})]
+          (is (= {:werwolf 3} (:deck/draft behind)))
+          (is (nil? (:deck/draft caught)))))
+      (testing "a refusal clears it, so the next tap counts from the server's deck"
+        (is (nil? (:deck/draft (ev/handle-server (:db fx2)
+                                                 {:type :server/error
+                                                  :code :too-many-of-role})))))))
+  (testing "a tap that changes nothing — a role at its limit — sends nothing"
+    (is (nil? (ev/deck-step-fx {:db (assoc seated :view {:deck {:seherin 1}})}
+                               [::ev/deck-step :seherin 1 1])))))

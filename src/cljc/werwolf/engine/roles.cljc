@@ -284,14 +284,140 @@
   [dealt-roles]
   (if (some #{:dieb} dealt-roles) (vec centre-extras) []))
 
+;; ------------------------------------------------- the Spielleiter's deck ---
+;;
+;; A table that has played a few rounds wants to choose: two wolves tonight, no
+;; Amor, the Hexe but not the Jäger. The room then holds a CUSTOM deck — a map
+;; of special role -> count — and the plain villagers fill whatever seats it
+;; leaves. Absent means the automatic composition above, which is how every log
+;; written before this existed replays.
+;;
+;; Only the specials are chosen, never the villagers. The number of villagers is
+;; not a decision anybody makes: it is the table size minus everything else, and
+;; letting the host set it as well would make a deck that fits six players
+;; wrong the moment a seventh sits down.
+
+(def villager
+  "The card that fills the deck. Named once, here, so nothing downstream has to
+   know which role plays that part."
+  :dorfbewohner)
+
+(def special-ids
+  "Every role a custom deck may name, in the order a Spielleiter reads them.
+
+   The pack first, then the village in the order the night calls it — a narrator
+   thinks of his deck as the night he will have to run — and the roles who never
+   wake last. Derived from the registry rather than listed, so a new role turns
+   up in the lobby's menu without anybody remembering to add it; sorted with a
+   total order, so the menu is the same on every client (see `assignable-ids`)."
+  (->> (vals registry)
+       (remove #(= villager (:id %)))
+       (sort-by (juxt #(if (= :werewolf (:team %)) 0 1)
+                      #(or (:night-order %) 1000)
+                      :id))
+       (mapv :id)))
+
+(defn max-count
+  "How many of a role one deck may hold; nil means as many as there are seats."
+  [id]
+  (:max-count (role id)))
+
+(defn deck-errors
+  "Why `deck` is not a deck at all, or nil. Structural only: whether it FITS a
+   table is `deck-problem`'s question, and the answer to that one changes as
+   people join and leave — this one does not.
+
+   Returns the first problem as `[code detail]`, in the shape the command layer
+   reports errors."
+  [deck max-players]
+  (or (some (fn [[id n]]
+              (cond
+                (not (some #{id} special-ids)) [:unknown-role {:role id}]
+                (not (int? n))                 [:invalid-count {:role id}]
+                (neg? n)                       [:invalid-count {:role id}]
+                (and (max-count id) (> n (max-count id)))
+                [:too-many-of-role {:role id :max (max-count id)}]))
+            ;; Sorted, so the error a client sees for a deck with two problems
+            ;; is the same on every platform.
+            (sort-by (comp str key) deck))
+      ;; No deck holds more cards than the room has seats. Checked here rather
+      ;; than left to `deck-problem`, which would only say "too many for this
+      ;; table": a deck of forty wolves is not a deck waiting for players.
+      (when (> (reduce + 0 (vals deck)) max-players)
+        [:deck-too-large {:max max-players}])))
+
+(defn normalise-deck
+  "Drop the zeros. A role at nought is a role not in the deck, and keeping the
+   key would make two identical decks unequal — and a replay compare them."
+  [deck]
+  (into {} (remove (comp zero? val)) deck))
+
+(defn compose-custom
+  "The deal for a custom deck at a table of n: its specials, in `special-ids`
+   order, then villagers up to n.
+
+   Never shorter than the specials. A deck that does not fit is not dealt —
+   `deck-problem` sees to that — but the lobby still previews it, and showing
+   the host fewer cards than he chose would hide the very thing he has to fix."
+  [deck n]
+  (let [specials (into [] (mapcat #(repeat (get deck % 0) %)) special-ids)]
+    (into specials (repeat (max 0 (- n (count specials))) villager))))
+
+(defn hunts?
+  "Does this card kill for the werewolves at night? The pack's collective turn
+   is the threat a village game is built around."
+  [id]
+  (and (= :werewolf (team-of id))
+       (= :target/collective (:night-action (role id)))))
+
+(defn deck-problem
+  "Why a custom deck cannot be dealt to a table of n, or nil when it can.
+
+     :too-many-roles  more specials than seats
+     :no-werewolf     nobody hunts the village
+     :no-villager     nobody but the wolves — the game is over before it starts
+
+   :no-werewolf asks for a card that HUNTS, not merely one on the werewolf team.
+   The Weißer Werwolf alone is on that team and kills only wolves; with no pack
+   to belong to he wakes every second night to find nobody to turn on, and the
+   village cannot lose. That is not a game anybody chose, it is a deck missing
+   its wolves.
+
+   An automatic deck (nil) is never a problem: `compose-roles` is built to fit
+   any table from `absolute-min-players` up, and that floor is checked
+   separately by the start rule."
+  [deck n]
+  (when deck
+    (let [cards (compose-custom deck n)]
+      (cond
+        (> (count cards) n)                          :too-many-roles
+        (not (some hunts? cards))                    :no-werewolf
+        (every? #(= :werewolf (team-of %)) cards)    :no-villager))))
+
 (defn compose-deck
   "The full deal: `{:deck [n roles] :centre [roles]}`.
 
    The centre is empty unless a Dieb is in the deck, in which case it holds the
    two cards he chooses between. Separating them here means `deal` shuffles only
    what players receive — the centre is not a lottery, so a game is not decided by
-   which two cards happened to fall out of it."
-  [n]
-  (let [deck (compose-roles n)]
-    {:deck   deck
-     :centre (centre-for deck)}))
+   which two cards happened to fall out of it.
+
+   `custom`, when given, is the Spielleiter's deck; nil is the automatic one. The
+   centre follows the cards either way — a Dieb the host chose brings his two
+   spare cards with him exactly as a Dieb the table size dealt does."
+  ([n] (compose-deck n nil))
+  ([n custom]
+   (let [deck (if custom (compose-custom custom n) (compose-roles n))]
+     {:deck   deck
+      :centre (centre-for deck)})))
+
+(defn composition
+  "What a deck holds, as counts: `{:dealt {role n} :centre {role n}}`.
+
+   The shape the lobby shows and the table may know. Counts rather than the
+   deal itself, because the deal is ordered and the order is nobody's business —
+   it is only ever shuffled."
+  [n custom]
+  (let [{:keys [deck centre]} (compose-deck n custom)]
+    {:dealt  (frequencies deck)
+     :centre (frequencies centre)}))

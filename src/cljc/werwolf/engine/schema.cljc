@@ -96,6 +96,11 @@
    ;; Opaque to the engine — see :room/password-set — and SECRET: `view-for`
    ;; publishes only whether it exists, as :locked?.
    [:password-hash {:optional true} :string]
+   ;; The Spielleiter's deck: SPECIAL role -> count, villagers filling the rest
+   ;; at deal time. Absent means the automatic composition, which is how every
+   ;; log written before the host could choose replays. Public — a real table
+   ;; knows what is in the deck; see `roles/deck-problem` for when it may be dealt.
+   [:deck {:optional true} [:map-of RoleId :int]]
    [:lovers {:optional true} [:maybe [:set PlayerId]]]
    ;; The two cards nobody was dealt, which the Dieb chooses between on the first
    ;; night. Empty in games without one. PRIVATE to him — `view-for` publishes it
