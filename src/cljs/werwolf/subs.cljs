@@ -88,6 +88,8 @@
 
 (rf/reg-sub ::chronik-open? (fn [db _] (chronik-open? (:log/open? db))))
 
+(rf/reg-sub ::sound-on? (fn [db _] (:sound/on? db)))
+
 (rf/reg-sub ::rooms (fn [db _] (or (:rooms db) [])))
 (rf/reg-sub ::seat-pending? (fn [db _] (boolean (:seat/pending? db))))
 (rf/reg-sub ::join-password? (fn [db _] (boolean (:join/password? db))))

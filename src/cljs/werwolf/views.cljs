@@ -164,6 +164,21 @@
                  :on-click #(rf/dispatch [::ev/set-locale loc])}
         (i18n/locale-name loc)])]))
 
+(defn- sound-switch
+  "The phase chime, on or off. Beside the language because it is the same kind
+   of thing — how this device presents the game, not part of it — and small,
+   because it is set once and forgotten."
+  []
+  (let [on? @(rf/subscribe [::sub/sound-on?])
+        label (t (if on? :sound/turn-off :sound/turn-on))]
+    [:button {:class "px-2 py-1 rounded text-xs bg-slate-800 hover:bg-slate-700 transition"
+              :title label
+              :aria-label label
+              :aria-pressed (boolean on?)
+              :data-testid "sound-switch"
+              :on-click #(rf/dispatch [::ev/toggle-sound])}
+     (if on? "🔔" "🔕")]))
+
 (defn- connection-banner []
   (let [status @(rf/subscribe [::sub/conn-status])]
     (when (not= :connected status)
@@ -1017,6 +1032,7 @@
            [:span (t :stage/round (:night view))])
          [:span {:class "font-mono"} (:room-id me)]
          [language-switch]
+         [sound-switch]
          ;; Off the board, so named here: everybody should know who is calling
          ;; the night.
          (when-let [n (:narrator view)]

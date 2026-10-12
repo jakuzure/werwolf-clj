@@ -236,6 +236,8 @@
    :stage/latest      "Zuletzt"
    :stage/progress    "Ablauf der Runde"
    :stage/interrupted "unterbrochen"
+   :sound/turn-off    "Signalton bei Nacht und Tag ausschalten"
+   :sound/turn-on     "Signalton bei Nacht und Tag einschalten"
    :explain/setup       "Die Karten sind verteilt. Schau dir deine Rolle an — gleich beginnt die Nacht."
    :explain/night       "Alle schlafen. Wer gerufen wird, wacht auf und handelt, ohne sich zu verraten."
    :explain/day-reveal  "Der Morgen graut. Gleich zeigt sich, was die Nacht angerichtet hat."

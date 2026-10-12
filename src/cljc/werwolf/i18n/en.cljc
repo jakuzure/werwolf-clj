@@ -232,6 +232,8 @@
    :stage/latest      "Latest"
    :stage/progress    "Round progress"
    :stage/interrupted "interrupted"
+   :sound/turn-off    "Turn off the nightfall and daybreak chime"
+   :sound/turn-on     "Turn on the nightfall and daybreak chime"
    :explain/setup       "The cards are dealt. Look at your role — the night begins shortly."
    :explain/night       "Everyone is asleep. Whoever is called wakes up and acts without giving themselves away."
    :explain/day-reveal  "Dawn breaks. You are about to learn what the night has done."

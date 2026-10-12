@@ -10,6 +10,7 @@
    localStorage."
   (:require [cljs.test :refer [deftest is testing]]
             [clojure.string :as str]
+            [werwolf.chime :as chime]
             [werwolf.config :as cfg]
             [werwolf.events :as ev]
             [werwolf.i18n.core :as i18n]
@@ -713,3 +714,100 @@
           code [:password-required :wrong-password :too-many-attempts]]
     (let [s (i18n/t locale (keyword "error" (name code)))]
       (is (and (string? s) (not (str/includes? s "missing"))) (str locale code)))))
+
+;; ------------------------------------------------------------------ chimes ---
+
+(defn- v
+  "A view at `phase`, in night `n` — all the chime decision ever reads."
+  ([phase] (v phase 1))
+  ([phase n] {:phase phase :night n}))
+
+(deftest the-chime-marks-nightfall-daybreak-and-the-end
+  (testing "the three moments, each with its own sound"
+    (is (= :night (chime/cue-for (v :setup 0) (v :night 1))))
+    (is (= :night (chime/cue-for (v :day-resolve 1) (v :night 2))))
+    (is (= :day (chime/cue-for (v :night 1) (v :day-reveal 1))))
+    (is (= :end (chime/cue-for (v :vote 2) (v :game-over 2))))
+    (is (= :end (chime/cue-for (v :night 2) (v :game-over 2)))
+        "a game the wolves win at night ends; it does not also dawn"))
+  (testing "the server settles a whole commit before it sends a view, so the
+            client rarely SEES :day-reveal — a night that ends straight into the
+            election or the discussion is still a daybreak"
+    (is (= :day (chime/cue-for (v :night 1) (v :election 1))))
+    (is (= :day (chime/cue-for (v :night 2) (v :discussion 2))))))
+
+(deftest the-chime-does-not-ring-for-the-rest-of-the-day
+  (doseq [[a b] [[:day-reveal :election] [:election :discussion]
+                 [:discussion :nomination] [:nomination :vote]
+                 [:vote :day-resolve] [:vote :reaction]]]
+    (is (nil? (chime/cue-for (v a) (v b))) (str a " -> " b)))
+  (testing "nor for a view that changes something other than the phase"
+    (is (nil? (chime/cue-for (v :night 1) (v :night 1))))
+    (is (nil? (chime/cue-for (v :discussion) (v :discussion))))
+    (is (nil? (chime/cue-for (v :game-over) (v :game-over)))))
+  (testing "nor before the game: the lobby and the deal are not a moment"
+    (is (nil? (chime/cue-for (v :lobby 0) (v :setup 0))))))
+
+(deftest a-reaction-interrupts-without-ringing-twice
+  (testing "a Jäger killed overnight parks the dawn in :reaction — that IS the
+            daybreak, and the return to the day it interrupted is not another"
+    (is (= :day (chime/cue-for (v :night 1) (v :reaction 1))))
+    (is (nil? (chime/cue-for (v :reaction 1) (v :day-reveal 1))))
+    (is (nil? (chime/cue-for (v :reaction 1) (v :discussion 1)))))
+  (testing "a Jäger lynched at dusk: his shot, then the next night — which falls"
+    (is (= :night (chime/cue-for (v :reaction 1) (v :night 2)))))
+  (testing "an interrupt that resumes the SAME night does not make it fall again"
+    (is (nil? (chime/cue-for (v :reaction 2) (v :night 2)))))
+  (testing "the Spielleiter forcing the night from the day still makes it night"
+    (is (= :night (chime/cue-for (v :discussion 2) (v :night 2))))))
+
+(deftest a-page-that-just-arrived-does-not-chime
+  (testing "no previous view means this page has just loaded, joined or
+            reconnected — the night it would announce began long ago"
+    (is (nil? (chime/cue-for nil (v :night 3))))
+    (is (nil? (chime/cue-for nil (v :game-over 3))))))
+
+(defn- view-msg [n phase night]
+  {:type :room/view :seq n :view (v phase night)})
+
+(defn- chime-of
+  "The chime a message would ring, run through the real fx layer."
+  [db msg]
+  (:werwolf.chime/play (ev/server-message-fx {:db db} [nil msg])))
+
+(deftest the-fx-layer-rings-only-for-views-it-accepted
+  (let [at-dusk (apply* seated (view-msg 4 :day-resolve 1))]
+    (testing "the turn of the phase rings"
+      (is (= :night (chime-of at-dusk (view-msg 5 :night 2)))))
+    (testing "the first view after a welcome does not: reload and reconnect both
+              come through :server/welcome, which clears the last view"
+      (let [rewelcomed (apply* at-dusk {:type :server/welcome :room-id "ABCD"
+                                        :player-id 0 :host? true :token "t"})]
+        (is (nil? (chime-of rewelcomed (view-msg 5 :night 2))))))
+    (testing "an out-of-order view is dropped, and a dropped view rings nothing"
+      (let [at-night (apply* at-dusk (view-msg 9 :night 2))]
+        (is (nil? (chime-of at-night (view-msg 6 :day-resolve 1))))
+        (is (nil? (chime-of (apply* at-dusk (view-msg 9 :discussion 2))
+                            (view-msg 7 :night 2))))))
+    (testing "switched off, nothing rings"
+      (is (nil? (chime-of (assoc at-dusk :sound/on? false) (view-msg 5 :night 2)))))
+    (testing "only views ring"
+      (is (nil? (chime-of at-dusk {:type :room/chat :text "hi"}))))))
+
+(deftest the-chime-switch-defaults-on-and-remembers
+  (is (true? (:sound/on? ev/initial-db)) "on unless somebody turned it off")
+  (let [fx (ev/toggle-sound-fx {:db ev/initial-db} nil)]
+    (is (false? (get-in fx [:db :sound/on?])))
+    (is (false? (:werwolf.chime/store-on fx)))
+    (let [fx' (ev/toggle-sound-fx {:db (:db fx)} nil)]
+      (is (true? (get-in fx' [:db :sound/on?])))
+      (is (true? (:werwolf.chime/store-on fx'))))))
+
+(deftest leaving-keeps-the-chime-switch
+  (testing "it is the player's preference, not the room's state"
+    (is (false? (:sound/on? (:db (ev/leave-fx {:db (assoc seated :sound/on? false)} nil)))))))
+
+(deftest a-chime-without-an-audio-context-is-silent
+  (testing "Node has no AudioContext; neither do some old browsers. Neither may throw."
+    (is (nil? (chime/play! :night)))
+    (is (nil? (chime/unlock!)))))
