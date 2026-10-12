@@ -25,6 +25,7 @@
             [werwolf.build-info :as build-info]
             [werwolf.events :as ev]
             [werwolf.i18n.core :as i18n]
+            [werwolf.i18n.recap :as recap]
             [werwolf.proto :as proto]
             [werwolf.subs :as sub]))
 
@@ -1399,6 +1400,69 @@
 
 ;; --------------------------------------------------------------------- game ---
 
+(defn- recap-cast
+  "Who was who: one row per player, icon and card first, fate underneath. One
+   column on purpose — at 390px a table of name, role and fate side by side
+   wraps every cell, and a list reads top to bottom like the cards being turned."
+  [players roster]
+  (let [loc (lc)]
+    [:ul {:class "divide-y divide-slate-800"}
+     (for [{:keys [id role alive?] :as p} roster]
+       ^{:key id}
+       [:li {:class "py-1.5 flex items-start gap-2 text-sm" :data-testid "recap-player"}
+        [:span {:class "text-xl leading-none shrink-0 pt-0.5" :aria-hidden true} (i18n/icon-of role)]
+        [:div {:class "min-w-0 flex-1"}
+         [:div {:class "flex flex-wrap items-baseline gap-x-2"}
+          [:span {:class "font-semibold text-slate-100 break-words"}
+           (or (get-in players [id :name]) (str "#" id))]
+          [:span {:class "text-slate-300"} (role-name role)]
+          (for [tag (recap/cast-tags loc p)]
+            ^{:key tag} [:span {:class "text-xs text-slate-400"} tag])]
+         [:div {:class (if alive? "text-xs text-emerald-300/90" "text-xs text-rose-300/90")}
+          (str (if alive? "✓ " "† ") (recap/fate-text loc p))]]])]))
+
+(defn- recap-round
+  "One night or day, folded. Native <details> rather than app state: it needs no
+   event, survives every re-render, and a screen reader already knows what it is."
+  [players round]
+  (let [loc (lc)
+        rows (recap/round-lines loc players round)]
+    [:details {:class "rounded-lg border border-slate-800 bg-slate-950/40"
+               :data-testid "recap-round"}
+     [:summary {:class "cursor-pointer select-none px-3 py-2 text-sm font-semibold text-slate-200"}
+      (str (recap/round-icon round) " " (recap/round-title loc round))]
+     [:ul {:class "px-3 pb-2 space-y-1.5"}
+      (for [[i {:keys [icon tone text votes]}] (map-indexed vector rows)]
+        ^{:key i}
+        [:li {:class (str "text-sm flex gap-2 " (log-classes tone))}
+         [:span {:class "shrink-0" :aria-hidden true} icon]
+         [:div {:class "min-w-0 break-words"}
+          [:div text]
+          (when votes [:div {:class "text-xs text-slate-400 font-normal"} votes])]])]]))
+
+(defn- recap-panel
+  "The Rückblick: every card turned over and every night told, once the game is
+   decided. Rendered only from what the server sent as facts — `:recap` arrives
+   with the view at :game-over and never before (see room/with-recap) — through
+   the reader's own dictionary. Nothing here knows a rule of the game."
+  []
+  (let [view @(rf/subscribe [::sub/view])
+        {:keys [rounds] roster :players} (:recap view)]
+    (when (and (= :game-over (:phase view)) (seq roster))
+      [:section {:class "rounded-xl border border-slate-700 bg-slate-900/80 p-3 sm:p-4 space-y-3"
+                 :data-testid "recap"}
+       [:div
+        [:h3 {:class "text-sm font-bold uppercase tracking-wide text-amber-200"}
+         (str "📜 " (t :recap/title))]
+        [:p {:class "text-xs text-slate-400 mt-0.5"} (t :recap/hint)]]
+       [:div
+        [:div {:class "text-xs uppercase tracking-wide text-slate-400"} (t :recap/cast)]
+        [recap-cast (:players view) roster]]
+       (when (seq rounds)
+         [:div {:class "space-y-2"}
+          (for [[i round] (map-indexed vector rounds)]
+            ^{:key i} [recap-round (:players view) round])])])))
+
 (defn- game-over-panel
   "The end of the game, and the way out of it.
 
@@ -1420,7 +1484,10 @@
        ;; to lose any more, and this is the move the screen exists to offer —
        ;; asking 'really?' of the only way forward is friction, not safety.
        (when (contains? actions :leave)
-         [btn (t :game/new-round) #(rf/dispatch [::ev/leave])])])))
+         [btn (t :game/new-round) #(rf/dispatch [::ev/leave])])
+       ;; Below the way out rather than above it: the story is for reading at
+       ;; leisure, the button for the people who already want the next round.
+       [recap-panel]])))
 
 (defn- game-leave
   "Walking out of a game under way. The engine offers `:leave` in every phase —

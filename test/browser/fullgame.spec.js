@@ -73,6 +73,17 @@ test.describe('a game played to the end', () => {
     // And it says who won, in the players' own language.
     await expect(roles[0].page.getByText(/Das Dorf/).first())
       .toBeVisible({ timeout: 20_000 });
+
+    // And the Rückblick tells the whole story — to the Spielleiter as well, who
+    // narrated it: every card, and what the night really held.
+    for (const page of pages) {
+      const recap = page.getByTestId('recap');
+      await expect(recap).toBeVisible({ timeout: 20_000 });
+      await expect(recap.getByTestId('recap-player')).toHaveCount(5);
+    }
+    const recap = roles[0].page.getByTestId('recap');
+    await recap.locator('summary', { hasText: '1. Nacht' }).click();
+    await expect(recap.getByText(/sieht nach: .+ ist Werwolf/)).toBeVisible();
   });
 
   test('the wolf wins by eating everybody', async ({ browser }) => {

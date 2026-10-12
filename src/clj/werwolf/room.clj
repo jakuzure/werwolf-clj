@@ -33,6 +33,7 @@
   (:require [clojure.string :as str]
             [clojure.tools.logging :as log]
             [werwolf.engine.core :as engine]
+            [werwolf.engine.recap :as recap]
             [werwolf.password :as password]
             [werwolf.store :as store])
   (:import (java.security SecureRandom)))
@@ -174,6 +175,10 @@
         (keep (fn [[pid sinks]] (when (some (:voice r #{}) sinks) pid)))
         (:sinks r)))
 
+;; The end-of-game recap rides along with the view like `:voice`; see the recap
+;; section below for when it exists and who gets it.
+(declare with-recap remember-recap!)
+
 (defn- send-view! [ctx r pid]
   (doseq [sink (get-in r [:sinks pid])]
     (deliver! ctx sink {:type :room/view
@@ -184,8 +189,9 @@
                         ;; shares one call, so being in it says nothing about a
                         ;; role, and seeing who is already there is what tells
                         ;; a newcomer the call is where the game is.
-                        :view (assoc (engine/view-for (:state r) pid)
-                                     :voice (in-voice r))})))
+                        :view (-> (engine/view-for (:state r) pid)
+                                  (assoc :voice (in-voice r))
+                                  (with-recap r))})))
 
 (defn- broadcast!
   "Give every SEATED connected player their own view of the room.
@@ -236,6 +242,7 @@
        (swap! (:rooms ctx) update room-id merge
               (cond-> (select-keys r' [:state :seq])
                 activity? (assoc :last-activity now)))
+       (remember-recap! ctx room-id)
        (broadcast! ctx (room-of ctx room-id))
        ;; Last, and still under the lock: the clock gets to react to the new
        ;; phase. Doing it here rather than folding the deadline into this same
@@ -700,6 +707,49 @@
                 (when (= :gm/kick (:type cmd))
                   (release-seat! ctx room-id (:target cmd) :server/kicked))
                 {:ok? true})))))))
+
+;; ------------------------------------------------------------------- recap ---
+;;
+;; The Rückblick: every card and every night's doings, for the whole table, once
+;; the game is decided. The engine builds it (werwolf.engine.recap); this only
+;; decides when, and keeps it.
+;;
+;; From the store rather than from memory, because the room holds state and not
+;; events — and the private half of the story (the Seherin's looks, the pack's
+;; ballots) was never in state's public `:log` to begin with. Read once, inside
+;; the lock and after the append, so the log it reads ends with the game's end.
+
+(defn- remember-recap!
+  "Build the recap the first time the room is found at :game-over, and forget it
+   whenever it is not — a Spielleiter who sets the phase back has a game in
+   progress again, and an old recap must not outlive the ending it told.
+
+   Cached even when the builder came back empty, so a log that will not fold
+   into a finished game is read once rather than on every commit. And never
+   allowed to stop the commit it hangs off: the game has already ended, and a
+   bug in telling the story must not keep the table from seeing that it did."
+  [ctx room-id]
+  (let [rm (room-of ctx room-id)]
+    (cond
+      (not= :game-over (:phase (:state rm)))
+      (when (contains? rm :recap)
+        (swap! (:rooms ctx) update room-id #(when % (dissoc % :recap))))
+
+      (not (contains? rm :recap))
+      (let [rc (try (recap/recap (store/load-events (:ds ctx) room-id))
+                    (catch Exception ex
+                      (log/warn ex "could not build the recap for" room-id)
+                      nil))]
+        (swap! (:rooms ctx) update room-id #(when % (assoc % :recap rc)))))))
+
+(defn- with-recap
+  "Attach the cached recap to a view — at :game-over and never before. The
+   phase is checked here as well as when caching: this is the line that puts it
+   on a socket, so it is the one that has to be right."
+  [view r]
+  (cond-> view
+    (and (= :game-over (:phase (:state r))) (:recap r))
+    (assoc :recap (:recap r))))
 
 ;; -------------------------------------------------------------------- chat ---
 

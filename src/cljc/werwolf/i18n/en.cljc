@@ -402,6 +402,44 @@
    :log/group-disconnected (fn [names] (str names " are away"))
    :log/group-reconnected  (fn [names] (str names " are back"))
 
+   ;; ------------------------------------------------------------ recap ---
+   ;; The recap at the end: what really happened. Whole sentences as in the
+   ;; chronicle; where the chronicle already has one (a death, a shot, a
+   ;; verdict) it is reused — see werwolf.i18n.recap.
+   :recap/title        "Recap"
+   :recap/hint         "Everything is out now: who was who, and what really happened each night."
+   :recap/cast         "Who was who"
+   :recap/night        (fn [n] (str "Night " n))
+   :recap/day          (fn [n] (str "Day " n))
+   :recap/survived     "survived"
+   :recap/cause-werwolf "torn apart by the werewolves"
+   :recap/cause-gift   "poisoned"
+   :recap/cause-liebe  "died of love"
+   :recap/cause-lynch  "condemned by the village"
+   :recap/cause-jaeger "shot by the Jäger"
+   :recap/cause-weisser "torn apart by the Weißer Werwolf"
+   :recap/cause-gm     "removed by the game master"
+   :recap/cause-other  "died"
+   :recap/dealt        (fn [r] (str "dealt " r))
+   :recap/lover        "in love"
+   :recap/mayor        "Bürgermeister"
+   :recap/dieb-took    (fn [n r] (str n " takes the " r " card"))
+   :recap/dieb-kept    (fn [n] (str n " stays the Dieb"))
+   :recap/amor-linked  (fn [a b] (str "Amor makes " a " and " b " fall in love"))
+   :recap/seherin      (fn [n t r] (str n " looks: " t " is the " r))
+   :recap/beschuetzer  (fn [n t] (str n " protects " t))
+   :recap/wolves-chose (fn [t] (str "The werewolves choose " t))
+   :recap/wolves-guarded (fn [t] (str "The werewolves choose " t " — but the Beschützer stands guard"))
+   :recap/wolves-none  "The werewolves agree on no victim"
+   :recap/weisser-killed (fn [n t] (str n " tears " t " from his own pack"))
+   :recap/weisser-passed (fn [n] (str n " spares the pack"))
+   :recap/hexe-healed  (fn [n t] (str n " saves " t " with the healing potion"))
+   :recap/hexe-poisoned (fn [n t] (str n " poisons " t))
+   :recap/nominated    (fn [by t] (str by " accuses " t))
+   :recap/gm-reassigned (fn [n from to] (str "The game master swaps " n "'s card: " from " → " to))
+   :recap/votes        (fn [v] (str "Votes: " v))
+   :recap/abandoned    "Nobody came back — the game was ended without a winner"
+
    ;; ------------------------------------------------------------ errors ---
    ;; Voice failures. A refused microphone gets its own line because it is fixed
    ;; in browser settings, not by tapping again — and it is by far the common one.

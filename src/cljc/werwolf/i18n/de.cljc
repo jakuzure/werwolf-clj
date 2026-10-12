@@ -409,6 +409,44 @@
    :log/group-disconnected (fn [names] (str names " sind abwesend"))
    :log/group-reconnected  (fn [names] (str names " sind zurück"))
 
+   ;; ------------------------------------------------------------ recap ---
+   ;; Der Rückblick am Spielende: was wirklich geschah. Ganze Sätze wie in der
+   ;; Chronik; wo die Chronik schon einen Satz hat (Tod, Schuss, Urteil), wird
+   ;; der wiederverwendet — siehe werwolf.i18n.recap.
+   :recap/title        "Rückblick"
+   :recap/hint         "Jetzt ist alles offen: wer wer war und was jede Nacht wirklich geschah."
+   :recap/cast         "Wer war wer"
+   :recap/night        (fn [n] (str n ". Nacht"))
+   :recap/day          (fn [n] (str n ". Tag"))
+   :recap/survived     "überlebt"
+   :recap/cause-werwolf "von den Werwölfen gerissen"
+   :recap/cause-gift   "vergiftet"
+   :recap/cause-liebe  "aus Liebe gestorben"
+   :recap/cause-lynch  "vom Dorf gerichtet"
+   :recap/cause-jaeger "vom Jäger erschossen"
+   :recap/cause-weisser "vom Weißen Werwolf gerissen"
+   :recap/cause-gm     "von der Spielleitung aus dem Spiel genommen"
+   :recap/cause-other  "gestorben"
+   :recap/dealt        (fn [r] (str "anfangs " r))
+   :recap/lover        "verliebt"
+   :recap/mayor        "Bürgermeister"
+   :recap/dieb-took    (fn [n r] (str n " nimmt sich die Karte " r))
+   :recap/dieb-kept    (fn [n] (str n " bleibt Dieb"))
+   :recap/amor-linked  (fn [a b] (str "Amor verliebt " a " und " b))
+   :recap/seherin      (fn [n t r] (str n " sieht nach: " t " ist " r))
+   :recap/beschuetzer  (fn [n t] (str n " beschützt " t))
+   :recap/wolves-chose (fn [t] (str "Die Werwölfe wählen " t))
+   :recap/wolves-guarded (fn [t] (str "Die Werwölfe wählen " t " — doch der Beschützer wacht"))
+   :recap/wolves-none  "Die Werwölfe einigen sich auf kein Opfer"
+   :recap/weisser-killed (fn [n t] (str n " reißt " t " aus dem eigenen Rudel"))
+   :recap/weisser-passed (fn [n] (str n " verschont das Rudel"))
+   :recap/hexe-healed  (fn [n t] (str n " rettet " t " mit dem Heiltrank"))
+   :recap/hexe-poisoned (fn [n t] (str n " vergiftet " t))
+   :recap/nominated    (fn [by t] (str by " klagt " t " an"))
+   :recap/gm-reassigned (fn [n from to] (str "Die Spielleitung tauscht die Karte von " n ": " from " → " to))
+   :recap/votes        (fn [v] (str "Stimmen: " v))
+   :recap/abandoned    "Niemand ist zurückgekommen — die Runde wurde ohne Sieger beendet"
+
    ;; ------------------------------------------------------------ errors ---
    ;; Voice failures. A refused microphone gets its own line because it is fixed
    ;; in browser settings, not by tapping again — and it is by far the common one.
