@@ -389,6 +389,7 @@
    :log/win-werewolf  "Die Werwölfe haben gewonnen"
    :log/win-lovers    "Die Verliebten haben gewonnen"
    :log/win-weisser   "Der Weiße Werwolf hat allein gewonnen"
+   :log/game-abandoned "Niemand ist zurückgekommen — die Runde ist beendet"
 
    ;; Plural roll-ups for the Chronik. Separate entries because the verb agrees
    ;; with the subject, which a count spliced into the singular form cannot do.

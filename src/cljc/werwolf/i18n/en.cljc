@@ -384,6 +384,7 @@
    :log/win-werewolf  "The werewolves win"
    :log/win-lovers    "The lovers win"
    :log/win-weisser   "The Weißer Werwolf wins alone"
+   :log/game-abandoned "Nobody came back — the game is closed"
 
    :log/group-ready        (fn [names] (str names " are done"))
    :log/group-passed       (fn [names] (str names " accuse nobody"))

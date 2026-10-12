@@ -686,6 +686,16 @@
       (assoc :phase :game-over :winner winner :deadline nil)
       (publish {:type :game/ended :winner winner})))
 
+;; Server-authored: nobody came back, and the server closed the room. An end
+;; without a winner, logged rather than only flagged in the rooms table, so a
+;; replay for a recap ends where the game really did instead of hanging in
+;; some night forever. See room/abandoned?.
+(defmethod apply-event :game/abandoned
+  [state _]
+  (-> state
+      (assoc :phase :game-over :winner nil :deadline nil)
+      (publish {:type :game/abandoned})))
+
 ;; ---- GM overrides (always logged, never silent) ----
 
 (defmethod apply-event :gm/forced

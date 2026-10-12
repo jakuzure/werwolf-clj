@@ -70,6 +70,7 @@
    :day/no-accusation :verdict
    :night/quiet      :verdict
    :game/ended       :verdict
+   :game/abandoned   :verdict
    :night/began      :night
    :game/started     :night
    :night/ended      :day
@@ -260,6 +261,7 @@
                                        :lovers   :log/win-lovers
                                        :weisser-werwolf :log/win-weisser
                                        :log/win-village))
+      :game/abandoned      (t locale :log/game-abandoned)
       ;; A newer server may log something this client has never heard of. Show
       ;; the raw type rather than a blank line: visible is debuggable.
       (str type))))

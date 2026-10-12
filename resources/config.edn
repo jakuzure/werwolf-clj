@@ -46,6 +46,12 @@
            ;; a locked phone drops its socket, so a table that put their phones
            ;; down looks identical to an abandoned game.
            :game-idle-ms    #long #or [#env GAME_IDLE_MS 1800000]
+           ;; Dropping an idle game from memory is not the end of it: the log
+           ;; brings it back on every boot. An unfinished game no player has
+           ;; touched for this many hours is closed for good instead — ended in
+           ;; the log, kept for a recap, never loaded again. (An idle lobby goes
+           ;; at :room-idle-ms; nothing has been dealt there to lose.)
+           :abandon-after-hours #long #or [#env ABANDON_AFTER_HOURS 24]
            ;; How long the host's seat may stand empty before the room stops
            ;; waiting for him: the Chronik says he is gone, his seat is offered
            ;; where that is safe, and a narrated game hands its pace to the

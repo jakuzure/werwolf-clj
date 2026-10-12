@@ -42,11 +42,25 @@
        (map str/trim)
        (remove str/blank?)))
 
+(defn- add-column!
+  "ALTER TABLE ... ADD COLUMN unless it is already there. SQLite has no
+   `ADD COLUMN IF NOT EXISTS`, and `migrate!` runs on every boot."
+  [ds table column decl]
+  (let [cols (into #{} (map :name)
+                   (jdbc/execute! ds [(str "PRAGMA table_info(" table ")")] opts))]
+    (when-not (contains? cols column)
+      (jdbc/execute-one! ds [(str "ALTER TABLE " table " ADD COLUMN " column " " decl)]))))
+
 (defn migrate!
-  "Apply the schema. Idempotent — every statement is CREATE ... IF NOT EXISTS."
+  "Apply the schema. Idempotent — every statement is CREATE ... IF NOT EXISTS,
+   and columns added since are added only where missing."
   [ds]
   (doseq [stmt (split-statements (slurp (io/resource "migrations/001-events.sql")))]
     (jdbc/execute-one! ds [stmt]))
+  ;; When a PLAYER last did something, as opposed to `updated_at`, which every
+  ;; write moves — the clock firing included. NULL on rooms from before it
+  ;; existed, which then fall back to `updated_at`. See `room/abandoned?`.
+  (add-column! ds "rooms" "active_at" "INTEGER")
   ds)
 
 (defn open
@@ -83,14 +97,19 @@
       (count events))))
 
 (defn upsert-room!
-  [ds room-id phase finished? now-ms]
-  (jdbc/execute-one!
-   ds
-   ["INSERT INTO rooms (room_id, created_at, updated_at, phase, finished)
-     VALUES (?,?,?,?,?)
-     ON CONFLICT(room_id) DO UPDATE SET updated_at=?, phase=?, finished=?"
-    room-id now-ms now-ms (str phase) (if finished? 1 0)
-    now-ms (str phase) (if finished? 1 0)]))
+  "Record a write to the room. `active-ms` is when a player last did something;
+   nil leaves the stored value alone."
+  ([ds room-id phase finished? now-ms]
+   (upsert-room! ds room-id phase finished? now-ms nil))
+  ([ds room-id phase finished? now-ms active-ms]
+   (jdbc/execute-one!
+    ds
+    ["INSERT INTO rooms (room_id, created_at, updated_at, phase, finished, active_at)
+      VALUES (?,?,?,?,?,?)
+      ON CONFLICT(room_id) DO UPDATE SET updated_at=?, phase=?, finished=?,
+        active_at=COALESCE(?, active_at)"
+     room-id now-ms now-ms (str phase) (if finished? 1 0) active-ms
+     now-ms (str phase) (if finished? 1 0) active-ms])))
 
 ;; --------------------------------------------------------------- reads ---
 
@@ -105,25 +124,29 @@
 (defn load-game
   "Rehydrate a room's game state, or nil if the room has no events.
 
-   `:updated-at` is when the room last saw a write, which is what tells a
+   `:active-at` is when a player last did something there, falling back to the
+   last write for rooms from before that was recorded. It is what tells a
    rebooting server how long the room has ALREADY been abandoned — without it
    every restart hands a dead room a fresh grace period."
   [ds room-id]
   (let [events (load-events ds room-id)]
     (when (seq events)
-      {:state      (engine/replay events)
-       :seq        (count events)
-       :updated-at (:updated_at (jdbc/execute-one!
-                                 ds ["SELECT updated_at FROM rooms WHERE room_id = ?"
-                                     room-id]
-                                 opts))})))
+      (let [{:keys [updated_at active_at]}
+            (jdbc/execute-one! ds ["SELECT updated_at, active_at FROM rooms WHERE room_id = ?"
+                                   room-id]
+                               opts)]
+        {:state      (engine/replay events)
+         :seq        (count events)
+         :updated-at updated_at
+         :active-at  (or active_at updated_at)}))))
 
 (defn room-exists? [ds room-id]
   (some? (jdbc/execute-one! ds ["SELECT 1 FROM rooms WHERE room_id = ?" room-id] opts)))
 
 (defn unfinished-room-ids
   "Rooms to rehydrate on boot. Finished games stay on disk for recaps but are
-   not resurrected into memory."
+   not resurrected into memory — abandoned ones included, which the room layer
+   ends in the log rather than leaving to be reloaded forever."
   [ds]
   (->> (jdbc/execute! ds ["SELECT room_id FROM rooms WHERE finished = 0 ORDER BY updated_at DESC"]
                       opts)
