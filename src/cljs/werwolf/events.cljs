@@ -71,7 +71,8 @@
    :audio       nil
    ;; The deck the host's last stepper tap SENT and the server has not yet
    ;; shown back. See `deck-step-fx` — without it, two quick taps both counted
-   ;; from the same view and the second was lost.
+   ;; from the same view and the second was lost. Cleared by `unseat`: a tap
+   ;; still unanswered when the host walks out belongs to the room he left.
    :deck/draft  nil
    ;; The phase chime. A preference of this device, not of any room — which is
    ;; why `unseat` leaves it alone. Overwritten from storage by ::init.
@@ -473,7 +474,7 @@
   (-> db
       (merge (select-keys initial-db
                           [:screen :me :view :view/seq :chat :error :audio
-                           :join/password?]))
+                           :join/password? :deck/draft]))
       ;; The confirm that got us here. Left armed, it would put 'really?' on the
       ;; next room's leave button before anyone had touched it. And a password
       ;; half-typed for the last room's lock, which is nothing to the next.

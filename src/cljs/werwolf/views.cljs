@@ -1287,13 +1287,16 @@
            ^{:key (str (:role row))}
            [deck-stepper row (:max row)])]
         ;; The filler is a consequence, not a choice — so it has no steppers,
-        ;; and says what it does instead.
-        [:div {:class "flex items-center gap-2 pt-2 border-t border-slate-800"
-               :data-testid "deck-fill"}
-         [:span {:class "text-xl w-7 shrink-0 text-center" :aria-hidden true}
-          (i18n/icon-of villager)]
-         [:span {:class "flex-1 min-w-0 text-slate-300"}
-          (str (role-name villager) " ×" fill " · " (t :deck/fill))]]]
+        ;; and says what it does instead. Not when the specials take every
+        ;; seat: 'Dorfbewohner ×0 fill the remaining seats' names a card nobody
+        ;; gets, for seats that do not exist.
+        (when (pos? fill)
+          [:div {:class "flex items-center gap-2 pt-2 border-t border-slate-800"
+                 :data-testid "deck-fill"}
+           [:span {:class "text-xl w-7 shrink-0 text-center" :aria-hidden true}
+            (i18n/icon-of villager)]
+           [:span {:class "flex-1 min-w-0 text-slate-300"}
+            (str (role-name villager) " ×" fill " · " (t :deck/fill))]])]
        [deck-chips dealt "deck-dealt"])
      (when (seq centre)
        [:div {:class "space-y-1"}
@@ -1320,7 +1323,6 @@
         me @(rf/subscribe [::sub/me])
         actions @(rf/subscribe [::sub/actions])
         host? @(rf/subscribe [::sub/host?])
-        deck @(rf/subscribe [::sub/deck-panel])
         ;; The people who will be dealt a card. The Spielleiter is in the room
         ;; but not at the table, and the server counts the same way when it
         ;; decides whether the game may start.
@@ -1353,10 +1355,12 @@
 
          ;; The deck, not the head count, is what stops this table. Saying
          ;; "waiting for more players" here would send the host to wait for
-         ;; people when what he has to do is take a role out.
+         ;; people when what he has to do is take a role out. The reason itself
+         ;; is said once, at the foot of the Rollen panel: right under the
+         ;; steppers that caused it and fix it, where every player reads it too.
+         ;; Here it was a second copy, a whole player grid further down.
          (and host? (:deck-problem view))
-         [:span {:class "text-sm text-amber-300"}
-          (i18n/deck-problem-text (lc) (:deck-problem view) (:specials deck) table)]
+         nil
 
          :else
          [:span {:class "text-sm text-slate-500"}
