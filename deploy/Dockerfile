@@ -2,7 +2,7 @@
 #
 # That is deliberate. Building the frontend inside the container would mean
 # shipping Node, npm, the JDK and a Maven cache into a builder stage to produce
-# a 20 MB jar — a slow, fat build whose only gain is not needing a toolchain on
+# a 26 MB jar — a slow, fat build whose only gain is not needing a toolchain on
 # the machine that runs `docker build`. This project's build already lives in
 # bb.edn, and `bb docker` runs `bb uberjar` first (which compiles the release
 # CLJS and the minified CSS into resources/public before the jar is packed).
@@ -19,6 +19,10 @@
 # NoSuchMethodError: newVirtualThreadPerTaskExecutor, from deep inside integrant
 # where it looks like anything but a JDK mismatch. Keep this at or above the
 # version that builds the jar.
+#
+# And Ubuntu, on amd64 or arm64: the jar carries sqlite-jdbc's native library for
+# glibc Linux on those two only (build/build.clj says why), so an Alpine base or
+# another architecture would start and then fail to open the database.
 FROM eclipse-temurin:25-jre-noble
 
 # curl is for the healthcheck and nothing else. This base image already ships it,

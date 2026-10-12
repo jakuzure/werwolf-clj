@@ -89,13 +89,18 @@ raised from inside `integrant/init`, which makes it look like a system-wiring
 problem and not a JVM one. `bb serve` and `bb dev` are unaffected — they go
 through `clojure`, so they already use 21.
 
-The container pins `eclipse-temurin:21-jre`, so deployments are fine. To run the
-jar directly on this machine, point at the build's JVM:
+The container pins `eclipse-temurin:21-jre`, so deployments are fine.
+
+On the Mac the uberjar no longer runs at all, whichever `java`: it carries
+sqlite-jdbc's native library for Linux x86_64 and aarch64 only, the two the image
+can be (see build/build.clj), and cannot open the database anywhere else. To run
+the packaged server here, use the nix package instead. It carries this
+platform's library and its own JDK 21:
 
 ```bash
-JAVA=$(clojure -M -e '(println (System/getProperty "java.home"))' | tail -1)
+nix build
 DB_PATH=./data/werwolf.db TOKEN_SECRET=$(openssl rand -base64 48) \
-  "$JAVA/bin/java" -jar target/*-standalone.jar
+  result/bin/werwolf-clj
 ```
 
 ## Voice (optional, and add it second)
