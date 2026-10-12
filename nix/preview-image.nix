@@ -16,19 +16,24 @@
 # Jars are copied WITHOUT their store hash: Nix's reference scanner finds a hash
 # anywhere in an output, file names included, and would put every single-jar
 # store path back into the closure.
+#
+# The image is built with nix2container directly rather than nix-snapshotter's
+# buildImage, which puts the image's own config.json, a FILE, into the mounted
+# closure. Whether containerd can then start the image depends on where that
+# file sorts among the closure's store paths: last, and it fails with "open
+# …-config-werwolf.json: not a directory". The config lives in the image tar
+# anyway; the closure here is the app's, and the build fails if any path in it
+# is not a directory.
 { lib
 , runCommand
 , runtimeShell
-, callPackage
+, writeText
+, closureInfo
 , nix-snapshotter
-, globset
 , werwolf
 }:
 
 let
-  # nixpkgs' own nix-snapshotter.buildImage calls upstream's package.nix without
-  # its globset argument and fails to evaluate; call it with one.
-  inherit (callPackage "${nix-snapshotter.src}/package.nix" { inherit globset; }) buildImage;
   inherit (werwolf.passthru) libs jdk;
 
   deps = runCommand "werwolf-clj-deps" { } ''
@@ -59,19 +64,34 @@ let
     chmod +x $out/bin/werwolf
   '';
 
-  image = buildImage {
-    name = "werwolf";
-    resolvedByNix = true;
-    # Only what is the same for every preview. TOKEN_SECRET, LiveKit and the
-    # room prefix come from the controller's Deployment.
-    config = {
-      entrypoint = [ "${app}/bin/werwolf" ];
-      env = [
-        "HOST=0.0.0.0"
-        "PORT=8080"
-        "DB_PATH=/data/werwolf.db"
-      ];
-    };
-  };
+  # Only what is the same for every preview. TOKEN_SECRET, LiveKit and the
+  # room prefix come from the controller's Deployment.
+  config = writeText "config-werwolf.json" (builtins.toJSON {
+    entrypoint = [ "${app}/bin/werwolf" ];
+    env = [
+      "HOST=0.0.0.0"
+      "PORT=8080"
+      "DB_PATH=/data/werwolf.db"
+    ];
+  });
+
+  # What nix-snapshotter bind-mounts into the container: everything the
+  # entrypoint needs, and nothing else.
+  closure = closureInfo { rootPaths = [ app ]; };
+
+  # Referenced as nix:0<this path>; without --ref, that is what nix2container
+  # names the image.
+  image = runCommand "nix-image-werwolf.tar" { }
+    ''
+      while read -r path; do
+        [ -d "$path" ] || { echo "not a directory, nix-snapshotter cannot mount it: $path" >&2; exit 1; }
+      done < ${closure}/store-paths
+      echo '[]' > copy-to-root.json
+      ${nix-snapshotter}/bin/nix2container build \
+        --config ${config} \
+        --closure ${closure}/store-paths \
+        --copy-to-root copy-to-root.json \
+        $out
+    '';
 in
 lib.extendDerivation true { inherit deps app; } image
