@@ -1988,14 +1988,14 @@
       "hash": "sha256-WuDrX5K1YZIOrRQBxjIRP8VA3oFFhlYfWVLfY49+j2I="
     },
     {
-      "mvn-path": "reagent/reagent/1.3.0/reagent-1.3.0.jar",
+      "mvn-path": "reagent/reagent/2.0.1/reagent-2.0.1.jar",
       "mvn-repo": "https://repo.clojars.org/",
-      "hash": "sha256-2/l/jYwaoausj6GqXvGHxMN307Njt50PgX/N6qSzi+0="
+      "hash": "sha256-rvgCVe7SfMLlBETlXypCAHbh6MtDyhQjx8Fp8uaxdjM="
     },
     {
-      "mvn-path": "reagent/reagent/1.3.0/reagent-1.3.0.pom",
+      "mvn-path": "reagent/reagent/2.0.1/reagent-2.0.1.pom",
       "mvn-repo": "https://repo.clojars.org/",
-      "hash": "sha256-7xygPFgfq0lhCF0tIVjaKlxdUAU2LAD7w45v5iFvcHA="
+      "hash": "sha256-dkHk81lzRiNnkpz/aqQahwjQG8DXGk12t71BEBRztxk="
     },
     {
       "mvn-path": "rewrite-clj/rewrite-clj/1.1.47/rewrite-clj-1.1.47.jar",
