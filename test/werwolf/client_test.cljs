@@ -545,3 +545,54 @@
       (is (= ["Bob"] (sub/waiting-names view)))
       (testing "while in a room the host plays in, the host is waited for like anyone"
         (is (= ["Bob" "SL"] (sub/waiting-names (dissoc view :narrator))))))))
+
+(deftest the-round-strip-lights-the-current-step
+  (let [states #(into {} (map (juxt :step :state)) (sub/round-steps %))]
+    (testing "the election is on the first day only"
+      (is (contains? (states {:phase :discussion :night 1}) :election))
+      (is (not (contains? (states {:phase :discussion :night 2}) :election))))
+    (testing "steps before the current one are done, after it to come"
+      (is (= {:night :done :day-reveal :done :discussion :done :nomination :current
+              :vote :todo :day-resolve :todo}
+             (states {:phase :nomination :night 3}))))
+    (testing "a reaction lights the step it interrupted, read off the log"
+      (is (= :current (:day-reveal (states {:phase :reaction :night 2
+                                            :log [{:type :night/began} {:type :night/ended}]}))))
+      (is (= :current (:day-resolve (states {:phase :reaction :night 2
+                                             :log [{:type :night/ended} {:type :day/began}]}))))
+      (is (:interrupted? (first (filter #(= :current (:state %))
+                                        (sub/round-steps {:phase :reaction :night 2 :log []}))))))
+    (testing "no strip before the first night or after the end"
+      (is (nil? (sub/round-steps {:phase :setup :night 0})))
+      (is (nil? (sub/round-steps {:phase :game-over :night 4}))))))
+
+(deftest the-room-light-follows-the-phase
+  (is (= :night (sub/ambience :night)))
+  (is (= :day (sub/ambience :vote)))
+  (is (= :day (sub/ambience :reaction)))
+  (is (= :end (sub/ambience :game-over)))
+  (is (= :neutral (sub/ambience :setup))))
+
+(deftest the-chronik-folds-away-when-somebody-narrates
+  (testing "by default: shut at a narrated table, open without a narrator"
+    (is (false? (sub/chronik-open? nil true)))
+    (is (true? (sub/chronik-open? nil false))))
+  (testing "the player's own choice wins either way"
+    (is (true? (sub/chronik-open? true true)))
+    (is (false? (sub/chronik-open? false false))))
+  (testing "toggling flips what is SHOWN, which may be the default, and remembers it"
+    (let [narrated (assoc db :view {:narrated? true} :log/open? nil)
+          fx (ev/toggle-chronik-fx {:db narrated} nil)]
+      (is (true? (get-in fx [:db :log/open?])))
+      (is (true? (::ev/store-chronik fx))))))
+
+(deftest the-latest-news-is-what-mattered
+  (let [died  {:type :player/died :player 1 :cause :werwolf}
+        quiet {:type :night/quiet :night 2}
+        noise {:type :player/ready :player 2}]
+    (testing "the newest run of deaths and verdicts, oldest first"
+      (is (= [died died] (sub/latest-news [{:type :night/began} died died {:type :day/began}]))))
+    (testing "bookkeeping after it does not bury it"
+      (is (= [quiet] (sub/latest-news [died {:type :night/began} quiet noise noise]))))
+    (testing "nothing to report is nil, not an empty line"
+      (is (nil? (sub/latest-news [{:type :game/started} noise]))))))

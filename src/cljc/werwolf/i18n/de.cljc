@@ -33,6 +33,7 @@
    ;; ------------------------------------------------------------- lobby ---
    :lobby/title       "Warteraum"
    :lobby/players     "Mitspieler"
+   :lobby/count       (fn [n mx mn] (str n " / " mx " Mitspieler · schön ab " mn))
    :lobby/start       "Spiel starten"
    :lobby/need-more   "Es fehlen noch Mitspieler"
    ;; Die Spielleitung darf unter der empfohlenen Größe starten. Ein Hinweis,
@@ -201,6 +202,35 @@
    ;; Der Spielleiter ist nie "dran" und wartet nie — er führt.
    :turn/narrating "Du leitest das Spiel"
 
+   ;; ------------------------------------------------------------ stage ---
+   ;;
+   ;; Ein Satz pro Phase, der sagt, was gerade geschieht — für alle, die zum
+   ;; ersten Mal mitspielen. Bewusst ohne „Das Dorf" und „Werwölfe": diese
+   ;; Wörter gehören den Ergebnissen, und ein Satz, der sie immer enthält,
+   ;; macht sie auf dem Bildschirm wertlos.
+   :stage/round       (fn [n] (str "Runde " n))
+   :stage/called      (fn [role] (str "Gerufen: " role))
+   :stage/call        (fn [role] (str "Rufe auf: " role))
+   :stage/latest      "Zuletzt"
+   :stage/progress    "Ablauf der Runde"
+   :stage/interrupted "unterbrochen"
+   :explain/setup       "Die Karten sind verteilt. Schau dir deine Rolle an — gleich beginnt die Nacht."
+   :explain/night       "Alle schlafen. Wer gerufen wird, wacht auf und handelt, ohne sich zu verraten."
+   :explain/day-reveal  "Der Morgen graut. Gleich zeigt sich, was die Nacht angerichtet hat."
+   :explain/election    "Wählt einen Bürgermeister. Seine Stimme zählt bei jeder Abstimmung doppelt."
+   :explain/discussion  "Redet miteinander: Wem traut ihr nicht? Sag Bescheid, wenn du fertig bist."
+   :explain/nomination  "Jeder darf eine Person anklagen — oder darauf verzichten."
+   :explain/vote        "Stimmt über die Angeklagten ab. Bei Gleichstand stirbt niemand."
+   :explain/day-resolve "Das Urteil fällt."
+   :explain/reaction    "Ein Toter hat noch eine letzte Handlung. Alle warten auf ihn."
+   :step/night       "Nacht"
+   :step/day-reveal  "Morgen"
+   :step/election    "Wahl"
+   :step/discussion  "Beratung"
+   :step/nomination  "Anklage"
+   :step/vote        "Abstimmung"
+   :step/day-resolve "Urteil"
+
    ;; ------------------------------------------------------------ voice ---
    ;;
    ;; Joining is an explicit tap: browsers refuse a microphone without a user
@@ -236,6 +266,8 @@
    ;; --------------------------------------------------------------- log ---
    :log/show-all      "Alles zeigen"
    :log/show-less     "Nur Wichtiges"
+   :log/open          (fn [n] (str "Chronik anzeigen (" n ")"))
+   :log/close         "Chronik ausblenden"
    :log/hidden        "weitere Einträge"
 
    :log/joined        (fn [n] (str n " ist beigetreten"))

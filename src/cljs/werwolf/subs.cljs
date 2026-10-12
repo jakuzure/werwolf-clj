@@ -5,7 +5,8 @@
    werewolves are, whether an action is legal, or whose turn it is. Those
    answers arrive in `:view` already decided, because the server is the only
    thing entitled to decide them."
-  (:require [re-frame.core :as rf]))
+  (:require [re-frame.core :as rf]
+            [werwolf.i18n.core :as i18n]))
 
 (rf/reg-sub ::conn-status (fn [db _] (:conn/status db)))
 (rf/reg-sub ::screen      (fn [db _] (:screen db)))
@@ -73,6 +74,17 @@
             (fn [[form view] _] (leave-armed? form view)))
 
 (rf/reg-sub ::show-all-log? (fn [db _] (boolean (:log/show-all? db))))
+
+(defn chronik-open?
+  "Whether the Chronik is unfolded. A choice the player made wins; otherwise it
+   starts closed at a narrated table, where the Spielleiter tells the story out
+   loud and a scrolling transcript of it is a second, quieter narrator competing
+   for the same screen. Without one the Chronik IS the narrator, so it opens."
+  [stored narrated?]
+  (if (boolean? stored) stored (not narrated?)))
+
+(rf/reg-sub ::chronik-open?
+            (fn [db _] (chronik-open? (:log/open? db) (:narrated? (:view db)))))
 
 (rf/reg-sub ::rooms (fn [db _] (or (:rooms db) [])))
 (rf/reg-sub ::seat-pending? (fn [db _] (boolean (:seat/pending? db))))
@@ -222,3 +234,76 @@
    ;; :chat is not "acting" — offering it as an action would make the UI claim
    ;; the game is waiting for you when it is not.
    (boolean (seq (remove #{:chat :leave :set-locale} actions)))))
+
+;; ---- the stage ----
+;;
+;; Presentation only. Nothing below decides what happens next — the server does
+;; that — it only decides how to DRAW where the table is, from :phase, :night and
+;; the public log.
+
+(defn round-steps
+  "One day-night cycle as a strip of steps, each :done, :current or :todo.
+
+   The election appears on the first day only, because that is the only day it
+   can happen. A :reaction is an interrupt rather than a step of its own, so it
+   lights up the step it broke into: the dawn if it came out of the night, the
+   verdict if it came out of the day. The view does not say which, but the log
+   does — whichever of night-ended or day-began came last."
+  [{:keys [phase night log]}]
+  (when (contains? #{:night :day-reveal :election :discussion :nomination :vote
+                     :day-resolve :reaction}
+                   phase)
+    (let [steps (cond-> [:night :day-reveal]
+                  (= 1 night) (conj :election)
+                  true (into [:discussion :nomination :vote :day-resolve]))
+          current (if (= :reaction phase)
+                    (case (some #{:night/ended :day/began} (map :type (rseq (vec log))))
+                      :day/began :day-resolve
+                      :day-reveal)
+                    phase)
+          at (.indexOf steps current)]
+      (vec (map-indexed (fn [i step]
+                          {:step step
+                           :state (cond (< i at) :done (= i at) :current :else :todo)
+                           :interrupted? (and (= i at) (= :reaction phase))})
+                        steps)))))
+
+(rf/reg-sub ::round-steps :<- [::view] (fn [v _] (round-steps v)))
+
+(defn ambience
+  "Which light the room is in. Night is night, the day phases are day, the end
+   is gold, and everything before the first night stays neutral — the cards are
+   still being handed out."
+  [phase]
+  (case phase
+    (:night) :night
+    (:day-reveal :election :discussion :nomination :vote :day-resolve :reaction) :day
+    :game-over :end
+    :neutral))
+
+(rf/reg-sub ::ambience :<- [::phase] (fn [p _] (ambience p)))
+
+(def ^:private news-tones #{:death :verdict})
+
+(defn latest-news
+  "The last thing that MATTERED, as the run of log entries that said it: who
+   died, how the vote went, that the night was quiet. Bookkeeping in between is
+   stepped over, so a reconnect after the verdict does not bury it; any other
+   kind of entry ends the run. At most three, oldest first — a Jäger's shot and
+   a lover's grief belong on one line, a whole game does not.
+
+   This is what keeps a folded Chronik honest: the one line nobody should miss
+   stays on screen."
+  [log]
+  (let [tone #(i18n/log-tone %)
+        newest-first (rseq (vec log))
+        from-news (drop-while #(not (news-tones (tone %))) newest-first)]
+    (->> from-news
+         (remove #(= :muted (tone %)))
+         (take-while #(news-tones (tone %)))
+         (take 3)
+         reverse
+         vec
+         not-empty)))
+
+(rf/reg-sub ::latest-news :<- [::log] (fn [log _] (latest-news log)))

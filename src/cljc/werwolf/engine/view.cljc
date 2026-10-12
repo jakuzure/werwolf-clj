@@ -218,6 +218,9 @@
      :ready           (or (:ready state) #{})
      :nomination-done (or (:nomination-done state) #{})
      :min-players (:min-players state)
+     ;; Published so the lobby can show the real ceiling. Showing only the
+     ;; minimum, as "2 / 5", read as a five-player cap.
+     :max-players (:max-players state)
      :players     (into {} (map (fn [[id p]] [id (public-player p)])) (:players state))
      ;; Which ROLE is currently being called is public — the human narrator says
      ;; it out loud ("Werwölfe, wacht auf"). Which PLAYER holds it is not.
