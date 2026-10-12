@@ -211,3 +211,33 @@
         (is (not= (line {:type :clock/timer-set :on? true :cause :host-absent})
                   (line {:type :clock/timer-set :on? true}))
             "nor is a clock nobody switched on")))))
+
+;; -------------------------------------------------------------- the deck ---
+
+(deftest a-deck-reads-the-way-a-table-says-it
+  (doseq [locale i18n/locales]
+    (testing (str locale)
+      (is (= "2× Werwolf, Seherin, Hexe"
+             (i18n/deck-summary locale {:hexe 1 :werwolf 2 :seherin 1}))
+          "the pack first, then the night's order — whatever order the map holds")
+      (is (= "Seherin, 3× Dorfbewohner"
+             (i18n/deck-summary locale {:dorfbewohner 3 :seherin 1 :amor 0}))
+          "villagers last, and a zero is not a card")
+      (is (not (untranslated? (i18n/deck-summary locale {}))))
+      (doseq [p [:too-many-roles :no-werewolf :no-villager]]
+        (is (not (untranslated? (i18n/deck-problem-text locale p 6 5))) (str p)))
+      (is (str/includes? (i18n/deck-problem-text locale :too-many-roles 6 5) "5")
+          "the table size is the number the host has to compare against"))))
+
+(deftest a-deck-built-step-by-step-is-one-line-in-the-chronik
+  (testing "every stepper tap logs the whole deck, and a run of them is one
+            decision. The line must name the LAST deck — the one the table is
+            going to play — not the first"
+    (doseq [locale i18n/locales]
+      (let [log [{:type :deck/set :deck {:werwolf 1}}
+                 {:type :deck/set :deck {:werwolf 2}}
+                 {:type :deck/set :deck {:werwolf 2 :hexe 1}}]
+            rows (i18n/chronicle locale players log {:show-all? false})]
+        (is (= 1 (count rows)))
+        (is (str/includes? (:text (first rows)) "2× Werwolf, Hexe"))
+        (is (= :gm (:tone (first rows))) "loud: the table reasons from the deck")))))

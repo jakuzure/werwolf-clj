@@ -8,6 +8,7 @@
    dead host freezing the game."
   (:require [clojure.test :refer [are deftest is testing]]
             [werwolf.engine.events :as e]
+            [werwolf.engine.roles :as roles]
             [werwolf.engine.schema :as schema]
             [werwolf.sim.harness :as h]))
 
@@ -176,3 +177,42 @@
             (str opts ": somebody took the seat in at least one game"))
         (doseq [r (take 5 results)]
           (is (nil? (h/replay-mismatch r)) (str opts " seed " (:seed r))))))))
+
+;; ----------------------------------------------------- the chosen deck ---
+
+(deftest games-with-a-chosen-deck-complete
+  (testing "the automatic composition is a handful of decks the rules were
+            written against. A Spielleiter's choice is any deck that fits — a
+            Dieb at five, a single wolf among fifteen, no Seherin — and the
+            harness plays those through every invariant, narrated and not.
+            A deck the engine let start and then could not finish shows up here
+            as a deadlock"
+    (doseq [opts [{:random-deck? true}
+                  {:random-deck? true :narrated? true}]]
+      (let [{:keys [failures summary]} (h/play-many 60 opts)]
+        (is (empty? failures) (str (pr-str opts) " failures: " (describe failures)))
+        (is (= 60 (:games summary)))
+        (is (> (:avg-turns summary) 10) "games are being played, not aborted")))))
+
+(deftest the-random-decks-are-varied-and-valid
+  (let [decks (for [i (range 200)
+                    :let [n (+ 3 (mod i 16))]]
+                [n (h/random-deck n (+ 17 (* i 101)))])]
+    (testing "every deck the harness plays is one the start rule allows"
+      (doseq [[n deck] decks]
+        (is (nil? (roles/deck-problem deck n)) (pr-str n deck))
+        (is (nil? (roles/deck-errors deck 18)) (pr-str deck))))
+    (testing "and between them they name every special, so no role goes untested"
+      (is (= (set roles/special-ids) (into #{} (mapcat keys) (map second decks)))))))
+
+(deftest a-chosen-deck-replays-and-keeps-its-schema
+  (let [r (h/play-game 9 2024 {:random-deck? true})]
+    (is (:ok? r) (str "game failed: " (pr-str (select-keys r [:reason :phase :violations]))))
+    (is (nil? (h/replay-mismatch r)))
+    (is (some #{:deck/set} (map :type (:log r))) "the deck is in the log")
+    (loop [state nil, evs (:log r)]
+      (when-let [ev (first evs)]
+        (let [state' (e/apply-event state ev)]
+          (is (schema/valid-state? state')
+              (str "invalid after " (:type ev) ": " (pr-str (schema/explain-state state'))))
+          (recur state' (rest evs)))))))

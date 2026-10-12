@@ -8,6 +8,7 @@
   (:require [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]
             [werwolf.engine.core :as engine]
+            [werwolf.engine.events :as e]
             [werwolf.engine.view :as view]
             [werwolf.sim.harness :as h]
             [werwolf.test-util :as tu :refer [exec!]]))
@@ -225,3 +226,43 @@
           (is (false? (:locked? (view/view-for cleared 1))))
           (is (not (contains? cleared :password-hash)))
           (is (= {:type :room/unlocked} (last (:log cleared)))))))))
+
+;; ------------------------------------------------------------- the deck ---
+
+(deftest the-deck-is-counts-and-names-nobody
+  (testing "the composition is public in every phase, and it must stay a map of
+            ROLE -> COUNT. Its values are small integers, which is exactly what
+            a player id looks like — so the shape is pinned here: keyed the
+            other way round, {2 :werwolf} would read as 'seat 2 is a wolf', and
+            the detector would be right to say so"
+    (let [deck {:werwolf 2 :seherin 1 :dieb 1}
+          s (e/replay (into [{:type :game/created :room-id "R" :host 0 :seed 3 :min-players 5}]
+                            (map (fn [i] {:type :player/joined :player i
+                                          :name (str "P" i) :locale :de}))
+                            (range 6)))
+          s (exec! s {:type :gm/set-deck :player 0 :deck deck})]
+      (doseq [pid (range 6)]
+        (let [v (view/view-for s pid)]
+          (is (= deck (:deck v)))
+          (is (empty? (view/foreign-roles-in-view
+                       (select-keys v [:deck :deck-preview :deck-roles :log]) pid))
+              "nothing in the deck, the preview, the menu or the log entry reads as a seat")
+          (is (nil? (engine/redaction-leaks? s pid)))))
+      (testing "and once dealt, every seat still sees only what it is owed"
+        (let [s (exec! s {:type :start-game :player 0})]
+          (doseq [pid (range 6)]
+            (is (nil? (engine/redaction-leaks? s pid)) (str "seat " pid)))))
+      (testing "the detector is not blind to the shape it is trusted to ignore"
+        (is (= #{[2 :werwolf]} (view/foreign-roles-in-view {:deck {2 :werwolf}} 0)))))))
+
+(deftest custom-decks-never-leak-across-full-games
+  (testing "the simulation's custom decks put unusual tables in front of the
+            detector — a lone wolf among fifteen, a pack with no Seherin, a Dieb
+            at four — and it is asked after every event"
+    (let [games (for [i (range 20)
+                      :let [n (+ 3 (mod i 16))
+                            seed (+ 5 (* i 3121))]]
+                  (h/play-game n seed {:random-deck? true}))]
+      (is (every? :ok? games)
+          (pr-str (map #(select-keys % [:reason :seed :players :violations])
+                       (remove :ok? games)))))))

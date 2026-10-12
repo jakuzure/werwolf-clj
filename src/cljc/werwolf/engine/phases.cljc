@@ -573,6 +573,16 @@
              (and (= :werwolf cursor)
                   (= :werewolf (e/team-of-player state pid)))))))
 
+(defn deck-problem
+  "Why this room's deck cannot be dealt to the table as it stands, or nil.
+
+   Asked of the live state rather than stored, because the answer moves while
+   nobody touches the deck: a seventh player sitting down can make a deck fit,
+   the host deciding to narrate can make it stop fitting. See
+   `roles/deck-problem` for the reasons themselves."
+  [state]
+  (roles/deck-problem (:deck state) (count (e/participant-ids state))))
+
 (defn host-actions
   "GM powers, which belong to the room's host and are NOT lost on death.
 
@@ -593,8 +603,14 @@
       ;; is a clock, and who holds this seat. Handing the seat over belongs here
       ;; and nowhere later — once the cards are dealt the heir would be holding
       ;; one, and the old host would be holding none.
+      ;;
+      ;; And which roles are in the deck. Going back to the automatic deck is
+      ;; offered only while there is a custom one to leave — a switch that does
+      ;; nothing is a button somebody will press to see what happens.
       (= :lobby phase)
-      #{:gm/toggle-narrated :gm/toggle-timer :gm/transfer-host}
+      (cond-> #{:gm/toggle-narrated :gm/toggle-timer :gm/transfer-host
+                :gm/set-deck}
+        (contains? state :deck) (conj :gm/auto-deck))
 
       ;; The deal is on the table and not yet final. Deliberately NOT the
       ;; in-game overrides: there is nobody to kill or revive and no phase to
@@ -657,9 +673,16 @@
       ;; back by a config value set for a bigger evening. The one floor that
       ;; does bind is the deck's: below three there is no game to start, and
       ;; that limit belongs to the role composition, not to a preference.
+      ;;
+      ;; A deck the Spielleiter chose binds the same way: it must fit the table
+      ;; that is actually sitting here. Not offering the start, rather than
+      ;; offering it and failing, is what lets the lobby say WHY — the view
+      ;; publishes `deck-problem` beside the missing button.
       (= :lobby phase)
       (cond-> #{:chat}
-        (and host? (>= table roles/absolute-min-players))
+        (and host?
+             (>= table roles/absolute-min-players)
+             (nil? (deck-problem state)))
         (conj :start-game))
 
       ;; The Spielleiter. Past the lobby he plays no part — no card, no vote,
@@ -792,7 +815,10 @@
     ;; anybody.
     :begin-night :gm/toggle-narrated :gm/toggle-timer
     ;; Names nobody: the seat it takes is the host's.
-    :claim-host})
+    :claim-host
+    ;; The deck travels as a map of its own, not as a seat or a word: the whole
+    ;; deck in every command, validated against the registry by the handler.
+    :gm/set-deck :gm/auto-deck})
 
 (declare legal-targets legal-choices)
 

@@ -334,6 +334,44 @@
         (testing "the deadline is in the view, absolute"
           (is (= (:deadline state) (:deadline (:view (last-of host :room/view))))))))))
 
+(deftest the-spielleiter-chooses-the-deck-over-the-wire
+  (with-deps [deps]
+    (let [host (seat! deps {:type :client/create :name "P0"})
+          code (:room-id (last-of host :server/welcome))
+          guests (mapv #(seat! deps {:type :client/join :room-id code :name (str "P" %)})
+                       (range 1 5))
+          deck {:werwolf 2 :seherin 1}]
+      (protocol/dispatch deps host {:type :client/command
+                                    :cmd {:type :gm/set-deck :deck deck}})
+      (is (empty? (errors host)))
+      (testing "the whole table sees the deck it is going to be dealt"
+        (doseq [s (into [host] guests)]
+          (let [v (:view (last-of s :room/view))]
+            (is (= deck (:deck v)))
+            (is (= {:werwolf 2 :seherin 1 :dorfbewohner 2}
+                   (get-in v [:deck-preview :dealt]))))))
+      (testing "a malformed deck is refused at the door, before the engine"
+        (doseq [bad [{:werwolf -1} {:werwolf 19} {"werwolf" 1} {:werwolf "2"}]]
+          (swap! host empty)
+          (protocol/dispatch deps host {:type :client/command
+                                        :cmd {:type :gm/set-deck :deck bad}})
+          (is (= [:malformed] (codes host)) (pr-str bad))))
+      (testing "a well-formed deck the registry forbids is the engine's refusal"
+        (swap! host empty)
+        (protocol/dispatch deps host {:type :client/command
+                                      :cmd {:type :gm/set-deck :deck {:seherin 2}}})
+        (is (= [:too-many-of-role] (codes host))))
+      (testing "and only the host may choose"
+        (let [g (first guests)]
+          (swap! g empty)
+          (protocol/dispatch deps g {:type :client/command
+                                     :cmd {:type :gm/set-deck :deck {:werwolf 1}}})
+          (is (= [:not-allowed] (codes g)))))
+      (protocol/dispatch deps host {:type :client/command :cmd {:type :start-game}})
+      (is (= {:werwolf 2 :seherin 1 :dorfbewohner 2}
+             (frequencies (keep :role (vals (:players (room/state-of (:rooms deps) code))))))
+          "the deal is the deck"))))
+
 ;; ------------------------------------------------------------------ resume ---
 
 (deftest a-dropped-socket-can-be-replaced-with-the-token

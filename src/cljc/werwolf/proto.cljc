@@ -44,6 +44,7 @@
     ;; The Spielleiter's: ending the setup step, and arranging the table.
     :begin-night
     :gm/toggle-narrated :gm/toggle-timer :gm/transfer-host
+    :gm/set-deck :gm/auto-deck
     :gm/force-kill :gm/revive :gm/skip-role :gm/set-phase :gm/reassign-role
     :gm/pause :gm/resume :gm/add-time})
 
@@ -121,7 +122,12 @@
    [:phase  {:optional true} :keyword]
    ;; Seconds for :gm/add-time. Bounded here and clamped again in the handler:
    ;; the schema stops nonsense, the handler stops a slip.
-   [:secs   {:optional true} [:int {:min 5 :max 600}]]])
+   [:secs   {:optional true} [:int {:min 5 :max 600}]]
+   ;; The Spielleiter's deck for :gm/set-deck: role -> count. Bounded twice
+   ;; over, like :secs — no count past the largest table and no more entries
+   ;; than there are roles to name — and checked against the registry by the
+   ;; handler, which is the only place that knows what a role may be.
+   [:deck   {:optional true} [:map-of {:max 16} :keyword [:int {:min 0 :max 18}]]]])
 
 (def ClientMessage
   [:multi {:dispatch :type}

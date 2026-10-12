@@ -1190,11 +1190,137 @@
          #(rf/dispatch [::ev/set-password])
          {:tone :quiet :testid "set-password"}]])]))
 
+(defn- deck-chips
+  "A composition as a row of cards: icon, name, and a count when there is more
+   than one. Wraps rather than scrolls — a phone at 360px fits three or four to
+   a line, and a deck that runs off the side is a deck somebody misreads."
+  [entries testid]
+  [:div {:class "flex flex-wrap gap-1.5" :data-testid testid}
+   (for [[role n] entries]
+     ^{:key (str role)}
+     [:span {:class "inline-flex items-center gap-1 rounded-full bg-slate-800 border border-slate-700
+                     px-2 py-0.5 text-xs text-slate-200"
+             :data-role (name role) :data-count n}
+      [:span {:aria-hidden true} (i18n/icon-of role)]
+      [:span (role-name role)]
+      (when (> n 1) [:span {:class "font-bold text-slate-100"} (str "×" n)])])])
+
+(defn- deck-stepper
+  "One special in the host's deck: what it is, what it does, and how many.
+
+   The description is small text under the name rather than behind a tap. The
+   host choosing between the Beschützer and the Hexe is exactly the person who
+   needs to read both, and a tooltip does not exist on a phone."
+  [{:keys [role n can-add? can-remove?]} limit]
+  [:div {:class "flex items-center gap-2 py-1.5" :data-testid (str "deck-row-" (name role))}
+   [:span {:class "text-xl w-7 shrink-0 text-center" :aria-hidden true} (i18n/icon-of role)]
+   [:div {:class "min-w-0 flex-1"}
+    [:div {:class (str "font-semibold " (if (pos? n) "text-slate-100" "text-slate-400"))}
+     (role-name role)]
+    [:div {:class "text-xs text-slate-400 leading-snug"} (role-desc role)]]
+   [:div {:class "flex items-center shrink-0"}
+    [:button {:class "h-9 w-9 rounded-l-lg bg-slate-700 hover:bg-slate-600 text-lg font-bold
+                      disabled:opacity-30 disabled:cursor-not-allowed"
+              :disabled (not can-remove?)
+              :aria-label (t :deck/less (role-name role))
+              :data-testid (str "deck-minus-" (name role))
+              :on-click #(rf/dispatch [::ev/deck-step role -1 limit])}
+     "−"]
+    [:span {:class "h-9 w-8 flex items-center justify-center bg-slate-800 tabular-nums font-bold"
+            :data-testid (str "deck-count-" (name role))}
+     n]
+    [:button {:class "h-9 w-9 rounded-r-lg bg-slate-700 hover:bg-slate-600 text-lg font-bold
+                      disabled:opacity-30 disabled:cursor-not-allowed"
+              :disabled (not can-add?)
+              :aria-label (t :deck/more (role-name role))
+              :data-testid (str "deck-plus-" (name role))
+              :on-click #(rf/dispatch [::ev/deck-step role 1 limit])}
+     "+"]]])
+
+(defn- deck-problem-line [{:keys [problem specials table]}]
+  (when problem
+    [:p {:class "text-sm font-semibold text-amber-300" :data-testid "deck-problem"}
+     (str "⚠ " (i18n/deck-problem-text (lc) problem specials table))]))
+
+(defn- roles-panel
+  "Which roles are in the game. Everyone reads it — at a real table the deck is
+   said out loud before anybody looks at a card — and the host gets the switch
+   and the steppers, because only the host is offered `:gm/set-deck`.
+
+   Every tap sends the whole deck and the server answers with the next view.
+   The one thing shown ahead of that answer is the count under the host's
+   thumb — see `events/deck-step-fx` for why. A deck the table cannot play is still a deck the
+   host may hold on the way to one it can, so the steppers never refuse for
+   THAT reason — the server's `:deck-problem` says what is missing instead."
+  []
+  (let [actions @(rf/subscribe [::sub/actions])
+        view    @(rf/subscribe [::sub/view])
+        {:keys [custom? rows dealt fill centre villager] :as panel}
+        @(rf/subscribe [::sub/deck-panel])
+        edit?   (contains? actions :gm/set-deck)
+        seg     (fn [label on? testid on-click]
+                  [:button {:class (str "px-3 py-1.5 text-xs font-semibold transition "
+                                        (if on?
+                                          "bg-violet-600 text-white "
+                                          "bg-slate-800 text-slate-300 hover:bg-slate-700 "))
+                            :aria-pressed on?
+                            :data-testid testid
+                            :on-click (when-not on? on-click)}
+                   label])]
+    [:div {:class "rounded-xl border border-violet-800/60 bg-violet-950/20 p-3 space-y-3 text-sm"
+           :data-testid "deck-panel"}
+     [:div {:class "flex flex-wrap items-center justify-between gap-2"}
+      [:span {:class "font-semibold text-violet-200"} (str "🃏 " (t :deck/title))]
+      (if edit?
+        [:div {:class "flex rounded-lg overflow-hidden border border-slate-600"}
+         [seg (t :deck/auto) (not custom?) "deck-auto"
+          #(rf/dispatch [::ev/deck-auto])]
+         [seg (t :deck/custom) custom? "deck-custom"
+          #(rf/dispatch [::ev/act-with :gm/set-deck
+                         {:deck (sub/deck-from-preview (:deck-preview view))}])]]
+        [:span {:class "text-xs text-slate-400"} (t (if custom? :deck/custom :deck/auto))])]
+     [:p {:class "text-xs text-slate-400"} (t (if custom? :deck/custom-hint :deck/auto-hint))]
+     (if (and edit? custom?)
+       [:div
+        [:div {:class "divide-y divide-slate-800"}
+         (for [row rows]
+           ^{:key (str (:role row))}
+           [deck-stepper row (:max row)])]
+        ;; The filler is a consequence, not a choice — so it has no steppers,
+        ;; and says what it does instead.
+        [:div {:class "flex items-center gap-2 pt-2 border-t border-slate-800"
+               :data-testid "deck-fill"}
+         [:span {:class "text-xl w-7 shrink-0 text-center" :aria-hidden true}
+          (i18n/icon-of villager)]
+         [:span {:class "flex-1 min-w-0 text-slate-300"}
+          (str (role-name villager) " ×" fill " · " (t :deck/fill))]]]
+       [deck-chips dealt "deck-dealt"])
+     (when (seq centre)
+       [:div {:class "space-y-1"}
+        [:div {:class "text-xs uppercase tracking-wide text-slate-400"} (t :deck/centre)]
+        [deck-chips centre "deck-centre"]])
+     [deck-problem-line panel]]))
+
+(defn- deck-strip
+  "The composition during the game, in one line. What was SHUFFLED, not what
+   anybody holds now — the server builds it from the deck for exactly that
+   reason, so neither the Dieb's swap nor the Spielleiter's setup changes show."
+  []
+  (let [{:keys [dealt centre]} @(rf/subscribe [::sub/deck-panel])]
+    (when (seq dealt)
+      [:div {:class "text-xs text-slate-400 leading-relaxed" :data-testid "deck-strip"}
+       [:span {:class "uppercase tracking-wide"} (str "🃏 " (t :deck/in-game) ": ")]
+       [:span {:class "text-slate-300"} (i18n/deck-summary (lc) (into {} dealt))]
+       (when (seq centre)
+         [:span (str " · " (t :deck/centre) ": "
+                     (i18n/deck-summary (lc) (into {} centre)))])])))
+
 (defn lobby []
   (let [view @(rf/subscribe [::sub/view])
         me @(rf/subscribe [::sub/me])
         actions @(rf/subscribe [::sub/actions])
         host? @(rf/subscribe [::sub/host?])
+        deck @(rf/subscribe [::sub/deck-panel])
         ;; The people who will be dealt a card. The Spielleiter is in the room
         ;; but not at the table, and the server counts the same way when it
         ;; decides whether the game may start.
@@ -1217,11 +1343,22 @@
       (t :lobby/count table (:max-players view 18) (:min-players view 5))]
      [table-settings]
      [host-absent-banner]
+     [roles-panel]
      [player-grid]
      [:div {:class "space-y-2"}
       [:div {:class "flex flex-wrap items-center gap-3"}
-       (if (contains? actions :start-game)
+       (cond
+         (contains? actions :start-game)
          [btn (t :lobby/start) #(rf/dispatch [::ev/act :start-game])]
+
+         ;; The deck, not the head count, is what stops this table. Saying
+         ;; "waiting for more players" here would send the host to wait for
+         ;; people when what he has to do is take a role out.
+         (and host? (:deck-problem view))
+         [:span {:class "text-sm text-amber-300"}
+          (i18n/deck-problem-text (lc) (:deck-problem view) (:specials deck) table)]
+
+         :else
          [:span {:class "text-sm text-slate-500"}
           (if host? (t :lobby/need-more) (t :game/waiting))])
        [leave-button]]
@@ -1323,6 +1460,9 @@
      ;; action asks for next, and it used to wait below the Spielleiter's
      ;; panels and the Chronik, a long scroll away from the button that asked.
      [:div {:class "order-6 empty:hidden"} [player-grid]]
+     ;; Under the board: the table reads it when it is reasoning about who
+     ;; could be what, which is when it is looking at the board anyway.
+     [:div {:class "order-6 empty:hidden"} [deck-strip]]
      [:div {:class "order-7 empty:hidden"} [narrator-panel]]
      [:div {:class "order-7 empty:hidden"} [gm-panel]]]
     [:div {:class "contents lg:block lg:col-span-2 lg:space-y-4"}

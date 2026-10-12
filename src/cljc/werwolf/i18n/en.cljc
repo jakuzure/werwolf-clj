@@ -73,6 +73,23 @@
    :lobby/make-narrator      "Make narrator"
    :lobby/make-host          "Hand over the game master role"
 
+   ;; The roles. Only the special cards are chosen — villagers fill whatever
+   ;; is left, so they are not a decision anybody makes.
+   :deck/title          "Roles"
+   :deck/auto           "Automatic"
+   :deck/custom         "Custom"
+   :deck/auto-hint      "The roles follow the number of players."
+   :deck/custom-hint    "The game master has chosen the roles."
+   :deck/fill           "fill the remaining seats"
+   :deck/centre         "Middle (for the Dieb)"
+   :deck/in-game        "In play"
+   :deck/more           (fn [r] (str "Add " r))
+   :deck/less           (fn [r] (str "Remove " r))
+   :deck/only-villagers "villagers only"
+   :deck/problem-too-many-roles (fn [roles n] (str "Too many roles (" roles ") for " n " players"))
+   :deck/problem-no-werewolf    "At least one Werwolf has to play"
+   :deck/problem-no-villager    "At least one card has to belong to the village"
+
    ;; ------------------------------------------------------------ phases ---
    :phase/lobby       "Lobby"
    :phase/setup       "Dealing roles"
@@ -141,6 +158,8 @@
    :action/gm-toggle-narrated "Narrator mode (GM)"
    :action/gm-toggle-timer "Time limit on/off (GM)"
    :action/gm-transfer-host "Hand over the game master role (GM)"
+   :action/gm-set-deck     "Choose roles (GM)"
+   :action/gm-auto-deck    "Automatic roles (GM)"
    :action/gm-force-kill   "Kill (GM)"
    :action/gm-revive       "Revive (GM)"
    :action/gm-skip-role    "Skip role (GM)"
@@ -310,6 +329,8 @@
    :log/timer-on-absent "The clock takes over — without a game master every phase ends on its time limit"
    :log/room-locked   "The room is now password protected"
    :log/room-unlocked "The room no longer needs a password"
+   :log/deck-set      (fn [d] (str "The game master chooses the roles: " d))
+   :log/deck-auto     "The roles follow the number of players again"
    :log/amor-linked   "Amor has chosen two lovers"
    :log/night-began   "Night falls"
    :log/night-quiet-first "The first night passes quietly — nobody dies"
@@ -413,6 +434,11 @@
    :error/invalid-choice   "That choice is not allowed"
    :error/no-such-player   "There is no such player"
    :error/unknown-role     "There is no such role"
+   :error/invalid-deck     "That is not a choice of roles"
+   :error/invalid-count    "That is not a number of cards"
+   :error/too-many-of-role "There are not that many cards of this role"
+   :error/deck-too-large   "No table holds that many cards"
+   :error/deck-unplayable  "The game cannot start with these roles"
    :error/distinct-targets-required "Please choose two different players"
    :error/unsupported-locale "No such language"
    :error/unknown-command  "Unknown command"

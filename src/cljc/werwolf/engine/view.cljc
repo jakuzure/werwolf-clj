@@ -133,6 +133,37 @@
 
 ;; -------------------------------------------------------- public pieces ---
 
+(defn- deck-view
+  "What the table knows about the deck. Public, all of it, in every phase.
+
+   At a real table the composition is said out loud before anybody looks at a
+   card — „zwei Werwölfe, Seherin, Hexe, der Rest Dorfbewohner“ — and the
+   whole game is reasoned from it. Hiding it would make the digital table know
+   less than the cardboard one. It is also safe by construction: role COUNTS
+   keyed by role, and not one player id in it.
+
+   `:deck-preview` is computed from the DECK, never from the deal. That is the
+   load-bearing choice, and it is why the composition can stay up during the
+   game: it says what was shuffled, not who holds what now. Built from the deal
+   instead, it would publish everything that has moved since — the Spielleiter
+   rewriting a card in setup would show up as a Hexe appearing, and the Dieb's
+   swap as a wolf leaving the middle, which is his secret and nobody else's.
+   The two cards in the middle are listed as such: that a Dieb chooses between
+   a wolf and a villager is the rule, not a secret (see `roles/centre-extras`).
+
+   The menu and the problem are the lobby's alone — nothing is chosen after it.
+   `:deck-roles` is every special in the order the menu shows it, with the
+   registry's limit, so the steppers can stop where the server would and the
+   client keeps no copy of the rule."
+  [state]
+  (let [n     (count (e/participant-ids state))
+        lobby? (= :lobby (:phase state))]
+    (cond-> {:deck         (:deck state)
+             :deck-preview (roles/composition n (:deck state))}
+      lobby? (assoc :deck-problem (phases/deck-problem state)
+                    :deck-roles (mapv (fn [id] {:role id :max (roles/max-count id)})
+                                      roles/special-ids)))))
+
 (defn- public-player
   "The part of a player that everyone may see. No role, ever."
   [p]
@@ -188,7 +219,10 @@
         reaction (peek (:reactions state))
         narrator (e/narrator state)
         narrator? (and (some? pid) (= pid narrator))]
-    {;; ---- public ----
+    (merge
+     ;; ---- the deck: public, see `deck-view` ----
+     (deck-view state)
+     {;; ---- public ----
      :room-id     (:room-id state)
      :phase       (:phase state)
      :night       (:night state)
@@ -283,7 +317,7 @@
      ;; player's own knowledge would ever hand him.
      :narrator-info (when narrator?
                       {:lovers (vec (sort (:lovers state)))
-                       :centre (vec (:centre state []))})}))
+                       :centre (vec (:centre state []))})})))
 
 ;; ------------------------------------------------------- leak detector ---
 

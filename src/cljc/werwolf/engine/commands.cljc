@@ -34,12 +34,16 @@
 
    Only the players' cards are shuffled. The centre is fixed by composition rather
    than being whatever fell out of the shuffle — see `roles/centre-extras` for why
-   a random middle produces tables nobody asked for."
+   a random middle produces tables nobody asked for.
+
+   The deck is the Spielleiter's when he chose one, filled up with villagers to
+   the table; otherwise the automatic one. Both reach the shuffle the same way,
+   so a custom game is exactly as reproducible from its seed as any other."
   [state]
   ;; Participants only: the Spielleiter is dealt nothing, and the deck is
   ;; composed for the table that actually plays.
   (let [ids  (e/participant-ids state)
-        {:keys [deck centre]} (roles/compose-deck (count ids))
+        {:keys [deck centre]} (roles/compose-deck (count ids) (:deck state))
         [seed' shuffled] (rng/shuffle (:seed state) deck)]
     {:assignments (zipmap ids shuffled)
      :centre      centre
@@ -97,8 +101,17 @@
 
 (defmethod handle :start-game
   [state {:keys [player]}]
-  (if-not (allowed? state player :start-game)
+  (cond
+    ;; Named before the generic refusal, so a host whose click raced a player
+    ;; leaving is told what is wrong with his deck rather than "not allowed".
+    (and (= player (:host state)) (= :lobby (:phase state))
+         (phases/deck-problem state))
+    (err :deck-unplayable {:problem (phases/deck-problem state)})
+
+    (not (allowed? state player :start-game))
     (err :not-allowed {:action :start-game})
+
+    :else
     (let [{:keys [assignments centre seed]} (deal state)]
       [{:type :game/started :assignments assignments :centre centre :seed seed}
        ;; With a Spielleiter the cards are dealt face down to the table and
@@ -425,6 +438,41 @@
   (if-not (allowed? state player :gm/toggle-timer)
     (err :not-allowed {:action :gm/toggle-timer})
     [{:type :clock/timer-set :on? (not (phases/timed? state))}]))
+
+(defmethod handle :gm/set-deck
+  ;; The Spielleiter chooses the roles: special role -> count, the whole deck
+  ;; every time. Lobby only, like every other switch about how the table plays.
+  ;;
+  ;; Validated against the registry and nothing else. Whether the deck FITS is
+  ;; deliberately not a reason to refuse it: the host builds a deck one stepper
+  ;; at a time, and every intermediate state — no wolf yet, one role too many
+  ;; for the five people seated so far — is a deck on its way somewhere. Refusing
+  ;; those would make him add roles in exactly the order the rule wants. The fit
+  ;; is checked where it matters, at the start, and published in the meantime.
+  ;;
+  ;; `:max-count` IS enforced here, unlike in `:gm/reassign-role`. That command
+  ;; corrects a game in progress, and refusing the correction would block the
+  ;; one thing the GM reached for; this one composes a deck, which is precisely
+  ;; what the registry's limits describe.
+  [state {:keys [player deck]}]
+  (cond
+    (not (allowed? state player :gm/set-deck)) (err :not-allowed {:action :gm/set-deck})
+    (not (map? deck))                          (err :invalid-deck {})
+    :else
+    (if-let [[code detail] (roles/deck-errors deck (:max-players state 18))]
+      (err code detail)
+      (let [deck (roles/normalise-deck deck)]
+        ;; Re-sending the deck the room already has is a no-op, not a second
+        ;; line in the Chronik: a double tap should not read as two decisions.
+        (if (= deck (:deck state))
+          []
+          [{:type :deck/set :deck deck}])))))
+
+(defmethod handle :gm/auto-deck
+  [state {:keys [player]}]
+  (if-not (allowed? state player :gm/auto-deck)
+    (err :not-allowed {:action :gm/auto-deck})
+    [{:type :deck/auto}]))
 
 (defmethod handle :gm/transfer-host
   ;; Hand the host's seat — and in a narrated room, the Spielleitung with it —
