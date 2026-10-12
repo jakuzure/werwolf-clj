@@ -239,14 +239,29 @@
    (when-let [d (:deadline v)]
      (max 0 (js/Math.ceil (/ (- d now) 1000))))))
 
+(def ^:private not-a-move
+  "Offered, but never what the game is waiting for. Chat, language and the way
+   out are always there. :claim-host is offered to everybody while the host is
+   away, and nobody waits on it. :advance-phase is a Spielleitung power despite
+   its plain name — `host-actions` grants it, and its label says \"(SL)\"."
+  #{:chat :leave :set-locale :advance-phase :claim-host})
+
+(defn player-moves
+  "The actions that are this player's own moves in the game, sorted: what the
+   action bar shows and what makes it 'your turn'.
+
+   One definition for both, because they disagreed. The turn banner left the
+   Spielleitung powers (`:gm/*`, :advance-phase) in, so a host who plays along
+   was told \"Du bist dran\" all night — directly above an action bar that,
+   leaving them out, said there was nothing to do. Those powers are always on
+   offer and have a console of their own; nobody is ever waiting on them."
+  [actions]
+  (sort (remove #(or (= "gm" (namespace %)) (not-a-move %)) actions)))
+
 (rf/reg-sub
  ::can-act?
  :<- [::actions]
- (fn [actions _]
-   ;; :chat is not "acting" — offering it as an action would make the UI claim
-   ;; the game is waiting for you when it is not. Nor is taking an absent
-   ;; host's seat: it is offered to everybody, and nobody is waiting on it.
-   (boolean (seq (remove #{:chat :leave :set-locale :claim-host} actions)))))
+ (fn [actions _] (boolean (seq (player-moves actions)))))
 
 (defn host-absence
   "What to tell the table about a host who has gone missing, or nil while he is

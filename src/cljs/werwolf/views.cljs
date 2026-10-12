@@ -600,14 +600,9 @@
         targets @(rf/subscribe [::sub/targets])
         armed (:action (pending))
         needs-target? (fn [a] (seq (get targets a)))
-        ;; GM powers are not player actions and have their own console below.
-        ;; :advance-phase is one of them despite its plain name — `host-actions`
-        ;; grants it, and its label has said "(SL)" all along.
-        ;; :claim-host has a banner of its own, saying whose seat it is.
-        plain (sort (remove #(or (= "gm" (namespace %))
-                                 (#{:chat :leave :set-locale :advance-phase
-                                    :claim-host} %))
-                            actions))
+        ;; GM powers have their own console below and :claim-host a banner of
+        ;; its own; see `sub/player-moves`, which the turn banner reads too.
+        plain (sub/player-moves actions)
         narrator? @(rf/subscribe [::sub/narrator?])]
     (cond
       ;; The Spielleiter's work is in his console; "nothing to do" under it
