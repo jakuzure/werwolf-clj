@@ -198,16 +198,26 @@ async function closeAll(pages) {
 /**
  * Is a LiveKit reachable? The voice tests skip rather than fail without one, so
  * `bb test:browser` stays useful when only the game is being worked on.
+ *
+ * Unless WERWOLF_REQUIRE_LIVEKIT is set, which CI does: there a LiveKit was
+ * started on purpose, and one that is down is a broken job, not a reason to skip.
+ * Without it a dead service would turn every voice test into a quiet skip and the
+ * run would still go green.
  */
 async function liveKitUp(request, url = 'http://localhost:7880') {
+  let up = false;
   try {
     // 401 is a healthy LiveKit refusing an unauthenticated request; anything that
     // answers at all is up.
     const res = await request.get(`${url}/rtc/validate`, { timeout: 2000 });
-    return res.status() === 401 || res.status() === 200;
+    up = res.status() === 401 || res.status() === 200;
   } catch (_) {
-    return false;
+    up = false;
   }
+  if (!up && process.env.WERWOLF_REQUIRE_LIVEKIT) {
+    throw new Error(`WERWOLF_REQUIRE_LIVEKIT is set, but no LiveKit answers at ${url}`);
+  }
+  return up;
 }
 
 module.exports = {

@@ -1,6 +1,8 @@
 # Builds the nix package (which is also the deploy artifact for lain) and runs
-# the JVM and ClojureScript suites. The browser suite stays local: it needs a
-# real browser and is an order of magnitude slower.
+# the JVM and ClojureScript suites, plus the browser suite against a real LiveKit.
+# The browser suite is its own job: it needs a browser download and an SFU and is
+# an order of magnitude slower, and running beside `build` rather than inside it
+# keeps the nix build, which is what lain deploys, as fast as it ever was.
 name: ci
 
 on:
@@ -83,3 +85,90 @@ jobs:
 
       - name: ClojureScript suite
         run: nix shell nixpkgs#babashka nixpkgs#clojure nixpkgs#jdk21_headless nixpkgs#nodejs_22 -c bb test:cljs
+
+  browser:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 20
+    # A service container rather than `docker run` in a step, so the image is
+    # somewhere Renovate reads (its github-actions manager understands
+    # `services:`) and moves with the compose files and livekit-client in the
+    # "livekit" group. Pinned to deploy/docker-compose.yml's version: that is
+    # what production runs, so that is what voice is tested against.
+    services:
+      livekit:
+        image: livekit/livekit-server:v1.13.9
+        env:
+          # Services take no command line, so deploy/livekit.dev.yml's flags are
+          # spelt as the config they stand for, in the variable livekit-server
+          # reads it from:
+          # - `development: true` is `--dev`, and with it LiveKit accepts the
+          #   placeholder `devkey: secret` the browser suite mints tokens with,
+          #   rather than complaining that the secret is too short;
+          # - bind_addresses 0.0.0.0 because inside a container loopback is not
+          #   where the published ports arrive;
+          # - node_ip 127.0.0.1 for the same reason as in livekit.dev.yml: it is
+          #   what LiveKit puts in its ICE candidates, and the browser runs on
+          #   this host and reaches the container through the ports below.
+          # One line of flow-style YAML (`>-` folds it), so nothing depends on
+          # how the runner carries a multi-line value through `docker create`.
+          LIVEKIT_CONFIG: >-
+            {development: true,
+            keys: {devkey: secret},
+            port: 7880,
+            bind_addresses: [0.0.0.0],
+            rtc: {tcp_port: 7881, port_range_start: 7882, port_range_end: 7892, node_ip: 127.0.0.1}}
+        ports:
+          - 7880:7880
+          - 7881:7881
+          - 7882-7892:7882-7892/udp
+    env:
+      # A LiveKit was started for this job, so the voice tests FAIL when it is
+      # unreachable instead of skipping, which would let a broken service pass
+      # as a green run with no voice coverage at all. See liveKitUp in
+      # test/browser/helpers.js.
+      WERWOLF_REQUIRE_LIVEKIT: "1"
+    defaults:
+      run:
+        # The same tools the test job takes from nixpkgs, for every step. The
+        # browser itself is Playwright's own download, run against the runner's
+        # libraries, which is why it is not in this list.
+        shell: nix shell nixpkgs#babashka nixpkgs#clojure nixpkgs#jdk21_headless nixpkgs#nodejs_22 -c bash -eo pipefail {0}
+    steps:
+      # First, and in plain bash rather than the nix shell, so a broken service
+      # fails the job in seconds with one clear line instead of minutes later as
+      # a wall of red voice tests. 401 is LiveKit up and refusing an
+      # unauthenticated request.
+      - name: LiveKit is up
+        shell: bash
+        run: |
+          code=$(curl -s -o /dev/null -w '%{http_code}' --retry 15 --retry-connrefused --retry-delay 2 \
+                   http://localhost:7880/rtc/validate || true)
+          echo "LiveKit answered $code"
+          test "$code" = 401
+
+      # The default shallow clone is enough for version.spec.js: it compares the
+      # page against `git rev-parse HEAD`, which the build also read, and HEAD is
+      # the one commit a depth-1 checkout is guaranteed to have.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: DeterminateSystems/nix-installer-action@3138316df39ed29be04236d7ffc686fa525866aa # v23
+      - uses: DeterminateSystems/magic-nix-cache-action@84c0677f58dcedf3b91f8223ce36a9ea5b3c84b7 # v15
+        with:
+          # Not signed up for FlakeHub: without this every run logs a red
+          # "Unable to authenticate to FlakeHub" error. The GitHub cache still works.
+          use-flakehub: false
+
+      # `npm ci` rather than letting bb's npm-install task run `npm install`: the
+      # lockfile is what gets tested, never a fresh resolution of it. Afterwards
+      # node_modules is newer than package.json, so that task finds nothing to do.
+      - name: Install node dependencies
+        run: npm ci
+
+      # Chromium only; it is the one project in playwright.config.js. --with-deps
+      # apt-installs the system libraries it needs, which nix does not provide.
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      # Builds the release bundle and CSS first (the suite deliberately tests
+      # the :advanced build) and lets Playwright start the server itself.
+      - name: Browser suite
+        run: bb test:browser
