@@ -5,6 +5,12 @@
     "helpers:pinGitHubActionDigests",
     ":semanticCommits"
   ],
+  "description": [
+    "constraints.npm: Renovate regenerates package-lock.json with `npm install --package-lock-only`, which npm 12 breaks with EALLOWREMOTE for any package that bundles its own dependencies, here @tailwindcss/oxide-wasm32-wasi (npm/cli#9800, unfixed). npm 11 does the same job correctly. Drop the constraint once that issue is fixed."
+  ],
+  "constraints": {
+    "npm": "^11"
+  },
   "timezone": "Europe/Berlin",
   "nix": {
     "enabled": true
