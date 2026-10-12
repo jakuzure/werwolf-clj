@@ -10,6 +10,7 @@
    than it was told, which is what makes the redaction boundary real rather than
    a convention."
   (:require [re-frame.core :as rf]
+            [werwolf.subs :as sub]
             [werwolf.ws :as ws]))
 
 ;; The voice effects are named by LITERAL keyword rather than through an alias,
@@ -65,7 +66,20 @@
    ;; the last room is never carried into the next one.
    :audio       nil})
 
-(rf/reg-event-db ::init (fn [_ _] initial-db))
+(def ^:private chronik-key "werwolf/chronik-open")
+
+(defn- stored-chronik
+  "The player's last word on the Chronik, or nil. Storage can be missing (Node,
+   a private window) or refuse outright; either way the default applies."
+  []
+  (try
+    (case (.getItem js/localStorage chronik-key)
+      "true" true
+      "false" false
+      nil)
+    (catch :default _ nil)))
+
+(rf/reg-event-db ::init (fn [_ _] (assoc initial-db :log/open? (stored-chronik))))
 
 (rf/reg-event-fx
  ::connected
@@ -152,6 +166,23 @@
 (rf/reg-event-db ::dismiss-error (fn [db _] (dismiss-db db)))
 
 (rf/reg-event-db ::toggle-log (fn [db _] (update db :log/show-all? not)))
+
+(rf/reg-fx
+ ::store-chronik
+ (fn [open?]
+   (try (.setItem js/localStorage chronik-key (str open?))
+        (catch :default _ nil))))
+
+(defn toggle-chronik-fx
+  "Fold or unfold the Chronik, from whatever it currently SHOWS — which may be the
+   narrated default rather than anything the player chose — and remember it, so a
+   player who wants it open has it open in the next game too."
+  [{:keys [db]} _]
+  (let [open? (not (sub/chronik-open? (:log/open? db) (:narrated? (:view db))))]
+    {:db (assoc db :log/open? open?)
+     ::store-chronik open?}))
+
+(rf/reg-event-fx ::toggle-chronik toggle-chronik-fx)
 
 ;; ------------------------------------------------------------------ outbound ---
 
@@ -316,16 +347,38 @@
        {:db (assoc-in db [:audio :state] :joining)
         :werwolf.audio/connect {:url url :token token}}))))
 
+(defn- voice-report
+  "Tell the table this page is, or is no longer, in the call — but only while
+   seated. Hanging up is also part of LEAVING a room, and by then the socket has
+   no seat to report for: the server would answer :not-in-room, and that error
+   would greet the player on the landing screen."
+  [db joined?]
+  (when (:me db) {:type :client/voice :joined? joined?}))
+
 (rf/reg-event-fx
  ::leave-audio
  (fn [{:keys [db]} _]
-   {:db (-> db (assoc-in [:audio :state] :idle)
-            (assoc-in [:audio :speakers] #{}))
-    :werwolf.audio/disconnect true}))
+   (cond-> {:db (-> db (assoc-in [:audio :state] :idle)
+                    (assoc-in [:audio :speakers] #{}))
+            :werwolf.audio/disconnect true}
+     (voice-report db false) (assoc ::ws/send (voice-report db false)))))
 
-(rf/reg-event-db ::audio-joined (fn [db _] (assoc-in db [:audio :state] :joined)))
-(rf/reg-event-db ::audio-left   (fn [db _] (-> db (assoc-in [:audio :state] :idle)
-                                               (assoc-in [:audio :speakers] #{}))))
+(defn audio-joined-fx [{:keys [db]} _]
+  (cond-> {:db (assoc-in db [:audio :state] :joined)}
+    (voice-report db true) (assoc ::ws/send (voice-report db true))))
+
+(defn audio-left-fx
+  "The SDK says the call is over — a network drop, or the far end closing it.
+   Reported only if this page thought it was in the call, so a hang-up the page
+   asked for (and has already reported) is not said twice."
+  [{:keys [db]} _]
+  (cond-> {:db (-> db (assoc-in [:audio :state] :idle)
+                   (assoc-in [:audio :speakers] #{}))}
+    (and (= :joined (get-in db [:audio :state])) (voice-report db false))
+    (assoc ::ws/send (voice-report db false))))
+
+(rf/reg-event-fx ::audio-joined audio-joined-fx)
+(rf/reg-event-fx ::audio-left audio-left-fx)
 
 (rf/reg-event-db
  ::audio-failed
@@ -406,11 +459,19 @@
    `werwolf.audio`: a token is inert data, a Room with a microphone attached is
    not."
   [db {:keys [enabled? url token room]}]
-  (assoc db :audio {:available? (boolean enabled?)
-                    :url url :token token :room room
-                    :state :idle
-                    :muted? false
-                    :speakers #{}}))
+  (let [live (select-keys (:audio db) [:state :muted? :speakers])]
+    (assoc db :audio (merge {:available? (boolean enabled?)
+                             :url url :token token :room room
+                             :state :idle
+                             :muted? false
+                             :speakers #{}}
+                            ;; A socket that reconnects is welcomed again, and the
+                            ;; welcome asks for credentials again — while the call
+                            ;; itself, a separate connection, may never have
+                            ;; dropped. Resetting to :idle then offered "join" for
+                            ;; a call the player was audibly in, and the tap did
+                            ;; nothing, because the SDK was already connected.
+                            (when (#{:joining :joined} (:state live)) live)))))
 
 (defmethod handle-server :server/media [db msg] (media-fx db msg))
 
@@ -511,6 +572,11 @@
     ;; stays behind an explicit tap.
     (= :server/welcome (:type msg))
     (assoc :dispatch [::request-media])
+
+    ;; Still in the call across a reconnect: the server's record of it went with
+    ;; the old socket, so say it again on the new one.
+    (and (= :server/welcome (:type msg)) (= :joined (get-in db [:audio :state])))
+    (assoc ::ws/send {:type :client/voice :joined? true})
 
     (fatal-errors (:code msg))
     (assoc ::ws/forget-seat true)

@@ -36,6 +36,7 @@
    ;; ------------------------------------------------------------- lobby ---
    :lobby/title       "Lobby"
    :lobby/players     "Players"
+   :lobby/count       (fn [n mx mn] (str n " / " mx " players · best from " mn))
    :lobby/start       "Start the game"
    :lobby/need-more   "Waiting for more players"
    ;; The host may start below the recommended size. A nudge, not a gate: four
@@ -204,12 +205,43 @@
    :turn/calling (fn [role] (str "The Spielleiter calls: " role))
    :turn/narrating "You are running the game"
 
+   ;; ------------------------------------------------------------ stage ---
+   ;;
+   ;; One sentence per phase saying what is happening, for first-time players.
+   ;; Kept free of "the village" and "werewolves" for the same reason as in
+   ;; German: those words belong to outcomes.
+   :stage/round       (fn [n] (str "Round " n))
+   :stage/called      (fn [role] (str "Called: " role))
+   :stage/call        (fn [role] (str "Call: " role))
+   :stage/latest      "Latest"
+   :stage/progress    "Round progress"
+   :stage/interrupted "interrupted"
+   :explain/setup       "The cards are dealt. Look at your role — the night begins shortly."
+   :explain/night       "Everyone is asleep. Whoever is called wakes up and acts without giving themselves away."
+   :explain/day-reveal  "Dawn breaks. You are about to learn what the night has done."
+   :explain/election    "Elect a mayor. Their vote counts twice in every ballot."
+   :explain/discussion  "Talk it over: who do you not trust? Say when you are done."
+   :explain/nomination  "Everyone may accuse one person — or pass."
+   :explain/vote        "Vote on the accused. On a tie nobody dies."
+   :explain/day-resolve "The verdict falls."
+   :explain/reaction    "Someone who just died has one last move. Everyone waits for them."
+   :step/night       "Night"
+   :step/day-reveal  "Dawn"
+   :step/election    "Election"
+   :step/discussion  "Debate"
+   :step/nomination  "Accuse"
+   :step/vote        "Vote"
+   :step/day-resolve "Verdict"
+
    ;; ------------------------------------------------------------ voice ---
    ;;
    ;; Joining is an explicit tap: browsers refuse a microphone without a user
    ;; gesture, and opening one because somebody loaded a page is the wrong
    ;; default anyway. `:voice/everyone-hears` is deliberately plain about the
    ;; rule — the server enforces no phase muting, so the UI must not imply it.
+   :voice/in-call        "in call"
+   :voice/in-call-list   "In the call"
+   :voice/nobody-in-call "Nobody is in the call yet."
    :voice/title          "Voice"
    :voice/join           "🎧 Join voice"
    :voice/joining        "Connecting…"
@@ -239,6 +271,8 @@
    ;; --------------------------------------------------------------- log ---
    :log/show-all      "Show everything"
    :log/show-less     "Only what matters"
+   :log/open          (fn [n] (str "Show Chronicle (" n ")"))
+   :log/close         "Hide Chronicle"
    :log/hidden        "more entries"
 
    :log/joined        (fn [n] (str n " joined"))

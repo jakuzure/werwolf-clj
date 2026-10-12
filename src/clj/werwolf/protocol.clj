@@ -150,6 +150,13 @@
                           {:type :server/media :enabled? false})))
     (error! deps sock :not-in-room {})))
 
+(defmethod handle :client/voice
+  ;; "I am in the call now", or "not any more". Only for this socket's own seat,
+  ;; which the registry knows; the message names nobody.
+  [{:keys [rooms] :as deps} sock {:keys [joined?]}]
+  (when-let [code (:error (room/set-voice! rooms sock joined?))]
+    (error! deps sock code {})))
+
 ;; ------------------------------------------------------------- entry points ---
 
 (defn on-open

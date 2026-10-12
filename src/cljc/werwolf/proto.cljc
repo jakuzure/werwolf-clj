@@ -65,7 +65,7 @@
 
 (def client-message-types
   #{:client/create :client/join :client/resume :client/command :client/chat
-    :client/ping :client/rooms :client/media})
+    :client/ping :client/rooms :client/media :client/voice})
 
 (def server-message-types
   ;; :server/left — your seat's sockets have been released because the player
@@ -165,7 +165,15 @@
    ;; socket index, the same way :client/chat learns who is speaking.
    [:client/media
     [:map {:closed true}
-     [:type [:= :client/media]]]]])
+     [:type [:= :client/media]]]]
+
+   ;; "This page joined, or left, the voice call." Shown to the table so a
+   ;; newcomer can see who is already talking. Names no seat — the socket index
+   ;; supplies that — so it can only ever describe the sender.
+   [:client/voice
+    [:map {:closed true}
+     [:type [:= :client/voice]]
+     [:joined? :boolean]]]])
 
 (def ^:private client-validator (m/validator ClientMessage))
 (def ^:private client-explainer (m/explainer ClientMessage))

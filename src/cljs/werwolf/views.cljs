@@ -139,6 +139,7 @@
                         :votes   "bg-slate-600 text-slate-100 "
                         :lover   "bg-pink-900 text-pink-200 "
                         :mayor   "bg-amber-700 text-amber-50 "
+                        :voice   "bg-sky-900 text-sky-200 "
                         "bg-slate-700 text-slate-200 "))}
    label])
 
@@ -300,7 +301,6 @@
   (let [phase    @(rf/subscribe [::sub/phase])
         can-act? @(rf/subscribe [::sub/can-act?])
         reaction @(rf/subscribe [::sub/awaiting-reaction])
-        cursor   @(rf/subscribe [::sub/night-cursor])
         waiting  @(rf/subscribe [::sub/waiting-for])
         me       @(rf/subscribe [::sub/me-view])
         narrator? @(rf/subscribe [::sub/narrator?])]
@@ -315,7 +315,6 @@
                (t :turn/narrating)
                (cond
                  (= :setup phase) (t :setup/hint)
-                 (and (= :night phase) cursor) (t :turn/calling (role-name cursor))
                  (seq waiting) (str (t :badge/waiting-for) ": " (str/join ", " waiting)))]
 
               reaction
@@ -330,10 +329,9 @@
               ["border-slate-700 bg-slate-900/60 text-slate-400"
                (t :game/waiting)
                (cond
-                 ;; At night the role being called is the honest answer, and the
-                 ;; only one available: naming the players still to act would leak
+                 ;; Not the role being called at night: the stage shows that as a
+                 ;; chip directly above. Naming the players still to act would leak
                  ;; which roles are alive, which is why ::waiting-for skips night.
-                 (and (= :night phase) cursor) (t :turn/calling (role-name cursor))
                  (= :setup phase) (t :setup/waiting)
                  (seq waiting) (str (t :badge/waiting-for) ": " (str/join ", " waiting))
                  ;; A dead player is not being waited on and never will be, so do
@@ -362,7 +360,9 @@
           ;; honesty applies here. Outside a secure context there is no
           ;; microphone to open, so say that instead of showing a button whose
           ;; only outcome is an error.
-          secure? (and (exists? js/isSecureContext) js/isSecureContext)]
+          secure? (and (exists? js/isSecureContext) js/isSecureContext)
+          players @(rf/subscribe [::sub/players])
+          in-call (sort (keep #(get-in players [% :name]) @(rf/subscribe [::sub/in-voice])))]
       [:div {:class "rounded-xl border border-slate-700 bg-slate-900/80 px-4 py-3
                      flex flex-wrap items-center gap-3"}
        [:span {:class "text-sm font-bold uppercase tracking-wide text-slate-400"}
@@ -380,7 +380,14 @@
                    [btn (t :voice/leave) #(rf/dispatch [::ev/leave-audio]) {:tone :quiet}]]
          nil)
        (when (= :joined state)
-         [:span {:class "text-xs text-slate-500"} (t :voice/everyone-hears)])])))
+         [:span {:class "text-xs text-slate-500"} (t :voice/everyone-hears)])
+       ;; Who is already there, so joining is an answer to "are the others in
+       ;; the call?" rather than a leap.
+       [:div {:class "basis-full text-sm" :data-testid "in-call"}
+        (if (seq in-call)
+          [:<> [:span {:class "text-slate-400"} (str (t :voice/in-call-list) ": ")]
+           [:span {:class "text-sky-200"} (str/join ", " in-call)]]
+          [:span {:class "text-slate-500"} (t :voice/nobody-in-call)])]])))
 
 ;; ------------------------------------------------------------- player cards ---
 
@@ -458,6 +465,7 @@
         ;; muted by the server — so who is talking reveals nothing. It would NOT
         ;; be safe under the plan's permission table, where the wolves' absence
         ;; from the main room identifies them. See werwolf.media.
+        in-voice @(rf/subscribe [::sub/in-voice])
         talking? (sub/speaking? @(rf/subscribe [::sub/speaking]) id)]
     [:div {:class (str "rounded-xl border-2 p-3 transition select-none "
                        (cond
@@ -495,6 +503,7 @@
         (when (= id (:mayor view)) [pill (t :badge/mayor) :mayor])
         (when-not alive? [pill (t :game/dead) :dead])
         (when (false? connected?) [pill (t :game/absent) :absent])
+        (when (contains? in-voice id) [pill (str "🎧 " (t :voice/in-call)) :voice])
         (when role [pill (str (i18n/icon-of role) " " (role-name role)) :role])
         ;; His own lover, or — for the Spielleiter, whose notes name both — either.
         (when (or (= id (:lover me)) (some #{id} (:lovers narrator-info)))
@@ -502,9 +511,14 @@
         (when (contains? (set (:nominations view)) id) [pill (t :badge/accused) :accused])
         (when (pos? n-votes)
           [pill (str n-votes " " (t (if (= 1 n-votes) :badge/vote :badge/votes))) :votes])
-        (when (contains? (set (:ready view)) id) [pill (t :badge/ready) :ready])
-        (when (contains? (set (:nomination-done view)) id) [pill (t :badge/decided) :ready])
-        (when (contains? (set (keys (:votes view))) id) [pill (t :badge/decided) :ready])]
+        ;; Each "done" mark only in the phase it answers. The sets outlive their
+        ;; phase in the view, so a card at the end of a day read "Fertig · Hat
+        ;; gewählt · Hat gewählt" — three stale ticks saying nothing about now.
+        (case (:phase view)
+          :discussion (when (contains? (set (:ready view)) id) [pill (t :badge/ready) :ready])
+          :nomination (when (contains? (set (:nomination-done view)) id) [pill (t :badge/decided) :ready])
+          :vote       (when (contains? (set (keys (:votes view))) id) [pill (t :badge/decided) :ready])
+          nil)]
        [card-controls id]]]]))
 
 (defn- player-grid
@@ -545,6 +559,10 @@
       ;; The Spielleiter's work is in his console; "nothing to do" under it
       ;; would be false.
       (and (empty? plain) narrator?) nil
+
+      ;; At the end there is nothing left to do for anyone, and the stage says
+      ;; so with the winner; repeating it as a grey shrug is noise.
+      (and (empty? plain) (= :game-over @(rf/subscribe [::sub/phase]))) nil
 
       (empty? plain)
       [:div {:class "text-sm text-slate-500"} (t :game/nothing-to-do)]
@@ -825,59 +843,173 @@
   (let [log @(rf/subscribe [::sub/log])
         players @(rf/subscribe [::sub/players])
         show-all? @(rf/subscribe [::sub/show-all-log?])
+        open? @(rf/subscribe [::sub/chronik-open?])
         rows (i18n/chronicle (lc) players log {:show-all? show-all?})
         hidden (count (remove #(i18n/loud? (i18n/log-tone %)) log))]
     [:div {:class "rounded-xl border border-slate-700 bg-slate-900/80 overflow-hidden"}
      [:div {:class "px-4 py-2 bg-slate-800 flex items-center justify-between gap-2"}
-      [:span {:class "text-sm font-bold uppercase tracking-wide"} (t :game/log)]
-      (when (or show-all? (pos? hidden))
+      ;; The fold. Its label always contains the word Chronik, open or shut, so
+      ;; nobody has to guess what the bar is.
+      [:button {:class "text-sm font-bold uppercase tracking-wide text-left hover:text-white"
+                :aria-expanded open?
+                :on-click #(rf/dispatch [::ev/toggle-chronik])}
+       (str (if open? "▾ " "▸ ")
+            (if open? (t :game/log) (t :log/open (count rows))))]
+      (when (and open? (or show-all? (pos? hidden)))
         [:button {:class "text-xs text-slate-400 hover:text-slate-100 underline"
                   :on-click #(rf/dispatch [::ev/toggle-log])}
          (if show-all?
            (t :log/show-less)
            (str "+" hidden " " (t :log/hidden)))])]
-     [:div {:class "max-h-[28rem] overflow-y-auto divide-y divide-slate-800"}
+     (when open?
+      [:div {:class "max-h-[28rem] overflow-y-auto divide-y divide-slate-800"}
       (for [[i {:keys [text tone]}] (map-indexed vector rows)]
         ^{:key i}
         [:div {:class (str "px-4 py-2 text-sm flex gap-2 "
                            (when (zero? i) "bg-slate-800/60 ")
                            (log-classes tone))}
          [:span {:class "shrink-0 opacity-60"} (log-icon tone)]
-         [:span text]])]]))
+         [:span text]])])]))
 
-(defn phase-header []
+(defn- winner-line
+  "Who won, in a sentence. Shared by the stage and nothing else on purpose — the
+   game-over panel used to carry its own copy, which forgot the Weißer Werwolf
+   and congratulated the village on his solo win."
+  [winner]
+  (t (case winner
+       :werewolf        :log/win-werewolf
+       :lovers          :log/win-lovers
+       :weisser-werwolf :log/win-weisser
+       :log/win-village)))
+
+(def ^:private phase-icon
+  {:setup "🃏" :night "🌙" :day-reveal "🌅" :election "🎖" :discussion "💬"
+   :nomination "👉" :vote "🗳" :day-resolve "⚖" :reaction "⚡" :game-over "🏆"})
+
+(defn- stage-classes
+  "The stage takes the room's light, a shade stronger. Literal class strings,
+   because Tailwind only generates what it can find spelled out in a .cljs file."
+  [phase ambience]
+  (cond
+    (= :reaction phase)   "border-rose-700/70 bg-rose-950/40"
+    (= :night ambience)   "border-indigo-700/70 bg-indigo-950/50"
+    (= :day ambience)     "border-amber-700/50 bg-amber-950/25"
+    (= :end ambience)     "border-amber-500/70 bg-amber-900/30"
+    :else                 "border-slate-700 bg-slate-900/70"))
+
+(defn- round-strip
+  "Where in the day-night cycle the table is. Icons only on a phone, except the
+   current step, which is the one anybody is looking for; every label from `sm`
+   up. Screen readers get every name either way."
+  []
+  (when-let [steps @(rf/subscribe [::sub/round-steps])]
+    [:ol {:class "flex items-center gap-1" :aria-label (t :stage/progress)}
+     (for [{:keys [step state interrupted?]} steps]
+       ^{:key (str step)}
+       [:li {:class "flex items-center gap-1 min-w-0"
+             :aria-current (when (= :current state) "step")}
+        [:span {:class (str "flex items-center gap-1 rounded-full px-2 py-1 text-xs whitespace-nowrap "
+                            (case state
+                              :current (if interrupted?
+                                         "bg-rose-600 text-white font-bold ring-2 ring-rose-300/60 "
+                                         "bg-slate-100 text-slate-900 font-bold ")
+                              :done    "text-slate-500 "
+                              "text-slate-400 bg-slate-800/60 "))}
+         [:span {:aria-hidden true} (phase-icon step)]
+         [:span {:class (if (= :current state) "" "sr-only sm:not-sr-only")}
+          (t (keyword "step" (name step)))
+          (when interrupted? (str " · " (t :stage/interrupted)))]]
+        ;; The connector, except after the last step.
+        (when-not (= step (:step (peek steps)))
+          [:span {:aria-hidden true
+                  :class (str "h-px w-2 sm:w-4 shrink-0 "
+                              (if (= :done state) "bg-slate-500" "bg-slate-700"))}])])]))
+
+(defn- latest-news
+  "The last thing that mattered, so folding the Chronik hides nothing anyone
+   needs. Rendered through the Chronik's own sentences, so it can never say it
+   differently."
+  []
+  (when-let [entries @(rf/subscribe [::sub/latest-news])]
+    (let [players @(rf/subscribe [::sub/players])
+          rows (i18n/chronicle (lc) players entries {:show-all? false})]
+      (when (seq rows)
+        [:div {:class "text-sm flex gap-2 items-baseline"}
+         [:span {:class "shrink-0 text-xs uppercase tracking-wide text-slate-400"}
+          (t :stage/latest)]
+         [:span {:class "text-slate-100"}
+          (str/join " · " (map :text (reverse rows)))]]))))
+
+(defn phase-stage
+  "Where are we, what is happening, and what just happened — one panel, first on
+   every screen.
+
+   It replaced a bare phase name in the corner. A first-time player read 'Anklage'
+   and learned nothing from it, and nothing on screen said it would be followed by
+   a vote; the Spielleiter narrates that out loud, but only to people who were
+   listening. So the stage says it in a sentence, shows the whole cycle with this
+   step lit, and names the role being called at night — public, since the narrator
+   says it aloud anyway, while who holds it is not.
+
+   The turn banner lives at its foot rather than in a box of its own, because
+   'what is happening' and 'is it me' are read in the same glance.
+
+   Exactly one heading, holding exactly the phase name: browser tests and screen
+   readers both find the phase that way."
+  []
   (let [phase @(rf/subscribe [::sub/phase])
         view @(rf/subscribe [::sub/view])
         secs @(rf/subscribe [::sub/seconds-left])
         me @(rf/subscribe [::sub/me])
-        waiting @(rf/subscribe [::sub/waiting-for])]
-    [:div {:class "flex flex-wrap items-center justify-between gap-3"}
-     [:div
-      [:div {:class "flex items-baseline gap-2"}
-       [:h2 {:class "text-2xl font-bold"} (phase-name phase)]
-       (when (pos? (:night view 0))
-         [:span {:class "text-slate-500"} (str "· " (t :phase/night) " " (:night view))])]
-      [:div {:class "flex flex-wrap items-center gap-2"}
-       [:span {:class "text-xs text-slate-500 font-mono"} (:room-id me)]
-       [language-switch]
-       ;; Off the board, so named here: everybody should know who is calling
-       ;; the night.
-       (when-let [n (:narrator view)]
-         [pill (t :lobby/narrator-is (get-in view [:players n :name])) :host])]]
-     [:div {:class "text-right"}
-      (cond
-        ;; A paused clock must SAY it is paused. Simply freezing the digits, or
-        ;; hiding them, both read as a broken client.
-        (:paused? view)
-        [:div {:class "text-lg font-bold text-amber-400"} (str "⏸ " (t :game/paused))]
+        cursor @(rf/subscribe [::sub/night-cursor])
+        narrator? @(rf/subscribe [::sub/narrator?])
+        ambience @(rf/subscribe [::sub/ambience])]
+    [:section {:class (str "rounded-2xl border-2 p-4 space-y-3 transition-colors duration-700 "
+                           (stage-classes phase ambience))}
+     [:div {:class "flex items-start justify-between gap-3"}
+      [:div {:class "flex items-start gap-3 min-w-0"}
+       [:div {:class "text-4xl leading-none pt-0.5" :aria-hidden true}
+        (phase-icon phase "🃏")]
+       [:div {:class "min-w-0"}
+        [:h2 {:class "text-2xl font-bold leading-tight"} (phase-name phase)]
+        [:div {:class "flex flex-wrap items-center gap-x-2 gap-y-1 mt-1 text-xs text-slate-400"}
+         (when (pos? (:night view 0))
+           [:span (t :stage/round (:night view))])
+         [:span {:class "font-mono"} (:room-id me)]
+         [language-switch]
+         ;; Off the board, so named here: everybody should know who is calling
+         ;; the night.
+         (when-let [n (:narrator view)]
+           [pill (t :lobby/narrator-is (get-in view [:players n :name])) :host])]]]
+      [:div {:class "text-right shrink-0"}
+       (cond
+         ;; A paused clock must SAY it is paused. Simply freezing the digits, or
+         ;; hiding them, both read as a broken client.
+         (:paused? view)
+         [:div {:class "text-lg font-bold text-amber-400"} (str "⏸ " (t :game/paused))]
 
-        secs
-        [:div {:class (str "text-3xl font-mono leading-none "
-                           (if (< secs 11) "text-rose-400" "text-slate-300"))}
-         (str (quot secs 60) ":" (when (< (mod secs 60) 10) "0") (mod secs 60))])
-      (when (seq waiting)
-        [:div {:class "text-xs text-slate-500 mt-1"}
-         (str (t :badge/waiting-for) ": " (str/join ", " waiting))])]]))
+         secs
+         [:div {:class (str "text-3xl font-mono leading-none "
+                            (if (< secs 11) "text-rose-400" "text-slate-200"))}
+          (str (quot secs 60) ":" (when (< (mod secs 60) 10) "0") (mod secs 60))])]]
+
+     [:p {:class "text-sm sm:text-base text-slate-200"}
+      (if (= :game-over phase)
+        [:span {:class "text-xl font-bold text-amber-300"} (winner-line (:winner view))]
+        (t (keyword "explain" (name (or phase :setup)))))]
+
+     (when (and (= :night phase) cursor)
+       [:div {:class "inline-flex items-center gap-2 rounded-lg bg-indigo-900/70 border border-indigo-600/60
+                      px-3 py-1.5 text-sm font-semibold text-indigo-100"}
+        ;; The Spielleiter reads this as his cue, everybody else as news.
+        (t (if narrator? :stage/call :stage/called)
+           (str (i18n/icon-of cursor) " " (role-name cursor)))])
+
+     [:div {:class "overflow-x-auto -mx-1 px-1"} [round-strip]]
+
+     (when-not (= :game-over phase) [latest-news])
+
+     [turn-banner]]))
 
 ;; -------------------------------------------------------------------- chat ---
 
@@ -994,8 +1126,11 @@
        [:div {:class "text-xs uppercase tracking-wide text-slate-400"} (t :lobby/share)]
        [:div {:class "font-mono text-3xl tracking-[0.3em] text-indigo-300"} (:room-id me)]
        [:div {:class "flex justify-end mt-1"} [language-switch]]]]
+     ;; The count against the CEILING, with the recommendation beside it. It was
+     ;; "2 / 5", the minimum in the place where a maximum goes, and was read as
+     ;; a five-player cap on an eighteen-seat table.
      [:div {:class "text-sm text-slate-400"}
-      (str table " / " (:min-players view) " " (t :lobby/players))]
+      (t :lobby/count table (:max-players view 18) (:min-players view 5))]
      [table-settings]
      [player-grid]
      [:div {:class "space-y-2"}
@@ -1034,11 +1169,8 @@
         actions @(rf/subscribe [::sub/actions])]
     (when (= :game-over (:phase view))
       [:div {:class "rounded-xl border-2 border-amber-600 bg-amber-950/30 p-4 space-y-3"}
-       [:div {:class "text-2xl font-bold text-amber-300"}
-        (t (case (:winner view)
-             :werewolf :log/win-werewolf
-             :lovers   :log/win-lovers
-             :log/win-village))]
+       ;; Who won is the stage's headline now, one screen-height up; saying it
+       ;; twice made the end of the game read like a stutter.
        ;; Every role is public now — view-for reveals them all once the game is
        ;; decided — so the table can finally read who everyone was.
        [:p {:class "text-sm text-amber-100/80"} (t :game/over-hint)]
@@ -1075,7 +1207,7 @@
   ;; everyone who is not host — and an empty flex item still consumes a `gap-4`.
   ;; Without it every phone screen carried two mystery gaps.
   [:div {:class "space-y-4"}
-   [phase-header]
+   [phase-stage]
    [target-prompt]
    [:div {:class "flex flex-col gap-4 lg:grid lg:grid-cols-5 lg:gap-4"}
     [:div {:class "contents lg:block lg:col-span-3 lg:space-y-4"}
@@ -1086,26 +1218,51 @@
      ;; the start, and hunting for it under nine player cards is how people end up
      ;; playing in silence.
      [:div {:class "order-5 empty:hidden"} [voice-panel]]
-     [:div {:class "order-6 empty:hidden"} [gm-panel]]
+     ;; His notes before his switches: the Spielleiter reads the night far more
+     ;; often than he overrides it.
      [:div {:class "order-6 empty:hidden"} [narrator-panel]]
+     [:div {:class "order-6 empty:hidden"} [gm-panel]]
      [:div {:class "order-8 empty:hidden"} [player-grid]]]
     [:div {:class "contents lg:block lg:col-span-2 lg:space-y-4"}
-     ;; The turn banner is rendered in the RIGHT wrapper so that on desktop it
-     ;; heads the Chronik column, and on a phone `order-2` lifts it to just under
-     ;; the phase header — the first thing you see either way.
-     [:div {:class "order-2 empty:hidden"} [turn-banner]]
      [:div {:class "order-7 empty:hidden"} [log-panel]]
      [:div {:class "order-9 empty:hidden"} [chat-panel]]]]])
 
 ;; ---------------------------------------------------------------------- app ---
 
+(def ^:private room-light
+  "The room's light per ambience: a base colour and a glow from above. Night is a
+   deep blue, the day a warmer dusk — still dark, because the text is light and
+   the game is played in dim rooms — and the end is gold. Inline styles rather
+   than classes so the colours can fade into each other."
+  {:neutral {:base "#0f172a" :glow "rgba(100,116,139,0.10)"}
+   :night   {:base "#070b1f" :glow "rgba(99,102,241,0.22)"}
+   :day     {:base "#1b1a22" :glow "rgba(251,191,36,0.14)"}
+   :end     {:base "#17130b" :glow "rgba(245,158,11,0.24)"}})
+
+(defn- room-glow
+  "One glow layer per light, cross-faded on opacity: a background-image cannot be
+   transitioned, an opacity can."
+  [current]
+  [:div {:class "pointer-events-none fixed inset-0" :aria-hidden true}
+   (for [[k {:keys [glow]}] room-light]
+     ^{:key (str k)}
+     [:div {:class "absolute inset-0"
+            :style {:background-image (str "radial-gradient(ellipse 120% 60% at 50% -10%, "
+                                           glow ", transparent 70%)")
+                    :opacity (if (= k current) 1 0)
+                    :transition "opacity 1.2s ease"}}])])
+
 (defn app []
   (let [screen @(rf/subscribe [::sub/screen])
-        phase @(rf/subscribe [::sub/phase])]
-    [:div {:class "min-h-screen bg-slate-900 text-slate-100 font-sans"}
+        phase @(rf/subscribe [::sub/phase])
+        light (if (= :room screen) @(rf/subscribe [::sub/ambience]) :neutral)]
+    [:div {:class "relative min-h-screen text-slate-100 font-sans"
+           :style {:background-color (get-in room-light [light :base])
+                   :transition "background-color 1.2s ease"}}
+     [room-glow light]
      [connection-banner]
      [error-banner]
-     [:div {:class "max-w-6xl mx-auto p-4 sm:p-6"}
+     [:div {:class "relative max-w-6xl mx-auto p-4 sm:p-6"}
       (case screen
         :landing [landing]
         :room (if (or (nil? phase) (= :lobby phase)) [lobby] [game])

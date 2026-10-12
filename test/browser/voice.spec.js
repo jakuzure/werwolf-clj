@@ -187,7 +187,9 @@ test.describe('voice', () => {
     pages = table.pages;
     const [anna, bob] = pages;
 
+    // Bob can see Anna is in the call before he joins it himself.
     await joinVoice(anna);
+    await expect(bob.getByTestId('in-call')).toContainText('Anna');
     await joinVoice(bob);
     await expectAttached(bob, 1, 'Bob hears Anna before she leaves');
 
@@ -198,6 +200,8 @@ test.describe('voice', () => {
     await anna.getByRole('button', { name: DE.leave }).click();
     await anna.getByRole('button', { name: DE.leaveConfirm }).click();
     await expect(anna.getByPlaceholder(DE.name)).toBeVisible();
+    // And her headset is gone from the table she left.
+    await expect(bob.getByTestId('in-call')).not.toContainText('Anna');
 
     await expectAttached(bob, 0, 'Anna is gone from the call');
     // And Anna's own page holds nothing either — no orphaned audio elements.
