@@ -45,7 +45,7 @@
 
 (defn- btn
   ([label on-click] (btn label on-click {}))
-  ([label on-click {:keys [tone disabled?]}]
+  ([label on-click {:keys [tone disabled? testid]}]
    [:button {:class (str "px-3 py-2 rounded-lg text-sm font-semibold transition "
                          "disabled:opacity-40 disabled:cursor-not-allowed "
                          (case tone
@@ -55,6 +55,7 @@
                            :quiet  "bg-transparent border border-slate-600 hover:bg-slate-800 text-slate-300 "
                            "bg-indigo-600 hover:bg-indigo-500 text-white "))
              :disabled (boolean disabled?)
+             :data-testid testid
              :on-click on-click}
     label]))
 
@@ -301,10 +302,22 @@
         reaction @(rf/subscribe [::sub/awaiting-reaction])
         cursor   @(rf/subscribe [::sub/night-cursor])
         waiting  @(rf/subscribe [::sub/waiting-for])
-        me       @(rf/subscribe [::sub/me-view])]
+        me       @(rf/subscribe [::sub/me-view])
+        narrator? @(rf/subscribe [::sub/narrator?])]
     (when-not (#{:lobby :game-over} phase)
       (let [[tone headline detail]
             (cond
+              ;; The Spielleiter is never "dran" and never waiting: his console
+              ;; always offers something, so `can-act?` would call every moment
+              ;; his turn. Tell him instead what the table is doing.
+              narrator?
+              ["border-violet-500 bg-violet-950/50 text-violet-100"
+               (t :turn/narrating)
+               (cond
+                 (= :setup phase) (t :setup/hint)
+                 (and (= :night phase) cursor) (t :turn/calling (role-name cursor))
+                 (seq waiting) (str (t :badge/waiting-for) ": " (str/join ", " waiting)))]
+
               reaction
               ["border-rose-500 bg-rose-950/60 text-rose-100"
                (t :turn/yours) (t :turn/urgent)]
@@ -321,6 +334,7 @@
                  ;; only one available: naming the players still to act would leak
                  ;; which roles are alive, which is why ::waiting-for skips night.
                  (and (= :night phase) cursor) (t :turn/calling (role-name cursor))
+                 (= :setup phase) (t :setup/waiting)
                  (seq waiting) (str (t :badge/waiting-for) ": " (str/join ", " waiting))
                  ;; A dead player is not being waited on and never will be, so do
                  ;; not imply their input is pending.
@@ -373,11 +387,60 @@
 (defn- vote-count [votes id]
   (count (filter #(= id (val %)) votes)))
 
+(defn- card-controls
+  "The seat's own buttons, for whoever holds the host's powers. Both are drawn
+   from what the server offered for THIS seat, so a card nobody may act on has
+   none:
+
+   * in the lobby, handing the host's seat over — the Spielleitung, in a
+     narrated room — to this player. Two clicks: the first one is not undoable
+     by the person who made it, since it is no longer theirs to undo;
+   * in :setup, the Spielleiter's card select. Every change is silent and
+     immediate, which is what makes a select the right control: arranging a deal
+     is a dozen small corrections, not one decision."
+  [id]
+  (let [targets @(rf/subscribe [::sub/targets])
+        choices @(rf/subscribe [::sub/choices])
+        phase   @(rf/subscribe [::sub/phase])
+        known   @(rf/subscribe [::sub/known-roles])
+        narrated? @(rf/subscribe [::sub/narrated?])
+        gm      @(rf/subscribe [::sub/gm])
+        transfer? (some #{id} (get targets :gm/transfer-host))
+        assign?   (and (= :setup phase) (some #{id} (get targets :gm/reassign-role)))
+        confirming? (= id (:confirm-transfer gm))]
+    (when (or transfer? assign?)
+      [:div {:class "mt-2 flex flex-wrap gap-2"
+             ;; A control inside a card must not count as clicking the card,
+             ;; which in targeting mode would pick the seat.
+             :on-click #(.stopPropagation %)}
+       (when transfer?
+         [btn (if confirming?
+                (t :gm/confirm)
+                (t (if narrated? :lobby/make-narrator :lobby/make-host)))
+          (if confirming?
+            #(do (rf/dispatch [::ev/act :gm/transfer-host id])
+                 (rf/dispatch [::ev/form-set :gm (dissoc gm :confirm-transfer)]))
+            #(rf/dispatch [::ev/form-set :gm (assoc gm :confirm-transfer id)]))
+          {:tone (if confirming? :danger :quiet)
+           :testid (str "make-host-" id)}])
+       (when assign?
+         [:select {:class "px-2 py-1.5 rounded-lg bg-slate-800 border border-violet-600
+                           text-sm text-slate-100 outline-none focus:border-violet-400"
+                   :data-testid (str "assign-" id)
+                   :value (some-> (get known id) name)
+                   :on-change #(rf/dispatch [::ev/act-with :gm/reassign-role
+                                             {:target id
+                                              :role (keyword (.. % -target -value))}])}
+          (for [r (get choices :gm/reassign-role)]
+            ^{:key (str r)}
+            [:option {:value (name r)} (str (i18n/icon-of r) " " (role-name r))])])])))
+
 (defn- player-card
   "One seat, rendered large enough to actually read at a glance."
   [{:keys [id alive? connected?] pname :name}]
   (let [me @(rf/subscribe [::sub/me-view])
         view @(rf/subscribe [::sub/view])
+        narrator-info @(rf/subscribe [::sub/narrator-info])
         known @(rf/subscribe [::sub/known-roles])
         votes @(rf/subscribe [::sub/votes])
         {:keys [action picks]} (pending)
@@ -385,6 +448,10 @@
         selectable? (and targets (contains? targets id) (not (some #{id} picks)))
         picked? (boolean (some #{id} picks))
         me? (= id (:id me))
+        ;; The Spielleiter's seat. Only the lobby draws it among the others —
+        ;; see `player-grid` — and there it reads as what it is, not as one
+        ;; more player who happens to be alive.
+        sl? (= id (:narrator view))
         role (get known id)
         n-votes (vote-count votes id)
         ;; Safe to show because everyone shares one media room and nobody is
@@ -420,25 +487,38 @@
         pname]
        [:div {:class "flex flex-wrap gap-1 mt-1"}
         (when me? [pill (t :game/you) :you])
-        (when (= id (:host view)) [pill (t :badge/host) :host])
+        (cond
+          sl?                  [pill (t :narrator/title) :host]
+          (= id (:host view))  [pill (t :badge/host) :host])
         ;; The office is public by design — the entire point of it is that the
         ;; table knows whose vote counts twice.
         (when (= id (:mayor view)) [pill (t :badge/mayor) :mayor])
         (when-not alive? [pill (t :game/dead) :dead])
         (when (false? connected?) [pill (t :game/absent) :absent])
         (when role [pill (str (i18n/icon-of role) " " (role-name role)) :role])
-        (when (= id (:lover me)) [pill (t :badge/lover) :lover])
+        ;; His own lover, or — for the Spielleiter, whose notes name both — either.
+        (when (or (= id (:lover me)) (some #{id} (:lovers narrator-info)))
+          [pill (t :badge/lover) :lover])
         (when (contains? (set (:nominations view)) id) [pill (t :badge/accused) :accused])
         (when (pos? n-votes)
           [pill (str n-votes " " (t (if (= 1 n-votes) :badge/vote :badge/votes))) :votes])
         (when (contains? (set (:ready view)) id) [pill (t :badge/ready) :ready])
         (when (contains? (set (:nomination-done view)) id) [pill (t :badge/decided) :ready])
-        (when (contains? (set (keys (:votes view))) id) [pill (t :badge/decided) :ready])]]]]))
+        (when (contains? (set (keys (:votes view))) id) [pill (t :badge/decided) :ready])]
+       [card-controls id]]]]))
 
-(defn- player-grid []
-  (let [view @(rf/subscribe [::sub/view])]
+(defn- player-grid
+  "The table. Once the game has begun that means the people PLAYING it: the
+   Spielleiter has a seat but no card, no vote and no life to lose, and a card
+   of his among theirs would read as one more suspect. He is named in the
+   phase header instead. In the lobby he stays on the board, because that is
+   where the host hands the seat over."
+  []
+  (let [view @(rf/subscribe [::sub/view])
+        lobby? (= :lobby (:phase view))]
     [:div {:class "grid sm:grid-cols-2 gap-2"}
-     (for [[id p] (sort-by key (:players view))]
+     (for [[id p] (sort-by key (:players view))
+           :when (or lobby? (not= id (:narrator view)))]
        ^{:key id} [player-card (assoc p :id id)])]))
 
 ;; ------------------------------------------------------------------ actions ---
@@ -459,9 +539,17 @@
         ;; grants it, and its label has said "(SL)" all along.
         plain (sort (remove #(or (= "gm" (namespace %))
                                  (#{:chat :leave :set-locale :advance-phase} %))
-                            actions))]
-    (if (empty? plain)
+                            actions))
+        narrator? @(rf/subscribe [::sub/narrator?])]
+    (cond
+      ;; The Spielleiter's work is in his console; "nothing to do" under it
+      ;; would be false.
+      (and (empty? plain) narrator?) nil
+
+      (empty? plain)
       [:div {:class "text-sm text-slate-500"} (t :game/nothing-to-do)]
+
+      :else
       [:div {:class "flex flex-wrap gap-2"}
        (for [a plain]
          ^{:key (str a)}
@@ -549,7 +637,12 @@
                    :label #(let [k (keyword %)]
                              (if (= :gm/set-phase action) (phase-name k) (role-name k)))
                    :on-change #(put! [:choice action] %)}])
-     [btn (if confirming? (t :gm/confirm) (action-name action))
+     [btn (cond
+            confirming? (t :gm/confirm)
+            ;; A switch says which way it will flip, not merely that it is one.
+            (= :gm/toggle-timer action)
+            (t (if @(rf/subscribe [::sub/timer?]) :gm/timer-off :gm/timer-on))
+            :else (action-name action))
       (if (and (gm-confirm-first action) (not confirming?))
         #(put! [:confirm] action)
         fire!)
@@ -563,8 +656,17 @@
   []
   (let [actions @(rf/subscribe [::sub/actions])
         gm @(rf/subscribe [::sub/gm])
-        open? (boolean (:open? gm))
-        rows (sort-by str (filter #(or (= "gm" (namespace %)) (= :advance-phase %))
+        narrator? @(rf/subscribe [::sub/narrator?])
+        phase @(rf/subscribe [::sub/phase])
+        ;; Open by default for the Spielleiter: for him this console is the
+        ;; game, not an escape hatch. Closed for a playing host, as before.
+        open? (if (contains? gm :open?) (boolean (:open? gm)) narrator?)
+        rows (sort-by str (filter #(and (or (= "gm" (namespace %)) (= :advance-phase %))
+                                        ;; During setup the cards carry a select
+                                        ;; each; a second, two-click way to do
+                                        ;; the same thing is clutter.
+                                        (not (and (= :setup phase)
+                                                  (= :gm/reassign-role %))))
                                   actions))]
     (when (seq rows)
       [:div {:class "rounded-xl border border-violet-800/60 bg-violet-950/20 overflow-hidden"}
@@ -592,7 +694,19 @@
   []
   (let [me @(rf/subscribe [::sub/me-view])
         players @(rf/subscribe [::sub/players])
+        phase @(rf/subscribe [::sub/phase])
         role (:role me)]
+    (if (:narrator? me)
+      ;; No card to show, so say what the seat IS. Same place and weight as a
+      ;; role card: "who am I in this game" is still the first question.
+      [:div {:class "rounded-xl p-4 border-2 border-violet-700 bg-violet-950/40"}
+       [:div {:class "flex items-center gap-3"}
+        [:div {:class "text-4xl"} "📜"]
+        [:div {:class "min-w-0"}
+         [:div {:class "text-xs uppercase tracking-wide text-slate-400"} (t :game/your-role)]
+         [:div {:data-testid "my-role"
+                :class "text-2xl font-bold leading-tight"} (t :narrator/title)]]]
+       [:p {:class "text-sm text-slate-300 mt-2"} (t :narrator/desc)]]
     [:div {:class (str "rounded-xl p-4 border-2 "
                        (if (:alive? me)
                          "border-emerald-700 bg-emerald-950/40"
@@ -611,6 +725,10 @@
       (when-not (:alive? me)
         [:div {:class "ml-auto"} [pill (t :game/dead) :dead]])]
      [:p {:class "text-sm text-slate-300 mt-2"} (role-desc role)]
+     ;; The Spielleiter may still change it, and a card that silently becomes a
+     ;; different card would look like a bug.
+     (when (= :setup phase)
+       [:p {:class "text-xs text-violet-300/90 mt-1"} (t :setup/your-card)])
 
      (when (:lover me)
        [:div {:class "mt-2 text-sm"}
@@ -637,7 +755,47 @@
            ^{:key pid}
            [pill (str (get-in players [pid :name]) " · "
                       (i18n/icon-of role) " " (role-name role))
-            :role])]])]))
+            :role])]])])))
+
+(defn narrator-panel
+  "The Spielleiter's notes on the night: whom the pack is leaning towards, who
+   is dying, whom the Beschützer stood in front of — and, all game long, who is
+   in love and which two cards lie in the middle for the Dieb.
+
+   Renders only what the server built, and it builds it for the narrator alone
+   (see view/night-view), so this needs no check of its own."
+  []
+  (let [info @(rf/subscribe [::sub/night-info])
+        notes @(rf/subscribe [::sub/narrator-info])
+        players @(rf/subscribe [::sub/players])
+        nm #(or (get-in players [% :name]) (str "#" %))
+        rows (cond-> []
+               (seq (:werewolf-votes info))
+               (conj [(t :narrator/wolf-votes)
+                      (str/join ", " (for [[w v] (sort-by key (:werewolf-votes info))]
+                                       (str (nm w) " → " (nm v))))])
+               (contains? info :pending-deaths)
+               (conj [(t :narrator/dying)
+                      (if (seq (:pending-deaths info))
+                        (str/join ", " (map (comp nm :player) (:pending-deaths info)))
+                        (t :narrator/nobody))])
+               (contains? info :protected)
+               (conj [(t :narrator/protected) (nm (:protected info))])
+               (seq (:lovers notes))
+               (conj [(t :narrator/lovers) (str/join " ♥ " (map nm (:lovers notes)))])
+               (seq (:centre notes))
+               (conj [(t :narrator/centre)
+                      (str/join ", " (map #(str (i18n/icon-of %) " " (role-name %))
+                                          (:centre notes)))]))]
+    (when (seq rows)
+      [:div {:class "rounded-xl border border-violet-800/60 bg-violet-950/20 px-4 py-3 space-y-1"}
+       [:div {:class "text-sm font-bold uppercase tracking-wide text-violet-200"}
+        (str "📜 " (t :narrator/night))]
+       (for [[label text] rows]
+         ^{:key label}
+         [:div {:class "text-sm"}
+          [:span {:class "text-violet-300/80"} (str label ": ")]
+          [:span {:class "text-slate-100"} text]])])))
 
 (defn- log-icon [tone]
   (case tone
@@ -699,9 +857,13 @@
        [:h2 {:class "text-2xl font-bold"} (phase-name phase)]
        (when (pos? (:night view 0))
          [:span {:class "text-slate-500"} (str "· " (t :phase/night) " " (:night view))])]
-      [:div {:class "flex items-center gap-2"}
+      [:div {:class "flex flex-wrap items-center gap-2"}
        [:span {:class "text-xs text-slate-500 font-mono"} (:room-id me)]
-       [language-switch]]]
+       [language-switch]
+       ;; Off the board, so named here: everybody should know who is calling
+       ;; the night.
+       (when-let [n (:narrator view)]
+         [pill (t :lobby/narrator-is (get-in view [:players n :name])) :host])]]
      [:div {:class "text-right"}
       (cond
         ;; A paused clock must SAY it is paused. Simply freezing the digits, or
@@ -725,7 +887,11 @@
         me @(rf/subscribe [::sub/me-view])
         phase @(rf/subscribe [::sub/phase])
         allowed? (contains? actions :chat)
-        channel (cond (false? (:alive? me)) :dead
+        ;; Mirrors `room/chat-audience`, which is what actually routes — this
+        ;; only labels it, and it labels the Spielleiter first because he stands
+        ;; outside both of the other channels.
+        channel (cond (and (:narrator? me) (not= :lobby phase)) :narrator
+                      (false? (:alive? me)) :dead
                       (= :night phase) :wolves)]
     [:div {:class "flex flex-col h-64 rounded-xl border border-slate-700 bg-slate-900/80 overflow-hidden"}
      [:div {:class "px-4 py-2 bg-slate-800 text-sm font-bold uppercase tracking-wide"}
@@ -735,8 +901,9 @@
         ^{:key i}
         [:div
          [:span {:class (case (:channel m)
-                          :wolves "text-rose-400 font-semibold"
-                          :dead   "text-slate-500 font-semibold"
+                          :wolves   "text-rose-400 font-semibold"
+                          :dead     "text-slate-500 font-semibold"
+                          :narrator "text-violet-300 font-semibold"
                           "text-indigo-300 font-semibold")}
           (:name m) ": "]
          [:span {:class (when (= :dead (:channel m)) "text-slate-500")} (:text m)]])]
@@ -744,8 +911,14 @@
       (when (and allowed? channel)
         ;; The label is derived from the same state the server routes on, so it
         ;; cannot promise the wrong audience.
-        [:div {:class (if (= :wolves channel) "text-xs text-rose-400" "text-xs text-slate-500")}
-         (t (if (= :wolves channel) :game/wolves-channel :game/dead-channel))])
+        [:div {:class (case channel
+                        :wolves   "text-xs text-rose-400"
+                        :narrator "text-xs text-violet-300"
+                        "text-xs text-slate-500")}
+         (t (case channel
+              :wolves   :game/wolves-channel
+              :narrator :game/narrator-channel
+              :game/dead-channel))])
       [:div {:class "flex gap-2"}
        [:div {:class "flex-1"}
         [field :text (t :game/chat-hint) {:on-enter [::ev/send-chat] :maxlength 500}]]
@@ -770,10 +943,50 @@
        [btn (t :lobby/leave-cancel) #(rf/dispatch [::ev/form-set :leave nil]) {:tone :ghost}]]
       [btn (t :lobby/leave) #(rf/dispatch [::ev/form-set :leave phase]) {:tone :quiet}])))
 
+(defn- table-settings
+  "How this table will play: with a Spielleiter or without, with a clock or
+   without. Everybody reads it — joining a game whose host will not be playing
+   is worth knowing before the cards are dealt — and only the host gets the
+   switches, because only the host is offered the actions."
+  []
+  (let [actions   @(rf/subscribe [::sub/actions])
+        narrated? @(rf/subscribe [::sub/narrated?])
+        timer?    @(rf/subscribe [::sub/timer?])
+        narrator? @(rf/subscribe [::sub/narrator?])
+        row (fn [label text switch]
+              [:div {:class "flex flex-wrap items-center justify-between gap-2"}
+               [:div {:class "min-w-0"}
+                [:span {:class "font-semibold text-violet-200"} (str label ": ")]
+                [:span {:class "text-slate-300"} text]]
+               switch])]
+    [:div {:class "rounded-xl border border-violet-800/60 bg-violet-950/20 p-3 space-y-2 text-sm"}
+     ;; Said to the Spielleiter in so many words — including the one who just
+     ;; inherited the seat because the previous host walked out.
+     (when narrator?
+       [:div {:class "font-semibold text-violet-100" :data-testid "you-narrate"}
+        (str "📜 " (t :lobby/you-narrate))])
+     [row (t :lobby/mode)
+      (t (if narrated? :lobby/mode-narrated :lobby/mode-players))
+      (when (contains? actions :gm/toggle-narrated)
+        [btn (t (if narrated? :lobby/play-along :lobby/narrate))
+         #(rf/dispatch [::ev/act :gm/toggle-narrated])
+         {:tone :quiet :testid "toggle-narrated"}])]
+     [row (t :lobby/timer)
+      (t (if timer? :lobby/timer-on :lobby/timer-off))
+      (when (contains? actions :gm/toggle-timer)
+        [btn (t (if timer? :lobby/timer-switch-off :lobby/timer-switch-on))
+         #(rf/dispatch [::ev/act :gm/toggle-timer])
+         {:tone :quiet :testid "toggle-timer"}])]]))
+
 (defn lobby []
   (let [view @(rf/subscribe [::sub/view])
         me @(rf/subscribe [::sub/me])
-        actions @(rf/subscribe [::sub/actions])]
+        actions @(rf/subscribe [::sub/actions])
+        host? @(rf/subscribe [::sub/host?])
+        ;; The people who will be dealt a card. The Spielleiter is in the room
+        ;; but not at the table, and the server counts the same way when it
+        ;; decides whether the game may start.
+        table (count (remove #(= % (:narrator view)) (keys (:players view))))]
     [:div {:class "space-y-4"}
      [:div {:class "flex flex-wrap items-baseline justify-between gap-2"}
       [:h2 {:class "text-2xl font-bold"} (t :lobby/title)]
@@ -782,14 +995,15 @@
        [:div {:class "font-mono text-3xl tracking-[0.3em] text-indigo-300"} (:room-id me)]
        [:div {:class "flex justify-end mt-1"} [language-switch]]]]
      [:div {:class "text-sm text-slate-400"}
-      (str (count (:players view)) " / " (:min-players view) " " (t :lobby/players))]
+      (str table " / " (:min-players view) " " (t :lobby/players))]
+     [table-settings]
      [player-grid]
      [:div {:class "space-y-2"}
       [:div {:class "flex flex-wrap items-center gap-3"}
        (if (contains? actions :start-game)
          [btn (t :lobby/start) #(rf/dispatch [::ev/act :start-game])]
          [:span {:class "text-sm text-slate-500"}
-          (if (:host? me) (t :lobby/need-more) (t :game/waiting))])
+          (if host? (t :lobby/need-more) (t :game/waiting))])
        [leave-button]]
       ;; The host may start under the recommended size, so say so rather than
       ;; letting a start button next to "3 / 5" look like a bug. Derived from
@@ -797,7 +1011,7 @@
       ;; :start-game, the table is below the deck's floor and there is nothing
       ;; to recommend.
       (when (and (contains? actions :start-game)
-                 (< (count (:players view)) (:min-players view 5)))
+                 (< table (:min-players view 5)))
         [:p {:class "text-xs text-amber-400/90"}
          (t :lobby/below-recommended (:min-players view))])]
      ;; The lobby is where a call gets joined in practice — everyone is arriving,
@@ -873,6 +1087,7 @@
      ;; playing in silence.
      [:div {:class "order-5 empty:hidden"} [voice-panel]]
      [:div {:class "order-6 empty:hidden"} [gm-panel]]
+     [:div {:class "order-6 empty:hidden"} [narrator-panel]]
      [:div {:class "order-8 empty:hidden"} [player-grid]]]
     [:div {:class "contents lg:block lg:col-span-2 lg:space-y-4"}
      ;; The turn banner is rendered in the RIGHT wrapper so that on desktop it

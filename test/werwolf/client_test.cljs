@@ -531,3 +531,17 @@
       (is (nil? (:error db')))
       (is (nil? (:error/shown db')))
       (is (nil? (:error/at db'))))))
+
+(deftest the-narrator-is-never-waited-for
+  (testing "he has a seat and is never killed, so he looks like a living player
+            who has not voted — and a narrated day would read as one ballot
+            short forever"
+    (let [view {:phase :vote
+                :narrator 0
+                :players {0 {:name "SL" :alive? true}
+                          1 {:name "Anna" :alive? true}
+                          2 {:name "Bob" :alive? true}}
+                :votes {1 2}}]
+      (is (= ["Bob"] (sub/waiting-names view)))
+      (testing "while in a room the host plays in, the host is waited for like anyone"
+        (is (= ["Bob" "SL"] (sub/waiting-names (dissoc view :narrator))))))))

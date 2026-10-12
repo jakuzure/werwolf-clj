@@ -13,7 +13,9 @@
 // which is exactly the point.
 
 const { test, expect } = require('@playwright/test');
-const { DE, seatTable, closeAll, foreignRoles, myIdFrom } = require('./helpers');
+const {
+  DE, seatTable, closeAll, foreignRoles, myIdFrom, playAlong, startNarrated,
+} = require('./helpers');
 
 /** The role this page was dealt, read off its own screen. */
 async function myRole(page) {
@@ -42,10 +44,14 @@ test.describe('a real game', () => {
     // Frames are captured from before each page connects — see seatTable — so
     // this covers the deal, the single most dangerous moment: the server knows
     // every role and must tell each player exactly one.
+    //
+    // Played with the creator PLAYING: this is about five players and five
+    // cards. The Spielleiter's half is the next test.
     const table = await seatTable(browser, ['Anna', 'Bob', 'Cem', 'Dana', 'Eve']);
     pages = table.pages;
     const frames = table.frames;
 
+    await playAlong(pages[0]);
     await startGame(pages);
 
     const roles = [];
@@ -65,10 +71,53 @@ test.describe('a real game', () => {
     }
   });
 
+  test('the Spielleiter is told every card, through setup and into the night, and nobody else is', async ({ browser }) => {
+    const table = await seatTable(browser, ['Sophie', 'Anna', 'Bob', 'Cem', 'Dana', 'Eve']);
+    pages = table.pages;
+    const frames = table.frames;
+    const [sl, ...players] = pages;
+
+    await sl.getByRole('button', { name: DE.start }).click();
+    for (const p of players) {
+      await expect(p.getByTestId('my-role')).toBeVisible({ timeout: 15_000 });
+      // Setup: the players hold a card and are told it may still change.
+      await expect(p.getByText('Der Spielleiter verteilt die Rollen').first())
+        .toBeVisible({ timeout: 15_000 });
+    }
+    await expect(sl.getByTestId('my-role')).toHaveText(DE.narrator);
+
+    // He rearranges the deal: the villager becomes a second Jäger, and only that
+    // player's own card changes.
+    const roles = [];
+    for (const p of players) roles.push(await myRole(p));
+    const villager = roles.indexOf('Dorfbewohner');
+    const villagerSeat = myIdFrom(frames[villager + 1]);
+    await sl.getByTestId(`assign-${villagerSeat}`).selectOption('jaeger');
+    await expect(players[villager].getByTestId('my-role')).toHaveText('Jäger', { timeout: 15_000 });
+
+    await sl.getByRole('button', { name: DE.beginNight }).click();
+    await expect(sl.getByRole('heading', { name: 'Nacht' })).toBeVisible({ timeout: 15_000 });
+
+    // The Spielleiter: every one of the five cards, and only through the
+    // sanctioned channel.
+    const slSeen = foreignRoles(frames[0], myIdFrom(frames[0]));
+    expect(new Set(slSeen.map((l) => l.pid)).size).toBe(5);
+    expect(slSeen.every((l) => l.via === 'known-roles')).toBe(true);
+
+    // Everybody else: their own card and nothing more — in setup included, where
+    // a wolf is deliberately not yet shown his pack.
+    for (let i = 1; i < pages.length; i++) {
+      const leaks = foreignRoles(frames[i], myIdFrom(frames[i]));
+      expect(leaks, `page ${i} was told: ${JSON.stringify(leaks)}`).toEqual([]);
+    }
+  });
+
   test('the Seherin learns exactly one role, and only she does', async ({ browser }) => {
     const table = await seatTable(browser, ['Anna', 'Bob', 'Cem', 'Dana', 'Eve']);
     pages = table.pages;
     const frames = table.frames;
+    // The creator plays: five cards for five pages keeps this about the Seherin.
+    await playAlong(pages[0]);
     await startGame(pages);
 
     const roles = [];
@@ -108,6 +157,10 @@ test.describe('a real game', () => {
     // structured events, because the wire carries no prose.
     await en.getByRole('button', { name: 'English' }).click();
     await expect(en.getByRole('button', { name: 'Leave the game' })).toBeVisible();
+
+    // Three people is a table only if all three play — narrated, it would be a
+    // Spielleiter and two players, below the deck's floor.
+    await playAlong(de);
 
     // The German page is unaffected — locale is per-player state, not a room
     // setting.

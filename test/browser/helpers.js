@@ -82,6 +82,11 @@ const DE = {
   mute: 'Stumm schalten',
   unmute: 'Stummschaltung aufheben',
   voiceLeave: 'Verlassen',
+  // A new room is NARRATED by default: its creator is the Spielleiter, dealt no
+  // card, and the game passes through a setup step he ends himself.
+  beginNight: /^Erste Nacht beginnen/,
+  playAlong: 'Ich spiele mit',
+  narrator: 'Spielleiter',
 };
 
 /** Every frame the server sent this page, decoded far enough to inspect. */
@@ -159,6 +164,31 @@ async function seatTable(browser, names) {
   return { code, pages, frames };
 }
 
+/**
+ * Switch a fresh room to the old table, where the creator plays like everyone
+ * else and the clock runs. For specs that are about something other than the
+ * Spielleiter — and need every page to be dealt a card.
+ */
+async function playAlong(hostPage) {
+  await hostPage.getByTestId('toggle-narrated').click();
+  await expect(hostPage.getByRole('button', { name: 'Ich leite das Spiel' })).toBeVisible();
+}
+
+/**
+ * Start a NARRATED game and end its setup step: the Spielleiter deals, every
+ * player sees a card, and he begins the first night. `slPage` is the creator;
+ * `playerPages` are everyone else.
+ */
+async function startNarrated(slPage, playerPages) {
+  await slPage.getByRole('button', { name: DE.start }).click();
+  for (const p of playerPages) {
+    await expect(p.getByTestId('my-role')).toBeVisible({ timeout: 20_000 });
+  }
+  await expect(slPage.getByTestId('my-role')).toHaveText(DE.narrator, { timeout: 20_000 });
+  await slPage.getByRole('button', { name: DE.beginNight }).click();
+  await expect(slPage.getByRole('heading', { name: 'Nacht' })).toBeVisible({ timeout: 20_000 });
+}
+
 async function closeAll(pages) {
   for (const p of pages) {
     await p.context().close().catch(() => {});
@@ -182,5 +212,5 @@ async function liveKitUp(request, url = 'http://localhost:7880') {
 
 module.exports = {
   DE, captureFrames, landOn, createRoom, joinRoom, seatTable, closeAll, liveKitUp,
-  readFrame, foreignRoles, myIdFrom,
+  readFrame, foreignRoles, myIdFrom, playAlong, startNarrated,
 };

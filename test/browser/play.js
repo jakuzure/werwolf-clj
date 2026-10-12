@@ -137,8 +137,12 @@ async function playDay(pages, { lynch, roles, election = false }) {
   }
 
   await awaitOffered(pages, ACT.nominate);
+  // The condemned accuses SOMEBODY ELSE AT THE TABLE. Not "seat 0 unless that is
+  // him": in a narrated room seat 0 is the Spielleiter, who is nobody's target
+  // and has no card on the board to click.
+  const other = roles.find((r) => r.seat !== lynch).seat;
   for (const r of roles) {
-    const at = r.seat === lynch ? (lynch === 0 ? 1 : 0) : lynch;
+    const at = r.seat === lynch ? other : lynch;
     await tryAct(r.page, ACT.nominate, at);
   }
   await everyone(pages, ACT.nominatePass);

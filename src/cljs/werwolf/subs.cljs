@@ -112,6 +112,28 @@
 (rf/reg-sub ::nominations :<- [::view] (fn [v _] (or (:nominations v) #{})))
 (rf/reg-sub ::known-roles :<- [::view] (fn [v _] (or (:known-roles v) {})))
 
+;; The Spielleiter's seat, or nil when the host plays. The server decides it —
+;; it is the host of a narrated room — and the client only reads it.
+(rf/reg-sub ::narrator  :<- [::view] (fn [v _] (:narrator v)))
+(rf/reg-sub ::narrated? :<- [::view] (fn [v _] (boolean (:narrated? v))))
+(rf/reg-sub ::narrator? :<- [::me-view] (fn [me _] (boolean (:narrator? me))))
+(rf/reg-sub ::timer?    :<- [::view] (fn [v _] (not (false? (:timer? v)))))
+(rf/reg-sub ::host      :<- [::view] (fn [v _] (:host v)))
+
+;; Read from the VIEW, not from the welcome message. The welcome's :host? is a
+;; snapshot from the moment you sat down, and the seat can be handed over — or
+;; inherited — long after that.
+(rf/reg-sub
+ ::host?
+ :<- [::view]
+ (fn [v _] (and (some? (:host v)) (= (:host v) (get-in v [:me :id])))))
+
+;; Only ever filled in for the Spielleiter: the night as it happens, and his
+;; notes on the lovers and the Dieb's cards. Empty for everybody else, because
+;; the server never builds it for them.
+(rf/reg-sub ::night-info    :<- [::view] (fn [v _] (or (:night-info v) {})))
+(rf/reg-sub ::narrator-info :<- [::view] (fn [v _] (:narrator-info v)))
+
 ;; Which ROLE the narrator is calling right now. Public by design — a human
 ;; narrator says it out loud ("Werwölfe, wacht auf") — and which player holds it
 ;; is not in the view. This is most of the answer to "whose turn is it?" at night.
@@ -155,27 +177,33 @@
  ;; never has to know that Amor is the two-target one.
  (fn [v _] (or (:arity v) {})))
 
-(rf/reg-sub
- ::waiting-for
- :<- [::view]
- (fn [{:keys [phase players ready nomination-done votes]} _]
-   ;; Whose turn it still is, by name, for the phases where the answer is
-   ;; public. Silence is the thing players find most confusing, so say who it
-   ;; belongs to. Night is absent on purpose: naming the players still to act
-   ;; would leak which roles are alive.
-   (let [living (keep (fn [[id p]] (when (:alive? p) id)) players)
-         done (case phase
-                :discussion (set ready)
-                :nomination (set nomination-done)
-                :vote (set (keys votes))
-                nil)]
-     (when done
-       (->> living
-            (remove done)
-            (map #(get-in players [% :name]))
-            (remove nil?)
-            sort
-            vec)))))
+(defn waiting-names
+  "Whose turn it still is, by name, for the phases where the answer is public.
+   Silence is the thing players find most confusing, so say who it belongs to.
+   Night is absent on purpose: naming the players still to act would leak which
+   roles are alive.
+
+   Never the Spielleiter. He is in `:players` because he has a seat, and alive
+   because nobody ever kills him, but the game is not waiting on him — listing
+   him made every narrated day look one ballot short forever. Which seat is his
+   arrives in the view; nothing here decides it. Pure and public so that is
+   testable without a browser."
+  [{:keys [phase players ready nomination-done votes narrator]}]
+  (let [living (keep (fn [[id p]] (when (and (:alive? p) (not= id narrator)) id)) players)
+        done (case phase
+               :discussion (set ready)
+               :nomination (set nomination-done)
+               :vote (set (keys votes))
+               nil)]
+    (when done
+      (->> living
+           (remove done)
+           (map #(get-in players [% :name]))
+           (remove nil?)
+           sort
+           vec))))
+
+(rf/reg-sub ::waiting-for :<- [::view] (fn [v _] (waiting-names v)))
 
 (rf/reg-sub
  ::seconds-left
