@@ -562,3 +562,31 @@
               {:type :client/media :room "werwolf-zzzz"})))
     (is (not (proto/valid-client-message?
               {:type :client/media :identity "werwolf-abcd-p0"})))))
+
+(deftest who-is-in-the-call-is-shown-to-the-whole-table
+  (with-deps [deps]
+    (let [host  (seat! deps {:type :client/create :name "Anna" :locale :de})
+          room  (:room-id (last-of host :server/welcome))
+          guest (seat! deps {:type :client/join :room-id room :name "Bob"})
+          voice #(:voice (:view (last-of % :room/view)))]
+      (is (= #{} (voice guest)) "nobody yet")
+      (protocol/dispatch deps host {:type :client/voice :joined? true})
+      (testing "the guest, who is not in the call, sees that the host is"
+        (is (= #{0} (voice guest))))
+      (testing "a second tab hanging up does not take the player out of the call"
+        (let [tab2 (sock)]
+          (protocol/dispatch deps tab2 {:type :client/resume :room-id room
+                                        :token (:token (last-of host :server/welcome))})
+          (protocol/dispatch deps tab2 {:type :client/voice :joined? false})
+          (is (= #{0} (voice guest)))
+          (protocol/on-close deps tab2)))
+      (testing "the socket in the call closing ends it"
+        (protocol/on-close deps host)
+        (is (= #{} (voice guest))))))
+  (testing "an unseated socket has no seat to report for"
+    (with-deps [deps]
+      (let [s (sock)]
+        (protocol/dispatch deps s {:type :client/voice :joined? true})
+        (is (= [:not-in-room] (codes s))))))
+  (testing "the message names nobody — only its sender's own seat"
+    (is (not (proto/valid-client-message? {:type :client/voice :joined? true :player 3})))))

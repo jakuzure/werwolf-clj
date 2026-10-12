@@ -596,3 +596,30 @@
       (is (= [quiet] (sub/latest-news [died {:type :night/began} quiet noise noise]))))
     (testing "nothing to report is nil, not an empty line"
       (is (nil? (sub/latest-news [{:type :game/started} noise]))))))
+
+(deftest the-table-hears-when-you-join-the-call
+  (let [seated (assoc db :me {:room-id "ABCD" :player-id 1} :audio {:state :joining})]
+    (testing "joining is reported while seated"
+      (is (= {:type :client/voice :joined? true}
+             (:werwolf.ws/send (ev/audio-joined-fx {:db seated} nil)))))
+    (testing "a dropped call is reported, a call never joined is not"
+      (is (= {:type :client/voice :joined? false}
+             (:werwolf.ws/send (ev/audio-left-fx {:db (assoc-in seated [:audio :state] :joined)} nil))))
+      (is (nil? (:werwolf.ws/send (ev/audio-left-fx {:db seated} nil)))))
+    (testing "hanging up on the way OUT of a room reports nothing — there is no
+              seat left to report for, and the error would greet the landing page"
+      (is (nil? (:werwolf.ws/send (ev/audio-left-fx {:db (assoc db :audio {:state :joined})} nil)))))))
+
+(deftest a-reconnect-keeps-a-live-call
+  (testing "the welcome after a socket drop asks for credentials again, and that
+            used to reset a call that never dropped to 'join'"
+    (let [in-call (assoc db :audio {:available? true :state :joined :muted? true :speakers #{2}})
+          db' (ev/media-fx in-call {:enabled? true :url "u" :token "t2" :room "r"})]
+      (is (= :joined (get-in db' [:audio :state])))
+      (is (true? (get-in db' [:audio :muted?])))
+      (is (= "t2" (get-in db' [:audio :token])) "while the credential is refreshed")))
+  (testing "and the new socket is told again that this page is in the call"
+    (let [in-call (assoc db :audio {:state :joined})
+          fx (ev/server-message-fx {:db in-call} [nil {:type :server/welcome :room-id "ABCD"
+                                                       :player-id 1 :token "x"}])]
+      (is (= {:type :client/voice :joined? true} (:werwolf.ws/send fx))))))

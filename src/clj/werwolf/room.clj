@@ -157,11 +157,27 @@
 (defn- deliver! [ctx sink msg]
   ((:send! ctx) sink msg))
 
+(defn- in-voice
+  "The seats with at least one socket in the call. Per socket underneath, so
+   hanging up in one of two tabs does not take the player out of the call they
+   are still in from the other."
+  [r]
+  (into (sorted-set)
+        (keep (fn [[pid sinks]] (when (some (:voice r #{}) sinks) pid)))
+        (:sinks r)))
+
 (defn- send-view! [ctx r pid]
   (doseq [sink (get-in r [:sinks pid])]
     (deliver! ctx sink {:type :room/view
                         :seq  (:seq r)
-                        :view (engine/view-for (:state r) pid)})))
+                        ;; Who is in the voice call rides along with the view.
+                        ;; It is not game state — the engine never sees it and
+                        ;; the log never records it — but it is public: everyone
+                        ;; shares one call, so being in it says nothing about a
+                        ;; role, and seeing who is already there is what tells
+                        ;; a newcomer the call is where the game is.
+                        :view (assoc (engine/view-for (:state r) pid)
+                                     :voice (in-voice r))})))
 
 (defn- broadcast!
   "Give every SEATED connected player their own view of the room.
@@ -263,6 +279,9 @@
    :state      nil
    :seq        0
    :sinks      {}
+   ;; Sockets whose page says it is in the voice call. Reported by the client,
+   ;; because the server only mints call tokens and never asks the SFU who came.
+   :voice      #{}
    :chat       []
    :lock       (Object.)
    :created-at (System/currentTimeMillis)
@@ -380,6 +399,23 @@
               (settle-host! ctx room-id)
               {:room-id room-id :player-id pid}))))))
 
+(defn set-voice!
+  "Record that a socket's page joined or left the voice call, and repaint the
+   room if that changed who is in it. Returns {:ok? true} or {:error ..}.
+
+   Taken on the client's word, and that is fine: it decides nothing. The worst a
+   lying client can do is show a headset on its own card."
+  [ctx sink joined?]
+  (if-let [[room-id _] (get @(:index ctx) sink)]
+    (with-room ctx room-id
+      (fn [r]
+        (let [r' (update r :voice (fnil (if joined? conj disj) #{}) sink)]
+          (swap! (:rooms ctx) update room-id #(when % (assoc % :voice (:voice r'))))
+          (when (not= (in-voice r) (in-voice r'))
+            (broadcast! ctx (room-of ctx room-id)))
+          {:ok? true})))
+    {:error :not-in-room}))
+
 (defn seated?
   "Is `pid` a player in this room? The question a reconnect token answers."
   [ctx room-id pid]
@@ -445,10 +481,16 @@
           (swap! (:rooms ctx) update room-id
                  (fn [rm] (when rm (-> rm
                                        (assoc-in [:sinks pid] remaining)
+                                       (update :voice (fnil disj #{}) sink)
                                        (assoc :last-activity (System/currentTimeMillis))))))
-          (when (empty? remaining)
+          (cond
+            (empty? remaining)
             (apply-server-events! ctx (room-of ctx room-id)
-                                  [{:type :player/connection :player pid :connected? false}]))
+                                  [{:type :player/connection :player pid :connected? false}])
+
+            ;; A closed tab that was the one in the call.
+            (not= (in-voice r) (in-voice (room-of ctx room-id)))
+            (broadcast! ctx (room-of ctx room-id)))
           {:room-id room-id :player-id pid})))))
 
 (defn- release-seat!
@@ -471,16 +513,23 @@
    time. With none left, taking the seat back with its token is a reconnect like
    any other."
   [ctx room-id pid]
-  (let [sinks (get-in (room-of ctx room-id) [:sinks pid])]
+  (let [sinks (get-in (room-of ctx room-id) [:sinks pid])
+        voiced? (contains? (in-voice (room-of ctx room-id)) pid)]
     (swap! (:rooms ctx) update room-id
            (fn [rm] (when rm (-> rm
                                  (update :sinks dissoc pid)
+                                 (update :voice #(reduce disj (or % #{}) sinks))
                                  (assoc :last-activity (System/currentTimeMillis))))))
     (swap! (:index ctx)
            (fn [ix] (reduce (fn [m s] (cond-> m (= [room-id pid] (get m s)) (dissoc s)))
                             ix sinks)))
     (doseq [sink sinks]
-      (deliver! ctx sink {:type :server/left :room-id room-id}))))
+      (deliver! ctx sink {:type :server/left :room-id room-id}))
+    ;; The commit announcing the departure went out while these sockets still
+    ;; counted as in the call. Mid-game the seat stays on the board, so without
+    ;; a repaint it would keep a headset nobody is behind.
+    (when voiced?
+      (broadcast! ctx (room-of ctx room-id)))))
 
 ;; ---------------------------------------------------------------- commands ---
 

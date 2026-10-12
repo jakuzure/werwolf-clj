@@ -120,6 +120,9 @@
 (rf/reg-sub ::players  :<- [::view] (fn [v _] (:players v)))
 (rf/reg-sub ::me-view  :<- [::view] (fn [v _] (:me v)))
 (rf/reg-sub ::log      :<- [::view] (fn [v _] (:log v)))
+;; Seats in the voice call. Sent alongside the view by the room, not by the
+;; engine — see room/in-voice.
+(rf/reg-sub ::in-voice :<- [::view] (fn [v _] (set (:voice v))))
 (rf/reg-sub ::votes    :<- [::view] (fn [v _] (or (:votes v) {})))
 (rf/reg-sub ::nominations :<- [::view] (fn [v _] (or (:nominations v) #{})))
 (rf/reg-sub ::known-roles :<- [::view] (fn [v _] (or (:known-roles v) {})))

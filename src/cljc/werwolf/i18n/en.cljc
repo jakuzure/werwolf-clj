@@ -239,6 +239,9 @@
    ;; gesture, and opening one because somebody loaded a page is the wrong
    ;; default anyway. `:voice/everyone-hears` is deliberately plain about the
    ;; rule — the server enforces no phase muting, so the UI must not imply it.
+   :voice/in-call        "in call"
+   :voice/in-call-list   "In the call"
+   :voice/nobody-in-call "Nobody is in the call yet."
    :voice/title          "Voice"
    :voice/join           "🎧 Join voice"
    :voice/joining        "Connecting…"

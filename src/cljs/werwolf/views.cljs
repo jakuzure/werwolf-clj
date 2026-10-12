@@ -139,6 +139,7 @@
                         :votes   "bg-slate-600 text-slate-100 "
                         :lover   "bg-pink-900 text-pink-200 "
                         :mayor   "bg-amber-700 text-amber-50 "
+                        :voice   "bg-sky-900 text-sky-200 "
                         "bg-slate-700 text-slate-200 "))}
    label])
 
@@ -359,7 +360,9 @@
           ;; honesty applies here. Outside a secure context there is no
           ;; microphone to open, so say that instead of showing a button whose
           ;; only outcome is an error.
-          secure? (and (exists? js/isSecureContext) js/isSecureContext)]
+          secure? (and (exists? js/isSecureContext) js/isSecureContext)
+          players @(rf/subscribe [::sub/players])
+          in-call (sort (keep #(get-in players [% :name]) @(rf/subscribe [::sub/in-voice])))]
       [:div {:class "rounded-xl border border-slate-700 bg-slate-900/80 px-4 py-3
                      flex flex-wrap items-center gap-3"}
        [:span {:class "text-sm font-bold uppercase tracking-wide text-slate-400"}
@@ -377,7 +380,14 @@
                    [btn (t :voice/leave) #(rf/dispatch [::ev/leave-audio]) {:tone :quiet}]]
          nil)
        (when (= :joined state)
-         [:span {:class "text-xs text-slate-500"} (t :voice/everyone-hears)])])))
+         [:span {:class "text-xs text-slate-500"} (t :voice/everyone-hears)])
+       ;; Who is already there, so joining is an answer to "are the others in
+       ;; the call?" rather than a leap.
+       [:div {:class "basis-full text-sm" :data-testid "in-call"}
+        (if (seq in-call)
+          [:<> [:span {:class "text-slate-400"} (str (t :voice/in-call-list) ": ")]
+           [:span {:class "text-sky-200"} (str/join ", " in-call)]]
+          [:span {:class "text-slate-500"} (t :voice/nobody-in-call)])]])))
 
 ;; ------------------------------------------------------------- player cards ---
 
@@ -455,6 +465,7 @@
         ;; muted by the server — so who is talking reveals nothing. It would NOT
         ;; be safe under the plan's permission table, where the wolves' absence
         ;; from the main room identifies them. See werwolf.media.
+        in-voice @(rf/subscribe [::sub/in-voice])
         talking? (sub/speaking? @(rf/subscribe [::sub/speaking]) id)]
     [:div {:class (str "rounded-xl border-2 p-3 transition select-none "
                        (cond
@@ -492,6 +503,7 @@
         (when (= id (:mayor view)) [pill (t :badge/mayor) :mayor])
         (when-not alive? [pill (t :game/dead) :dead])
         (when (false? connected?) [pill (t :game/absent) :absent])
+        (when (contains? in-voice id) [pill (str "🎧 " (t :voice/in-call)) :voice])
         (when role [pill (str (i18n/icon-of role) " " (role-name role)) :role])
         ;; His own lover, or — for the Spielleiter, whose notes name both — either.
         (when (or (= id (:lover me)) (some #{id} (:lovers narrator-info)))
