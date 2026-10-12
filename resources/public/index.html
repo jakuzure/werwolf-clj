@@ -5,6 +5,22 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Werwölfe von Finsterbach</title>
     <link rel="stylesheet" href="/css/main.css">
+    <!-- Installable from the home screen. There is deliberately no service
+         worker: Chrome no longer needs one to offer the install, and a caching
+         worker would undo the no-cache rule in http.clj and hand players the
+         previous bundle after a deploy. A game played over a live socket has
+         nothing to do offline anyway. -->
+    <link rel="manifest" href="/manifest.webmanifest">
+    <link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
+    <meta name="theme-color" content="#0f172a">
+    <!-- iOS has no install prompt and reads little of the manifest: these give
+         "Zum Home-Bildschirm" a real icon, a short label and a dark status bar.
+         Not black-translucent: the layout has no safe-area padding, so the page
+         must stay out from under the notch. -->
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+    <meta name="apple-mobile-web-app-title" content="Werwölfe">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black">
   </head>
   <body class="bg-slate-900">
     <div id="app"></div>

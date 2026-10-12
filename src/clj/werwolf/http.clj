@@ -114,5 +114,13 @@
   (ring/ring-handler
    (router deps)
    (ring/routes
-    (wrap-revalidate (ring/create-resource-handler {:path "/" :root "public"}))
+    ;; ring's mime table predates web app manifests and would send this one
+    ;; with no type at all. Chrome is lenient about that, but the spec names
+    ;; the type and nothing obliges every browser to guess. The manifest and
+    ;; icons go through wrap-revalidate like everything else: they are small, a
+    ;; 304 costs nothing, and a changed icon or name then reaches phones on the
+    ;; next launch instead of whenever a heuristic cache next looks.
+    (wrap-revalidate (ring/create-resource-handler
+                      {:path "/" :root "public"
+                       :mime-types {"webmanifest" "application/manifest+json"}}))
     (ring/create-default-handler))))

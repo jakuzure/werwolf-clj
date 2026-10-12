@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- A wolf howling at the full moon, cut out of the moon in the app's own
+       slate-900 so it reads as one shape even at favicon size. This file is the
+       favicon and the source of the 192/512 PNGs; maskable.svg is the same
+       artwork on a full-bleed background. Regenerate the PNGs with:
+         rsvg-convert -w 192 icon.svg -o icon-192.png
+         rsvg-convert -w 512 icon.svg -o icon-512.png
+         rsvg-convert -w 512 maskable.svg -o maskable-512.png
+         rsvg-convert -w 180 maskable.svg -o apple-touch-icon.png
+       then shrink them with pngquant and oxipng, since every phone that
+       installs the game downloads them. -->
+  <defs>
+    <radialGradient id="glow">
+      <stop offset=".7" stop-color="#6366f1" stop-opacity=".35"/>
+      <stop offset="1" stop-color="#6366f1" stop-opacity="0"/>
+    </radialGradient>
+    <clipPath id="moon"><circle cx="256" cy="256" r="172"/></clipPath>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="#0f172a"/>
+  <circle cx="256" cy="256" r="236" fill="url(#glow)"/>
+  <circle cx="256" cy="256" r="172" fill="#e0e7ff"/>
+  <g clip-path="url(#moon)">
+    <path fill="#0f172a" d="M112 480 L136 396 L118 388 L152 356 L138 346 L170 318 C176 298 182 276 186 256 L178 140 L240 212 C250 207 260 203 272 200 L318 132 C328 118 348 120 354 134 C358 142 356 150 352 156 L326 204 L352 182 C362 176 370 186 364 194 L344 222 C336 234 330 244 322 252 L342 284 L322 288 L350 330 L328 334 L358 380 L338 384 L372 480 Z"/>
+    <path fill="#e0e7ff" d="M252 236 L278 222 L274 236 Z"/>
+  </g>
+</svg>
