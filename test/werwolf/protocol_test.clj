@@ -34,6 +34,10 @@
 (defn- deps-on [path]
   (let [rooms (room/registry {:ds (store/open {:dbtype "sqlite" :dbname path})
                               :send! (fn [sock msg] (swap! sock conj msg))
+                              ;; The creator PLAYS here: these tests deal a
+                              ;; table and count its seats, and were written
+                              ;; when the creator was always one of them.
+                              :game {:narrated? false}
                               :after-commit (timer/hook game-cfg)})]
     {:rooms rooms
      :tokens tokens-cfg
@@ -110,9 +114,108 @@
 (deftest one-socket-cannot-seat-itself-twice
   (testing "every seat but the last would be a ghost nothing can reconnect to"
     (with-deps [deps]
-      (let [s (seat! deps {:type :client/create :name "Anna"})]
+      (let [s (seat! deps {:type :client/create :name "Anna"})
+            {:keys [room-id]} (last-of s :server/welcome)]
         (protocol/dispatch deps s {:type :client/create :name "Anna Again"})
-        (is (= [:already-in-room] (codes s)))))))
+        (is (= [room-id] (room/room-ids (:rooms deps))) "no second room")
+        (is (= 1 (count (:players (room/state-of (:rooms deps) room-id)))))
+        (testing "a socket seated in one room asking to join ANOTHER is a real
+                  conflict, and is still refused"
+          (let [other (:room-id (last-of (seat! deps {:type :client/create
+                                                      :name "Bea"})
+                                         :server/welcome))]
+            (swap! s empty)
+            (protocol/dispatch deps s {:type :client/join :room-id other
+                                       :name "Anna"})
+            (is (= [:already-in-room] (codes s)))
+            (is (= 1 (count (:players (room/state-of (:rooms deps) other)))))))))))
+
+(deftest a-repeated-create-or-join-is-answered-with-the-seat-you-have
+  (testing "a double tap, or a join queued while the socket was reconnecting,
+            reached the server twice. The first seated the player and the second
+            was answered :already-in-room — so the client showed an error over
+            the room it had in fact just entered"
+    (with-deps [deps]
+      (let [host (seat! deps {:type :client/create :name "Anna"})
+            code (:room-id (last-of host :server/welcome))
+            guest (seat! deps {:type :client/join :room-id code :name "Bob"})]
+        (protocol/dispatch deps guest {:type :client/join :room-id code :name "Bob"})
+        (is (empty? (errors guest)))
+        (is (= [1 1] (mapv :player-id (of-type guest :server/welcome)))
+            "the same seat, confirmed again")
+        (is (= 2 (count (:players (room/state-of (:rooms deps) code))))
+            "and no ghost seat beside it")
+        (testing "each welcome is followed by a view, since a welcome makes the
+                  client drop the one it had"
+          (is (= :room/view (:type (last (got guest))))))
+        (testing "a double-tapped create likewise"
+          (protocol/dispatch deps host {:type :client/create :name "Anna"})
+          (is (empty? (errors host)))
+          (is (= [code code] (mapv :room-id (of-type host :server/welcome))))
+          (is (= [code] (room/room-ids (:rooms deps)))))))))
+
+;; ------------------------------------------------------------------- leave ---
+
+(def ^:private leave {:type :client/command :cmd {:type :leave}})
+
+(deftest after-leaving-the-same-page-can-create-or-join-again
+  (testing "the reported 'you are already in a round': leave is a game command,
+            and nothing on that path unbound the socket, so the page that had
+            just left was refused every create and join until it reloaded"
+    (with-deps [deps]
+      (let [s (seat! deps {:type :client/create :name "Anna"})
+            first-room (:room-id (last-of s :server/welcome))]
+        (protocol/dispatch deps s leave)
+        (swap! s empty)
+        (protocol/dispatch deps s {:type :client/create :name "Anna"})
+        (is (empty? (errors s)))
+        (let [second-room (:room-id (last-of s :server/welcome))]
+          (is (some? second-room))
+          (is (not= first-room second-room))
+          (testing "and joining someone else's room works the same way"
+            (let [bea (seat! deps {:type :client/create :name "Bea"})
+                  code (:room-id (last-of bea :server/welcome))]
+              (protocol/dispatch deps s leave)
+              (swap! s empty)
+              (protocol/dispatch deps s {:type :client/join :room-id code :name "Anna"})
+              (is (empty? (errors s)))
+              (is (= code (:room-id (last-of s :server/welcome))))
+              (is (= 2 (count (:players (room/state-of (:rooms deps) code))))))))))))
+
+(deftest leaving-in-one-tab-releases-the-other
+  (with-deps [deps]
+    (let [a (seat! deps {:type :client/create :name "Anna"})
+          {:keys [room-id token]} (last-of a :server/welcome)
+          b (sock)]
+      (protocol/dispatch deps b {:type :client/resume :room-id room-id :token token})
+      (is (empty? (errors b)))
+      (protocol/dispatch deps a leave)
+      (is (= {:type :server/left :room-id room-id} (last (got b)))
+          "the other tab is told its seat is gone rather than left on a frozen lobby")
+      (swap! b empty)
+      (protocol/dispatch deps b {:type :client/create :name "Anna"})
+      (is (empty? (errors b)) "and is free to start somewhere else"))))
+
+(deftest leaving-mid-game-frees-the-page-and-keeps-the-seat
+  (with-deps [deps]
+    (let [host (seat! deps {:type :client/create :name "P0"})
+          code (:room-id (last-of host :server/welcome))
+          guests (mapv #(seat! deps {:type :client/join :room-id code :name (str "P" %)})
+                       (range 1 5))
+          leaver (first guests)
+          {:keys [token]} (last-of leaver :server/welcome)]
+      (protocol/dispatch deps host {:type :client/command :cmd {:type :start-game}})
+      (protocol/dispatch deps leaver leave)
+      (is (room/seated? (:rooms deps) code 1) "the role still matters to the game")
+      (swap! leaver empty)
+      (protocol/dispatch deps leaver {:type :client/create :name "P1"})
+      (is (empty? (errors leaver)))
+      (testing "and the token still names the seat, so walking back in works"
+        (let [back (sock)]
+          (protocol/dispatch deps back {:type :client/resume :room-id code :token token})
+          (is (empty? (errors back)))
+          (is (true? (get-in (room/state-of (:rooms deps) code)
+                             [:players 1 :connected?]))))))))
 
 ;; ------------------------------------------------------------- validation ---
 

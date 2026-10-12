@@ -6,7 +6,8 @@
    assignment map so a test can say 'player 0 is the Jäger' and mean it."
   (:require [werwolf.engine.core :as engine]
             [werwolf.engine.events :as e]
-            [werwolf.engine.phases :as phases]))
+            [werwolf.engine.phases :as phases]
+            [werwolf.engine.roles :as roles]))
 
 (defn- game-with* [assignments first-night-kill? election?]
   (let [n (count assignments)
@@ -43,6 +44,40 @@
   ([assignments {:keys [first-night-kill? election?]
                  :or   {first-night-kill? true election? false}}]
    (game-with* assignments first-night-kill? election?)))
+
+(defn narrated-lobby
+  "A NARRATED lobby: the Spielleiter in seat 0 and `n` players in seats 1..n.
+   The clock is off, as `room/create!` opens a narrated room."
+  ([n] (narrated-lobby n {}))
+  ([n {:keys [max-players first-night-kill?] :or {first-night-kill? true}}]
+   (e/replay (into [{:type :game/created :room-id "TEST" :host 0 :seed 1
+                     :min-players 5 :max-players max-players
+                     :first-night-kill? first-night-kill?
+                     :narrated? true :timer? false}]
+                   (map (fn [i] {:type :player/joined :player i
+                                 :name (str "P" i) :locale :de}))
+                   (range (inc n))))))
+
+(defn narrated-setup-with
+  "A narrated game in :setup with the given {player-id role-id} assignment for
+   seats 1..n — the Spielleiter in seat 0 holds nothing."
+  ([assignments] (narrated-setup-with assignments {}))
+  ([assignments opts]
+   (-> (narrated-lobby (count assignments) opts)
+       (e/apply-all [{:type :game/started :assignments assignments
+                      :centre (roles/centre-for (vals assignments))}
+                     {:type :phase/changed :phase :setup :deadline nil}]))))
+
+(defn narrated-game-with
+  "The same, past setup: night 1 has fallen and settled. Like `game-with`, the
+   election is marked held and the classic first night is on unless asked."
+  ([assignments] (narrated-game-with assignments {}))
+  ([assignments {:keys [election?] :as opts}]
+   (first
+    (phases/settle
+     (-> (narrated-setup-with assignments opts)
+         (cond-> (not election?) (assoc :election-held? true))
+         (e/apply-event {:type :night/began :night 1}))))))
 
 (defn exec!
   "Run a command, THROWING on rejection. Tests must not silently no-op — that is

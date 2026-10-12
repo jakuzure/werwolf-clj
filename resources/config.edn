@@ -32,6 +32,12 @@
            ;; first night, so nobody is eliminated before they have said a word.
            ;; true restores the classic Düsterwald rule.
            :first-night-kill? #boolean #or [#env FIRST_NIGHT_KILL "false"]
+           ;; Whether a new room's creator narrates rather than plays. true
+           ;; (default): the creator is the Spielleiter — dealt no card, sees
+           ;; every card, and the room starts without a clock. The host can
+           ;; switch either in the lobby. false restores the creator as an
+           ;; ordinary player with GM powers on the side.
+           :narrated?       #boolean #or [#env NARRATED "true"]
            ;; A room nobody is connected to is dropped after this long. Aimed at
            ;; lobbies somebody opened and closed the tab on: they would otherwise
            ;; be listed to every newcomer forever.

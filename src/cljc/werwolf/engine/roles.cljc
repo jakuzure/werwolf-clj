@@ -274,6 +274,16 @@
    and is therefore not implemented. He may always decline."
   [:werwolf :dorfbewohner])
 
+(defn centre-for
+  "The spare cards a table holding these roles needs: the Dieb's two, or none.
+
+   A function of the cards in play rather than of the table size, so the
+   Spielleiter's setup step can ask it again after rearranging the deal — making
+   somebody the Dieb has to put his two cards on the table, and taking the card
+   away has to clear them."
+  [dealt-roles]
+  (if (some #{:dieb} dealt-roles) (vec centre-extras) []))
+
 (defn compose-deck
   "The full deal: `{:deck [n roles] :centre [roles]}`.
 
@@ -284,4 +294,4 @@
   [n]
   (let [deck (compose-roles n)]
     {:deck   deck
-     :centre (if (some #{:dieb} deck) (vec centre-extras) [])}))
+     :centre (centre-for deck)}))

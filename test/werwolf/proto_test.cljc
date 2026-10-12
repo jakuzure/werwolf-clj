@@ -29,8 +29,13 @@
                    (comp (mapcat :history)
                          (remove :no-target)
                          (remove :rejected))
-                   (for [[n seed] [[5 11] [7 22] [9 33] [12 44] [18 55]]]
-                     (h/play-game n seed)))]
+                   (concat
+                    (for [[n seed] [[5 11] [7 22] [9 33] [12 44] [18 55]]]
+                      (h/play-game n seed))
+                    ;; The Spielleiter's own moves — beginning the night,
+                    ;; ending the phases the clock used to — cross the wire too.
+                    (for [[n seed] [[6 66] [10 77]]]
+                      (h/play-game n seed {:narrated? true}))))]
     (is (> (count cmds) 200) "the corpus is real games, not a handful of moves")
     (doseq [cmd cmds]
       (is (proto/valid-client-message? (as-wire cmd))
@@ -46,8 +51,11 @@
             will carry, or the UI shows a button whose click is rejected"
     (let [offered (into #{}
                         (comp (mapcat :history) (map :type))
-                        (for [[n seed] [[5 11] [9 33] [18 55]]]
-                          (h/play-game n seed)))
+                        (concat
+                         (for [[n seed] [[5 11] [9 33] [18 55]]]
+                           (h/play-game n seed))
+                         (for [[n seed] [[6 66] [10 77]]]
+                           (h/play-game n seed {:narrated? true}))))
           unlisted (remove proto/command-types offered)]
       (is (empty? unlisted) (str "not in the whitelist: " (pr-str unlisted))))))
 
@@ -58,6 +66,19 @@
     (let [handled (set (keys (methods commands/handle)))]
       (doseq [c proto/command-types]
         (is (contains? handled c) (str c " is on the whitelist but unhandled"))))))
+
+(deftest the-spielleiters-switches-are-on-the-wire
+  (testing "the simulation never issues GM overrides, so the corpus above cannot
+            vouch for these; say it out loud instead"
+    (doseq [cmd [{:type :begin-night}
+                 {:type :gm/toggle-narrated}
+                 {:type :gm/toggle-timer}
+                 {:type :gm/transfer-host :target 2}
+                 {:type :gm/reassign-role :target 2 :role :hexe}]]
+      (is (proto/valid-client-message? (as-wire cmd)) (pr-str cmd)))
+    (doseq [a [:begin-night :gm/toggle-narrated :gm/toggle-timer]]
+      (is (contains? phases/no-target-actions a)
+          (str a " names nobody, so it must be offerable without a target")))))
 
 (deftest declining-is-always-targetless
   (testing "every 'no' action must be sendable without a target, or the UI has

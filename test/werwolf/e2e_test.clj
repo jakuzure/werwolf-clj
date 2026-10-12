@@ -45,7 +45,10 @@
                                 :night-secs 45 :reaction-secs 30
                                 ;; Classic first night, so Amor and the wolves
                                 ;; are both awake in the same night.
-                                :first-night-kill? true}}))]
+                                :first-night-kill? true
+                                ;; The creator plays: the scripted game below
+                                ;; deals a card to every socket it opens.
+                                :narrated? false}}))]
     {:system sys
      :port (hk/server-port (::main/server sys))}))
 

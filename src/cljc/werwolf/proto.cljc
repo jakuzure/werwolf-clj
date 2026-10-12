@@ -39,6 +39,9 @@
     :hexe-heal :hexe-poison :hexe-pass
     :jaeger-shoot :jaeger-pass
     :ready :nominate :nominate-pass :vote :vote-abstain :advance-phase
+    ;; The Spielleiter's: ending the setup step, and arranging the table.
+    :begin-night
+    :gm/toggle-narrated :gm/toggle-timer :gm/transfer-host
     :gm/force-kill :gm/revive :gm/skip-role :gm/set-phase :gm/reassign-role
     :gm/pause :gm/resume :gm/add-time})
 
@@ -65,8 +68,11 @@
     :client/ping :client/rooms :client/media})
 
 (def server-message-types
+  ;; :server/left — your seat's sockets have been released because the player
+  ;; left, possibly from another tab. Carries the room it is about, so a page
+  ;; that has since sat down somewhere else can tell it is not about them.
   #{:server/hello :server/welcome :server/error :server/pong :server/rooms
-    :server/media
+    :server/media :server/left
     :room/view :room/chat :room/chat-history})
 
 ;; ------------------------------------------------------------------ schemas ---

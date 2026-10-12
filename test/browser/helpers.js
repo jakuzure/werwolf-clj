@@ -77,10 +77,16 @@ const DE = {
   join: 'Runde beitreten',
   start: 'Spiel starten',
   leave: 'Runde verlassen',
+  leaveConfirm: 'Wirklich verlassen?',
   voiceJoin: 'Sprache beitreten',
   mute: 'Stumm schalten',
   unmute: 'Stummschaltung aufheben',
   voiceLeave: 'Verlassen',
+  // A new room is NARRATED by default: its creator is the Spielleiter, dealt no
+  // card, and the game passes through a setup step he ends himself.
+  beginNight: /^Erste Nacht beginnen/,
+  playAlong: 'Ich spiele mit',
+  narrator: 'Spielleiter',
 };
 
 /** Every frame the server sent this page, decoded far enough to inspect. */
@@ -105,6 +111,10 @@ async function createRoom(page, name) {
   await landOn(page);
   await page.getByPlaceholder(DE.name).fill(name);
   await page.getByRole('button', { name: DE.create }).click();
+  // Wait for the lobby before reading. The landing screen lists open rooms in
+  // the same monospace, so reading too early returns some OTHER room's code —
+  // which, now that the list fills itself, is whatever the last test left open.
+  await expect(page.getByRole('button', { name: DE.leave })).toBeVisible();
   // The lobby shows the code in a tracking-wide monospace block; it is the only
   // four-character A-Z2-9 string on the screen.
   const code = await page.locator('.font-mono').first().innerText();
@@ -154,6 +164,31 @@ async function seatTable(browser, names) {
   return { code, pages, frames };
 }
 
+/**
+ * Switch a fresh room to the old table, where the creator plays like everyone
+ * else and the clock runs. For specs that are about something other than the
+ * Spielleiter — and need every page to be dealt a card.
+ */
+async function playAlong(hostPage) {
+  await hostPage.getByTestId('toggle-narrated').click();
+  await expect(hostPage.getByRole('button', { name: 'Ich leite das Spiel' })).toBeVisible();
+}
+
+/**
+ * Start a NARRATED game and end its setup step: the Spielleiter deals, every
+ * player sees a card, and he begins the first night. `slPage` is the creator;
+ * `playerPages` are everyone else.
+ */
+async function startNarrated(slPage, playerPages) {
+  await slPage.getByRole('button', { name: DE.start }).click();
+  for (const p of playerPages) {
+    await expect(p.getByTestId('my-role')).toBeVisible({ timeout: 20_000 });
+  }
+  await expect(slPage.getByTestId('my-role')).toHaveText(DE.narrator, { timeout: 20_000 });
+  await slPage.getByRole('button', { name: DE.beginNight }).click();
+  await expect(slPage.getByRole('heading', { name: 'Nacht' })).toBeVisible({ timeout: 20_000 });
+}
+
 async function closeAll(pages) {
   for (const p of pages) {
     await p.context().close().catch(() => {});
@@ -177,5 +212,5 @@ async function liveKitUp(request, url = 'http://localhost:7880') {
 
 module.exports = {
   DE, captureFrames, landOn, createRoom, joinRoom, seatTable, closeAll, liveKitUp,
-  readFrame, foreignRoles, myIdFrom,
+  readFrame, foreignRoles, myIdFrom, playAlong, startNarrated,
 };

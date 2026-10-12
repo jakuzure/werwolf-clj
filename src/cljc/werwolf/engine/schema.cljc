@@ -19,6 +19,7 @@
 (def Phase
   [:enum
    :lobby        ; waiting for players, host may start
+   :setup        ; narrated rooms only: cards dealt, the Spielleiter may rearrange them
    :night        ; roles act in night-order
    :election     ; day 1 only: the village elects a Bürgermeister
    :day-reveal   ; announce who died overnight
@@ -51,7 +52,11 @@
 (def Reaction
   "An interrupt that must resolve before the phase machine advances."
   [:map
-   [:type [:enum :reaction/jaeger-shot :reaction/lover-follows]]
+   ;; :reaction/mayor-succession was missing here from the day the office was
+   ;; added; the schema walk over a narrated simulated game was the first to
+   ;; reach a dying Bürgermeister.
+   [:type [:enum :reaction/jaeger-shot :reaction/lover-follows
+           :reaction/mayor-succession]]
    [:player PlayerId]
    [:cause {:optional true} :keyword]])
 
@@ -70,6 +75,13 @@
    [:max-players {:optional true} :int]
    ;; Rule variant: false (default) means no werewolf turn on night 1.
    [:first-night-kill? {:optional true} :boolean]
+   ;; The host is the Spielleiter and does not play: no card, no vote, never a
+   ;; target. Absent means the host plays, which is how every log written before
+   ;; this existed replays. See events/narrator.
+   [:narrated? {:optional true} :boolean]
+   ;; Whether the room has a clock at all. Absent means it does — again, the old
+   ;; behaviour. A narrated room opens with it off.
+   [:timer? {:optional true} :boolean]
    [:lovers {:optional true} [:maybe [:set PlayerId]]]
    ;; The two cards nobody was dealt, which the Dieb chooses between on the first
    ;; night. Empty in games without one. PRIVATE to him — `view-for` publishes it

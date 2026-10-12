@@ -25,6 +25,15 @@
      * every player's id, name, alive/connected status  (public)
      * the public log, phase, night number, votes, nominations  (public)
      * once the game is over, all roles are revealed
+     * the Spielleiter, who plays no card, sees every card — see below
+
+   Note on the Spielleiter: in a narrated room the host does not play, and his
+   job is the one a human narrator does at a real table, which is impossible
+   without knowing who holds what. He is entitled to every role from the deal
+   on, and that entitlement goes through `revealed-roles` like every other, so
+   the leak detector holds him to exactly it. He can never be the source of a
+   leak through the game itself: he has no vote, no target and no night turn,
+   and nothing he sees is routed to anybody else.
 
    Note on dead players: they do NOT get a full role reveal by default. Many
    digital clones grant the dead an all-seeing 'ghost view', but that turns any
@@ -89,6 +98,16 @@
       ;; The game is finished: full reveal for everyone.
       game-over? (all-roles)
 
+      ;; The Spielleiter narrates; he cannot do it blind. `some?` because a nil
+      ;; pid must never compare equal to the nil narrator of an un-narrated room.
+      (and (some? pid) (= pid (e/narrator state))) (all-roles)
+
+      ;; The deal is not final until the night falls: the Spielleiter may still
+      ;; move any card. So a player sees his OWN card and nothing it implies — a
+      ;; wolf who met the pack during setup and was then made a villager would
+      ;; carry the pack's names into the game.
+      (= :setup (:phase state)) (if (:role me) {pid (:role me)} {})
+
       ;; Opt-in ghost view only — see the namespace docstring for why this is
       ;; off by default.
       (and dead? (:reveal-to-dead? state)) (all-roles)
@@ -127,21 +146,34 @@
 
    Werewolves see their own kill vote tally, because they must coordinate.
    The Hexe sees who is currently dying, because that is her whole decision.
-   Nobody else sees any of it."
+   Nobody else sees any of it — except the Spielleiter, who calls the night."
   [state pid]
   (let [role-id (get-in state [:players pid :role])
         alive?  (get-in state [:players pid :alive?])
         cursor  (:night-cursor state)]
-    (cond-> {}
-      ;; Wolves coordinate openly among themselves.
-      (and alive? (= :werwolf role-id))
-      (assoc :werewolf-votes (get-in state [:night-actions :werewolf-votes] {}))
+    (if (and (some? pid) (= pid (e/narrator state)))
+      ;; The Spielleiter sees the whole night as it happens: whom the pack is
+      ;; leaning towards, who is dying, whom the Beschützer stood in front of.
+      ;; Calling "Hexe, wach auf — diese Person wird sterben" is his job, so he
+      ;; has to know who it is. Ids and causes only; roles reach him through
+      ;; `revealed-roles` like everyone else's.
+      (if (= :night (:phase state))
+        (cond-> {:werewolf-votes (get-in state [:night-actions :werewolf-votes] {})
+                 :pending-deaths (mapv #(select-keys % [:player :cause])
+                                       (:pending-deaths state))}
+          (some? (get-in state [:night-actions :protected]))
+          (assoc :protected (get-in state [:night-actions :protected])))
+        {})
+      (cond-> {}
+        ;; Wolves coordinate openly among themselves.
+        (and alive? (= :werwolf role-id))
+        (assoc :werewolf-votes (get-in state [:night-actions :werewolf-votes] {}))
 
-      ;; The Hexe must see the pending victim to decide on the heal.
-      (and alive? (= :hexe role-id) (= :hexe cursor)
-           (:sees-pending-deaths? (roles/role :hexe)))
-      (assoc :pending-deaths (mapv #(select-keys % [:player :cause])
-                                   (:pending-deaths state))))))
+        ;; The Hexe must see the pending victim to decide on the heal.
+        (and alive? (= :hexe role-id) (= :hexe cursor)
+             (:sees-pending-deaths? (roles/role :hexe)))
+        (assoc :pending-deaths (mapv #(select-keys % [:player :cause])
+                                     (:pending-deaths state)))))))
 
 ;; --------------------------------------------------------------- view ---
 
@@ -153,12 +185,21 @@
   [state pid]
   (let [me       (get-in state [:players pid])
         roles-in (revealed-roles state pid)
-        reaction (peek (:reactions state))]
+        reaction (peek (:reactions state))
+        narrator (e/narrator state)
+        narrator? (and (some? pid) (= pid narrator))]
     {;; ---- public ----
      :room-id     (:room-id state)
      :phase       (:phase state)
      :night       (:night state)
      :host        (:host state)
+     ;; Who narrates, if anybody. Public by nature: the table can see who is
+     ;; not playing, and must know whose seat is the Spielleitung's.
+     :narrated?   (boolean (:narrated? state))
+     :narrator    narrator
+     ;; Whether this room runs a clock at all, so the lobby switch and the GM
+     ;; console can say which way it is set.
+     :timer?      (phases/timed? state)
      :deadline    (:deadline state)
      ;; So the countdown can say "PAUSIERT" rather than silently freeze, which
      ;; reads as a broken client.
@@ -196,7 +237,8 @@
                      :knows     (:knows me {})
                      :lover     (lover-of state pid)
                      ;; Whether lovers exist at all is public; who they are is not.
-                     :in-love?  (boolean (lover-of state pid))})
+                     :in-love?  (boolean (lover-of state pid))
+                     :narrator? narrator?})
 
      :lovers-exist? (boolean (seq (:lovers state)))
 
@@ -221,7 +263,15 @@
                           (:type reaction))
 
      ;; ---- night bookkeeping, narrowly scoped ----
-     :night-info  (night-view state pid)}))
+     :night-info  (night-view state pid)
+
+     ;; ---- the Spielleiter's notes, built for him and nobody else ----
+     ;; Who Amor bound together and which two cards lie in the middle for the
+     ;; Dieb: things the narrator has to know to call the night, that no
+     ;; player's own knowledge would ever hand him.
+     :narrator-info (when narrator?
+                      {:lovers (vec (sort (:lovers state)))
+                       :centre (vec (:centre state []))})}))
 
 ;; ------------------------------------------------------- leak detector ---
 

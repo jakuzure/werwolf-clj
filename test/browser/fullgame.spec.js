@@ -9,9 +9,14 @@
 // The tests know who holds which role because each page reads its OWN role off
 // its own screen and the suite collects them. That is aggregation, not a leak,
 // and game.spec.js asserts separately that no single page can do it.
+//
+// Played the way a new room is played: the creator is the Spielleiter, with no
+// card and no clock. Everything below is the players' own moves — nothing waits
+// for a timer — so the game reaches its end exactly as it did when the creator
+// played; the Spielleiter's part is starting it and ending the setup step.
 
 const { test, expect } = require('@playwright/test');
-const { DE, seatTable, closeAll, myIdFrom } = require('./helpers');
+const { DE, seatTable, closeAll, myIdFrom, startNarrated } = require('./helpers');
 const { ACT, actAs, everyone, playNight, playDay } = require('./play');
 
 /** Who is who: [{seat, role, page}], indexed as `pages`. */
@@ -30,15 +35,15 @@ async function identify(pages, frames) {
 const seatOf = (roles, role) => roles.find((r) => r.role === role)?.seat;
 
 async function startAndDeal(browser) {
-  const table = await seatTable(browser, ['Anna', 'Bob', 'Cem', 'Dana', 'Eve']);
-  await table.pages[0].getByRole('button', { name: DE.start }).click();
-  for (const p of table.pages) {
-    await expect(p.getByTestId('my-role')).toBeVisible({ timeout: 20_000 });
-  }
-  const roles = await identify(table.pages, table.frames);
+  const table = await seatTable(browser, ['Sophie', 'Anna', 'Bob', 'Cem', 'Dana', 'Eve']);
+  const [sl, ...players] = table.pages;
+  await startNarrated(sl, players);
+  const roles = await identify(players, table.frames.slice(1));
   // A five-player deck: one wolf, Seherin, Hexe, Jäger, one villager.
   expect(roles.map((r) => r.role).sort())
     .toEqual(['Dorfbewohner', 'Hexe', 'Jäger', 'Seherin', 'Werwolf']);
+  // `pages` keeps the Spielleiter: the sweeps in play.js offer every page every
+  // action, and his simply never shows a player's button.
   return { ...table, roles };
 }
 

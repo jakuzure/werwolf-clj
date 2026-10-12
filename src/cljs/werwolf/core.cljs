@@ -32,8 +32,11 @@
   (ws/connect! (config/websocket-url))
   (when-not @ticker
     ;; One timer for the whole app: countdowns render from :now, so a passing
-    ;; second is one re-render rather than one per player card.
-    (reset! ticker (js/setInterval #(rf/dispatch [::ev/tick]) 500)))
+    ;; second is one re-render rather than one per player card. The landing
+    ;; screen's room list rides it too, and decides for itself how often to ask.
+    (reset! ticker (js/setInterval #(do (rf/dispatch [::ev/tick])
+                                        (rf/dispatch [::ev/poll-rooms]))
+                                   500)))
   (mount!))
 
 (defn reload! []

@@ -54,6 +54,10 @@
       ;; this clause the very next reconcile would helpfully put it back — the
       ;; pause would last about one second.
       (:paused? state)           (when deadline [{:type :phase/deadline :at nil}])
+      ;; A room without a clock — the Spielleiter paces it. Same shape as the
+      ;; pause and for the same reason: whatever deadline is left over from
+      ;; before it was switched off has to go, and none may come back.
+      (not (engine/timed? state)) (when deadline [{:type :phase/deadline :at nil}])
       (and secs (nil? deadline)) [{:type :phase/deadline :at (+ now-ms (* 1000 secs))}]
       (and (not secs) deadline)  [{:type :phase/deadline :at nil}]
       :else nil)))

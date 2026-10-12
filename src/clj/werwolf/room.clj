@@ -113,14 +113,24 @@
    else's phone: anyone who can reach the server can see that a room exists and
    join it. That is right for a private group on a private host, and would want
    revisiting before the server is opened to the public — see the plan's
-   deferred 'public lobby browser'."
+   deferred 'public lobby browser'.
+
+   Not an EMPTY lobby, though it can still be joined by its code: with nobody
+   left there is no host to recognise it by and nobody to play with, and an
+   entry reading '0 / 18' with no name is noise on a phone screen. The code may
+   already be on its way to a friend, so the room itself stays until the idle
+   sweep retires it."
   [ctx]
   (->> (vals (rooms ctx))
        (keep (fn [{s :state}]
+               ;; Players, not seats: a Spielleiter takes no card, so he neither
+               ;; fills the table nor counts towards it — the same count
+               ;; `handle :join` refuses on.
                (when (and (= :lobby (:phase s))
-                          (< (count (:players s)) (:max-players s 18)))
+                          (seq (:players s))
+                          (< (count (engine/participant-ids s)) (:max-players s 18)))
                  {:room-id     (:room-id s)
-                  :players     (count (:players s))
+                  :players     (count (engine/participant-ids s))
                   :max-players (:max-players s 18)
                   :host        (get-in s [:players (:host s) :name])})))
        (sort-by :room-id)
@@ -235,9 +245,17 @@
 
    Recycling would be a security bug, not a tidiness question: reconnect tokens
    name a seat, so handing seat 3 to a newcomer would let the previous
-   occupant's token drive them."
+   occupant's token drive them.
+
+   Counted from every seat ever ISSUED, which the public log remembers, rather
+   than from the seats still taken. Counting the taken ones recycled exactly the
+   seat that mattered: the newest player leaving handed their number — and their
+   token — to the next arrival, and an emptied lobby started again at 0. The log
+   is part of state, so this survives a restart without a counter of its own."
   [state]
-  (let [ids (keys (:players state))]
+  (let [ids (concat (keys (:players state))
+                    (keep #(when (= :player/joined (:type %)) (:player %))
+                          (:log state)))]
     (if (seq ids) (inc (apply max ids)) 0)))
 
 (defn- fresh-room [room-id]
@@ -287,14 +305,21 @@
 
    `min-players`/`max-players` default to the registry's config, which is what
    makes MIN_PLAYERS actually mean something — it was read into config and then
-   never plumbed here, so the limit was silently always 5."
-  [ctx {:keys [name locale min-players max-players seed]}]
+   never plumbed here, so the limit was silently always 5.
+
+   `narrated?` likewise, and it defaults to TRUE when config says nothing: the
+   creator is the Spielleiter, dealt no card, and the room has no clock until
+   somebody switches one on. That is how the game is played at a real table, and
+   the host can change it in the lobby. Whoever needs the old room — the creator
+   playing, the clock running — passes `:narrated? false`, here or in config."
+  [ctx {:keys [name locale min-players max-players seed narrated?]}]
   (let [room-id (reserve-code! ctx)
         cfg (:game ctx)
         min* (max absolute-min-players
                   (or min-players (:min-players cfg) 5))
         max* (max min* (or max-players (:max-players cfg) 18))
-        first-kill? (boolean (:first-night-kill? cfg))]
+        first-kill? (boolean (:first-night-kill? cfg))
+        narrated?* (boolean (if (some? narrated?) narrated? (get cfg :narrated? true)))]
     (with-room ctx room-id
       (fn [r]
         ;; The genesis event is built once and both applied and persisted, so
@@ -305,7 +330,11 @@
                        :seed        (or seed (random-seed))
                        :min-players min*
                        :max-players max*
-                       :first-night-kill? first-kill?}
+                       :first-night-kill? first-kill?
+                       :narrated?   narrated?*
+                       ;; The clock follows the mode, as it does when the host
+                       ;; flips it later — see :game/narrated-set.
+                       :timer?      (not narrated?*)}
               joined  (engine/execute (engine/apply-event nil genesis)
                                       {:type :join :player 0
                                        :name name :locale locale})]
@@ -314,6 +343,28 @@
                 joined)
             (do (commit! ctx r (into [genesis] (:events joined)) (:state joined))
                 {:room-id room-id :player-id 0})))))))
+
+(defn- succession
+  "If the host has walked out of the lobby, hand the powers to the lowest
+   remaining seat. Without this the room is unstartable and no command can fix
+   it — nobody but the host may start a game.
+
+   Asked after a join as well as after a command. When the LAST player leaves
+   there is no heir, so the room keeps a host who is no longer in it; the next
+   person to walk in is the first heir there is, and an empty room has nobody
+   left to issue the command that used to be the only trigger."
+  [state]
+  (let [host (:host state)]
+    (when-not (get-in state [:players host])
+      (when-let [heir (first (sort (keys (:players state))))]
+        [{:type :host/changed :host heir}]))))
+
+(defn- settle-host!
+  "Run `succession` against the room as it now stands. Must run under the lock."
+  [ctx room-id]
+  (let [r (room-of ctx room-id)]
+    (when-let [heir-events (succession (:state r))]
+      (apply-server-events! ctx r heir-events))))
 
 (defn join!
   "Seat a new player. Returns {:room-id .. :player-id n} or {:error ..}."
@@ -326,6 +377,7 @@
         (if (engine/error? res)
           res
           (do (commit! ctx r (:events res) (:state res))
+              (settle-host! ctx room-id)
               {:room-id room-id :player-id pid}))))))
 
 (defn seated?
@@ -399,17 +451,38 @@
                                   [{:type :player/connection :player pid :connected? false}]))
           {:room-id room-id :player-id pid})))))
 
-;; ---------------------------------------------------------------- commands ---
+(defn- release-seat!
+  "Unbind every socket of a player who has just LEFT. Must run under the lock.
 
-(defn- succession
-  "If the host just walked out of the lobby, hand the powers to the lowest
-   remaining seat. Without this the room is unstartable and no command can fix
-   it — nobody but the host may start a game."
-  [state]
-  (let [host (:host state)]
-    (when-not (get-in state [:players host])
-      (when-let [heir (first (sort (keys (:players state))))]
-        [{:type :host/changed :host heir}]))))
+   `detach!` is the socket closing; this is the player walking out with the page
+   still open, and until it existed nothing on that path touched the index. The
+   page that had just left stayed bound to the seat it gave up, so the server
+   refused its next create or join as :already-in-room until it was reloaded —
+   the 'it says I'm already in a round' report.
+
+   Every socket of the seat, not just the one that asked: a second tab at the
+   same seat would otherwise stay bound to a seat that, in the lobby, no longer
+   exists. Each is told with `:server/left` so that tab does not sit on a frozen
+   room; the tab that asked has already gone, and ignores it.
+
+   No connection event. Mid-game `:player/left` already marks the seat absent —
+   the role still matters, so it is kept — and an absent seat holding sockets
+   would be a contradiction that the eventual close would then announce a second
+   time. With none left, taking the seat back with its token is a reconnect like
+   any other."
+  [ctx room-id pid]
+  (let [sinks (get-in (room-of ctx room-id) [:sinks pid])]
+    (swap! (:rooms ctx) update room-id
+           (fn [rm] (when rm (-> rm
+                                 (update :sinks dissoc pid)
+                                 (assoc :last-activity (System/currentTimeMillis))))))
+    (swap! (:index ctx)
+           (fn [ix] (reduce (fn [m s] (cond-> m (= [room-id pid] (get m s)) (dissoc s)))
+                            ix sinks)))
+    (doseq [sink sinks]
+      (deliver! ctx sink {:type :server/left :room-id room-id}))))
+
+;; ---------------------------------------------------------------- commands ---
 
 (defn submit!
   "Run a player command. Returns {:ok? true} or {:error code :detail d}.
@@ -426,10 +499,11 @@
         (let [res (engine/execute (:state r) (assoc cmd :player pid))]
           (if (engine/error? res)
             res
-            (let [r' (commit! ctx r (:events res) (:state res))]
-              (when-let [heir-events (succession (:state r'))]
-                (apply-server-events! ctx (room-of ctx room-id) heir-events))
-              {:ok? true})))))))
+            (do (commit! ctx r (:events res) (:state res))
+                (settle-host! ctx room-id)
+                (when (= :leave (:type cmd))
+                  (release-seat! ctx room-id pid))
+                {:ok? true})))))))
 
 ;; -------------------------------------------------------------------- chat ---
 
@@ -439,20 +513,35 @@
    * dead players talk only to the dead, so a ghost cannot feed the living;
    * at night only the wolves have a channel at all, and only to each other;
    * otherwise chat is public, and the dead hear it too (they are spectators,
-     not exiles)."
+     not exiles).
+
+   The Spielleiter is outside all three. He hears every channel — the wolves'
+   whispers and the dead's asides are exactly what he is narrating — and
+   whatever he says reaches the whole table, at any hour, as a narrator's voice
+   does. Neither direction can leak: he already knows every card, and what he
+   says is his choice to say."
   [state pid]
-  (let [players (:players state)
-        alive?  #(get-in players [% :alive?])]
+  (let [players  (:players state)
+        narrator (engine/narrator state)
+        alive?   #(get-in players [% :alive?])
+        ;; Added to the private channels' audiences, never to a public one,
+        ;; which already includes him.
+        +sl      #(cond-> % narrator (conj narrator))]
     (cond
+      ;; Outside the lobby only: before the game there are no channels to stand
+      ;; outside of, and his lines should read like everybody else's.
+      (and narrator (= pid narrator) (not= :lobby (:phase state)))
+      {:channel :narrator :to (set (keys players))}
+
       (not (alive? pid))
       {:channel :dead
-       :to (set (remove alive? (keys players)))}
+       :to (+sl (set (remove alive? (keys players))))}
 
       (= :night (:phase state))
       (if (= :werewolf (engine/team-of-player state pid))
         {:channel :wolves
-         :to (set (filter #(and (alive? %) (= :werewolf (engine/team-of-player state %)))
-                          (keys players)))}
+         :to (+sl (set (filter #(and (alive? %) (= :werewolf (engine/team-of-player state %)))
+                               (keys players))))}
         ;; Unreachable while `legal-actions` gates chat, and deliberately a dead
         ;; drop rather than a fallback to :all if that ever changes.
         {:channel :none :to #{}})

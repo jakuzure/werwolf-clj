@@ -25,14 +25,17 @@
    Rule variants and table limits are passed through verbatim rather than
    defaulted here, so there is exactly one place that decides what a missing
    value means: `apply-event :game/created`."
-  [{:keys [room-id host seed min-players max-players first-night-kill?]}]
-  (events/apply-event nil {:type        :game/created
-                           :room-id     room-id
-                           :host        host
-                           :seed        (or seed 0)
-                           :min-players (or min-players 5)
-                           :max-players max-players
-                           :first-night-kill? first-night-kill?}))
+  [{:keys [room-id host seed min-players max-players first-night-kill?
+           narrated? timer?]}]
+  (events/apply-event nil (cond-> {:type        :game/created
+                                   :room-id     room-id
+                                   :host        host
+                                   :seed        (or seed 0)
+                                   :min-players (or min-players 5)
+                                   :max-players max-players
+                                   :first-night-kill? first-night-kill?}
+                            (some? narrated?) (assoc :narrated? narrated?)
+                            (some? timer?)    (assoc :timer? timer?))))
 
 ;; ---- driving the game ---------------------------------------------------
 
@@ -73,6 +76,18 @@
    decides *what*."
   phases/timeout-events)
 (def living-ids events/living-ids)
+
+(def narrator
+  "The Spielleiter's seat, or nil when the host plays."
+  events/narrator)
+
+(def participant-ids
+  "Every seat that plays the game — all of them but the narrator's."
+  events/participant-ids)
+
+(def timed?
+  "Does this room run a clock at all? The timer reads it; the rule is here."
+  phases/timed?)
 
 ;; ---- persistence --------------------------------------------------------
 

@@ -223,7 +223,12 @@
   [action]
   (or (= :chat action)
       (contains? always-allowed action)
-      (= "gm" (namespace action))))
+      (= "gm" (namespace action))
+      ;; A GM power despite its plain name. It never used to be offered at
+      ;; night, so it never mattered here — but an untimed room hands it to the
+      ;; host in every phase the clock would otherwise end, and a host who also
+      ;; holds a role would then look busy for the whole of that role's turn.
+      (= :advance-phase action)))
 
 (defn- nobody-can-act?
   "True when nobody who acts on `role-id`'s turn has any usable action left.
@@ -296,8 +301,11 @@
     (cond
       (= :game-over phase) nil
 
-      ;; A decided game ends immediately, whatever phase we are in.
-      (and (not= :lobby phase) (winner state))
+      ;; A decided game ends immediately, whatever phase we are in — except
+      ;; before it has begun. In :setup the Spielleiter is still arranging the
+      ;; cards, and a table he has momentarily left without a wolf is a deal in
+      ;; progress, not a village victory.
+      (and (not (#{:lobby :setup} phase)) (winner state))
       [{:type :game/ended :winner (winner state)}]
 
       ;; Deaths queue up during the night and are applied at dawn — see the
@@ -337,6 +345,7 @@
       :else
       (case phase
         :lobby nil ; the host starts the game
+        :setup nil ; the Spielleiter begins the night
 
         :night (night-auto state)
 
@@ -473,6 +482,39 @@
               ;; which is what `tally` already does with them.
               [{:type :phase/changed :phase (next-phase phase) :deadline nil}])))))
 
+(defn timed?
+  "Does this room have a clock at all? Absent means yes — every room did before
+   the Spielleiter could switch it off, and their logs must replay as they were."
+  [state]
+  (not (false? (:timer? state))))
+
+(def ^:private clock-ended
+  "Phases that only the clock (or the players finishing) ever ends, with no host
+   button of their own while there is a clock."
+  #{:night :election :reaction})
+
+(defn advance-events
+  "What `:advance-phase` does right now, or nil when it has nothing to do.
+
+   In the day phases it is what it always was: the host moving the discussion
+   along. In a room WITHOUT a clock it also covers every phase only the clock
+   used to end, and there it does exactly what the clock would have done —
+   `timeout-events`, minus the line saying time ran out, because it did not.
+
+   That is what makes switching the clock off safe. Without it a Jäger who has
+   wandered off, a ballot one player never casts, or a wolf asleep at his phone
+   would hold the table forever: nothing else ends those phases. Reusing the
+   timeout rule rather than writing a second one means the Spielleiter's button
+   can never invent a decision the clock would not have."
+  [state]
+  (let [phase (:phase state)]
+    (cond
+      (contains? next-phase phase)
+      [{:type :phase/changed :phase (next-phase phase) :deadline nil}]
+
+      (and (not (timed? state)) (contains? clock-ended phase))
+      (some-> (seq (rest (timeout-events state))) vec))))
+
 (defn- night-actor?
   "Is pid one of the players whose role is currently on the night cursor?
 
@@ -496,26 +538,48 @@
    cannot act, rather than duplicating the list and drifting from it.
 
    A dead host must keep them: they are the fallback narrator, and stripping
-   the powers on death would deadlock any phase that only the host can advance."
+   the powers on death would deadlock any phase that only the host can advance.
+
+   In a narrated room these are the Spielleiter's ENTIRE game — see
+   `player-actions`, which gives him nothing else but his voice."
   [state pid]
-  (if-not (and (= pid (:host state))
-               (not= :game-over (:phase state))
-               (not= :lobby (:phase state)))
-    #{}
-    (cond-> #{:gm/force-kill :gm/revive :gm/set-phase :gm/reassign-role}
-      (contains? next-phase (:phase state)) (conj :advance-phase)
-      (= :night (:phase state))             (conj :gm/skip-role)
-      ;; The narrator's oldest privilege: "hang on, let him finish."
-      (:paused? state)                      (conj :gm/resume)
-      (not (:paused? state))                (conj :gm/pause)
-      (:deadline state)                     (conj :gm/add-time))))
+  (let [phase (:phase state)]
+    (cond
+      (or (not= pid (:host state)) (= :game-over phase)) #{}
+
+      ;; Arranging the table, not running a game: who narrates, whether there
+      ;; is a clock, and who holds this seat. Handing the seat over belongs here
+      ;; and nowhere later — once the cards are dealt the heir would be holding
+      ;; one, and the old host would be holding none.
+      (= :lobby phase)
+      #{:gm/toggle-narrated :gm/toggle-timer :gm/transfer-host}
+
+      ;; The deal is on the table and not yet final. Deliberately NOT the
+      ;; in-game overrides: there is nobody to kill or revive and no phase to
+      ;; jump to before the first night has fallen.
+      (= :setup phase)
+      #{:begin-night :gm/reassign-role :gm/toggle-timer}
+
+      :else
+      (cond-> #{:gm/force-kill :gm/revive :gm/set-phase :gm/reassign-role
+                :gm/toggle-timer}
+        (advance-events state)                     (conj :advance-phase)
+        (= :night phase)                           (conj :gm/skip-role)
+        ;; The narrator's oldest privilege: "hang on, let him finish." Only
+        ;; while there is a clock to stop; a resume is always offered once
+        ;; paused, so switching the clock off mid-pause cannot strand the flag.
+        (:paused? state)                           (conj :gm/resume)
+        (and (not (:paused? state)) (timed? state)) (conj :gm/pause)
+        (:deadline state)                          (conj :gm/add-time)))))
 
 (defn- player-actions
   "What pid may do as a *player* (ignoring GM powers)."
   [state pid]
   (let [phase  (:phase state)
         player (get-in state [:players pid])
-        host?  (= pid (:host state))]
+        host?  (= pid (:host state))
+        ;; Counted without the narrator: he is in the room but not in the deal.
+        table  (count (e/participant-ids state))]
     (cond
       ;; The game is decided, so there is nothing left to play — but there is
       ;; something left to DO, and it used to be nothing at all: the final
@@ -533,8 +597,14 @@
       ;; that limit belongs to the role composition, not to a preference.
       (= :lobby phase)
       (cond-> #{:chat :leave :set-locale}
-        (and host? (>= (count (:players state)) roles/absolute-min-players))
+        (and host? (>= table roles/absolute-min-players))
         (conj :start-game))
+
+      ;; The Spielleiter. Past the lobby he plays no part — no card, no vote,
+      ;; no night turn — so what is left is his voice, at any hour: a narrator
+      ;; who could not speak at night could not wake anybody. Everything he
+      ;; DOES comes from `host-actions`.
+      (= pid (e/narrator state)) #{:chat}
 
       ;; The Jäger fires his shot while ALREADY DEAD, so this must be checked
       ;; before the general dead-players-may-only-chat rule below.
@@ -652,7 +722,10 @@
     :hexe-pass :nominate-pass :vote-abstain :jaeger-pass
     :elect-abstain :mayor-decline :weisser-pass
     ;; Keeping his own card is a decision, not the absence of one.
-    :dieb-keep})
+    :dieb-keep
+    ;; Switches and a starting gun: the Spielleiter's, and none of them names
+    ;; anybody.
+    :begin-night :gm/toggle-narrated :gm/toggle-timer})
 
 (declare legal-targets legal-choices)
 
@@ -730,8 +803,12 @@
                                        (:players state))))
       ;; Everyone, dead included: the reason to rewrite a dead player's role is
       ;; usually that the deal was wrong, and reviving them first would put a
-      ;; second correction in the log to undo the first.
-      :gm/reassign-role (vec (sort (keys (:players state))))
+      ;; second correction in the log to undo the first. Everyone but the
+      ;; narrator, who holds no card and must not be dealt into his own game.
+      :gm/reassign-role (e/participant-ids state)
+      ;; Any other seat. The heir is chosen by the host, so it may be somebody
+      ;; who is not connected right now — the seat is what is handed over.
+      :gm/transfer-host (vec (remove #{pid} (sort (keys (:players state)))))
       [])))
 
 (defn legal-choices

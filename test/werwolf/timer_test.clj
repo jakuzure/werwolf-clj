@@ -35,7 +35,9 @@
                            :send! (fn [s msg] (swap! s conj msg))
                            ;; Classic first night: one test walks to the wolves'
                            ;; turn to check that a timed-out pack still eats.
-                           :game {:first-night-kill? true}
+                           ;; And the creator plays, with a clock: a narrated room
+                           ;; starts with none, and a clock is what is under test.
+                           :game {:first-night-kill? true :narrated? false}
                            :after-commit (timer/hook game-cfg
                                                      #(or @pinned (System/currentTimeMillis)))})
            ::pinned pinned)))
@@ -390,3 +392,33 @@
                 :state {:phase :vote :deadline 1}})
         (let [fired (timer/tick! ctx (inc (deadline ctx good)))]
           (is (contains? (set fired) good) "the healthy room still fired"))))))
+
+;; ------------------------------------------------------------- no clock ---
+
+(deftest a-narrated-room-runs-without-a-clock-until-asked
+  (testing "the Spielleiter paces the game, so a narrated room opens with no
+            clock at all — and switching one on or off mid-game takes effect at
+            the next reconcile, which is every commit"
+    (with-ctx [ctx]
+      (let [{:keys [room-id]} (room/create! ctx {:name "SL" :narrated? true})]
+        (doseq [i (range 1 6)] (room/join! ctx room-id {:name (str "P" i)}))
+        (room/submit! ctx room-id 0 {:type :start-game})
+        (is (= :setup (phase ctx room-id)))
+        (is (nil? (deadline ctx room-id)) "the setup step is never timed")
+        (room/submit! ctx room-id 0 {:type :begin-night})
+        (is (= :night (phase ctx room-id)))
+        (is (nil? (deadline ctx room-id)) "a timed phase, and no deadline")
+        (is (empty? (timer/tick! ctx (+ t0 (* 1000 60 60 24))))
+            "and a whole day later nothing has fired")
+        (testing "switched on, the clock arms at once"
+          (room/submit! ctx room-id 0 {:type :gm/toggle-timer})
+          (is (some? (deadline ctx room-id))))
+        (testing "switched off, the deadline it left behind goes with it"
+          (room/submit! ctx room-id 0 {:type :gm/toggle-timer})
+          (is (nil? (deadline ctx room-id))))))))
+
+(deftest clock-events-arms-nothing-in-an-untimed-room
+  (is (nil? (timer/clock-events game-cfg t0 {:phase :vote :timer? false})))
+  (is (= [{:type :phase/deadline :at nil}]
+         (timer/clock-events game-cfg t0 {:phase :vote :timer? false :deadline (+ t0 5)}))
+      "a deadline left from before the switch is cleared, not left to fire"))
