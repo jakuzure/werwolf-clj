@@ -49,3 +49,18 @@
     (let [resp (GET "/no-such-file.js")]
       (is (not= 200 (:status resp)))
       (is (nil? (get-in resp [:headers "ETag"]))))))
+
+(deftest the-install-files-have-their-real-types
+  (testing "ring knows no .webmanifest, so the handler has to say it"
+    (let [resp (GET "/manifest.webmanifest")]
+      (slurp-body resp)
+      (is (= 200 (:status resp)))
+      (is (= "application/manifest+json" (get-in resp [:headers "Content-Type"])))
+      (is (= "no-cache" (get-in resp [:headers "Cache-Control"])))))
+  (doseq [[uri type] [["/icons/icon.svg" "image/svg+xml"]
+                      ["/icons/icon-192.png" "image/png"]
+                      ["/icons/apple-touch-icon.png" "image/png"]]]
+    (let [resp (GET uri)]
+      (slurp-body resp)
+      (is (= 200 (:status resp)) uri)
+      (is (= type (get-in resp [:headers "Content-Type"])) uri))))

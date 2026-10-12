@@ -43,7 +43,7 @@
     :claim-host
     ;; The Spielleiter's: ending the setup step, and arranging the table.
     :begin-night
-    :gm/toggle-narrated :gm/toggle-timer :gm/transfer-host
+    :gm/toggle-narrated :gm/toggle-timer :gm/transfer-host :gm/kick
     :gm/set-deck :gm/auto-deck
     :gm/force-kill :gm/revive :gm/skip-role :gm/set-phase :gm/reassign-role
     :gm/pause :gm/resume :gm/add-time})
@@ -75,8 +75,13 @@
   ;; :server/left — your seat's sockets have been released because the player
   ;; left, possibly from another tab. Carries the room it is about, so a page
   ;; that has since sat down somewhere else can tell it is not about them.
+  ;;
+  ;; :server/kicked — the same release, because the HOST removed the seat. Its
+  ;; own type rather than a flag on :server/left: the page has to say why it is
+  ;; back on the landing screen, and a player who did not leave should not be
+  ;; told that they did.
   #{:server/hello :server/welcome :server/error :server/pong :server/rooms
-    :server/media :server/left
+    :server/media :server/left :server/kicked
     :room/view :room/chat :room/chat-history})
 
 ;; ------------------------------------------------------------------ schemas ---

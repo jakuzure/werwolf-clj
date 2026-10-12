@@ -838,24 +838,25 @@
                                               :game-idle-ms (* 30 60 1000)}))))))))
 
 (deftest a-restart-does-not-refresh-an-abandoned-room
-  (testing "a boot is not activity. A lobby nobody has touched for a day must be
-            swept by the restart that finds it, not handed a fresh five minutes —
+  (testing "a boot is not activity. A game nobody has touched for hours must be
+            swept by the restart that finds it, not handed a fresh half hour —
             a server that restarts more often than the threshold would otherwise
             never sweep anything at all"
     (let [path (tmp-path)]
       (try
         (let [ctx (ctx-on path)
-              {:keys [room-id sink]} (host-seat! ctx "Anna")
-              day-ago (- (System/currentTimeMillis) (* 24 60 60 1000))]
-          (room/detach! ctx sink)
+              {:keys [room-id seats] :as t} (table ctx 5)
+              hours-ago (- (System/currentTimeMillis) (* 2 60 60 1000))]
+          (start! ctx t)
+          (doseq [{:keys [sink]} seats] (room/detach! ctx sink))
           ;; Backdate the LOG, not the in-memory room: the point is what a
           ;; brand new registry over this file believes.
           (jdbc/execute-one! (:ds ctx)
-                             ["UPDATE rooms SET updated_at = ? WHERE room_id = ?"
-                              day-ago room-id])
+                             ["UPDATE rooms SET updated_at = ?, active_at = ? WHERE room_id = ?"
+                              hours-ago hours-ago room-id])
           (let [ctx2 (ctx-on path)]
             (is (contains? (set (room/rehydrate! ctx2)) room-id))
-            (is (< (Math/abs (- (:last-activity (get @(:rooms ctx2) room-id)) day-ago))
+            (is (< (Math/abs (- (:last-activity (get @(:rooms ctx2) room-id)) hours-ago))
                    1000)
                 "the room remembers when it was really last touched")
             (is (= [room-id] (room/sweep-idle! ctx2 (System/currentTimeMillis)
@@ -874,7 +875,7 @@
                                              (assoc t :sink (:sink (first (:seats t)))))]
           (start! ctx {:room-id room-id :seats seats})
           (doseq [{:keys [sink]} seats] (room/detach! ctx sink))
-          (age-room! ctx room-id (* 24 60 60 1000))
+          (age-room! ctx room-id (* 2 60 60 1000))
           (is (= [room-id] (room/sweep-idle! ctx (System/currentTimeMillis)
                                              {:room-idle-ms 1 :game-idle-ms 1})))
           (is (nil? (room/state-of ctx room-id)))

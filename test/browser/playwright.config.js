@@ -92,7 +92,8 @@ module.exports = defineConfig({
       NIGHT_SECS: '3600',
       REACTION_SECS: '3600',
       // Voice. The suite skips its audio tests when this is unreachable rather
-      // than failing, so `bb test:browser` is useful without LiveKit running.
+      // than failing, so `bb test:browser` is useful without LiveKit running —
+      // except under WERWOLF_REQUIRE_LIVEKIT, which CI sets; see liveKitUp.
       MEDIA_PROVIDER: 'livekit',
       LIVEKIT_URL: process.env.LIVEKIT_URL || 'ws://localhost:7880',
       LIVEKIT_API_KEY: 'devkey',

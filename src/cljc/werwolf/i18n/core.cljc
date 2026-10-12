@@ -70,6 +70,7 @@
    :day/no-accusation :verdict
    :night/quiet      :verdict
    :game/ended       :verdict
+   :game/abandoned   :verdict
    :night/began      :night
    :game/started     :night
    :night/ended      :day
@@ -86,6 +87,9 @@
    :game/narrated-set :gm
    :room/locked      :gm
    :room/unlocked    :gm
+   ;; Unlike somebody leaving, which is bookkeeping: the host decided this,
+   ;; and a decision about who sits at the table is what the Chronik audits.
+   :player/kicked    :gm
    ;; Loud: what is in the deck is the first thing a table reasons from.
    :deck/set          :gm
    :deck/auto         :gm
@@ -200,6 +204,9 @@
     (case type
       :player/joined       (t locale :log/joined (nm player))
       :player/left         (t locale :log/left (nm player))
+      ;; By the name the entry carries: the seat is gone, so looking it up
+      ;; would print a number. See apply-event :player/kicked.
+      :player/kicked       (t locale :log/kicked (or (:name entry) (nm player)))
       :player/disconnected (t locale :log/disconnected (nm player))
       :player/reconnected  (t locale :log/reconnected (nm player))
       ;; Taken from a host who had gone missing, or handed over — the table
@@ -260,6 +267,7 @@
                                        :lovers   :log/win-lovers
                                        :weisser-werwolf :log/win-weisser
                                        :log/win-village))
+      :game/abandoned      (t locale :log/game-abandoned)
       ;; A newer server may log something this client has never heard of. Show
       ;; the raw type rather than a blank line: visible is debuggable.
       (str type))))

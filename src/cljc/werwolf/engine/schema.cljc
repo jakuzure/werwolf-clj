@@ -136,6 +136,7 @@
    ;; Set by the GM. Suppresses the clock entirely rather than merely clearing
    ;; the deadline, which the timer would re-arm on its next reconcile.
    [:paused? {:optional true} :boolean]
+   ;; nil at :game-over is a game nobody finished — see :game/abandoned.
    [:winner {:optional true} [:maybe Team]]
    ;; set by :vote/resolved so :day-resolve knows the lynch has been counted
    [:vote-resolved? {:optional true} :boolean]

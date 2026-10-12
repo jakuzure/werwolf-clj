@@ -71,7 +71,8 @@
    :audio       nil
    ;; The deck the host's last stepper tap SENT and the server has not yet
    ;; shown back. See `deck-step-fx` — without it, two quick taps both counted
-   ;; from the same view and the second was lost.
+   ;; from the same view and the second was lost. Cleared by `unseat`: a tap
+   ;; still unanswered when the host walks out belongs to the room he left.
    :deck/draft  nil
    ;; The phase chime. A preference of this device, not of any room — which is
    ;; why `unseat` leaves it alone. Overwritten from storage by ::init.
@@ -473,11 +474,14 @@
   (-> db
       (merge (select-keys initial-db
                           [:screen :me :view :view/seq :chat :error :audio
-                           :join/password?]))
+                           :join/password? :deck/draft]))
       ;; The confirm that got us here. Left armed, it would put 'really?' on the
       ;; next room's leave button before anyone had touched it. And a password
       ;; half-typed for the last room's lock, which is nothing to the next.
-      (update :form dissoc :leave :lobby-password)))
+      ;; And the host's half-confirmed card buttons: they name a seat NUMBER,
+      ;; and the next room has a seat with that number too — the first thing
+      ;; its host would see is 'really remove?' on somebody he never tapped.
+      (update :form dissoc :leave :lobby-password :gm)))
 
 (defn leave-fx
   "Also the way out of a finished game. Landing on the landing screen with a
@@ -653,6 +657,13 @@
   ;; no longer this page's), and the server has stopped sending it anything.
   (if (released? db msg) (unseat db) db))
 
+(defmethod handle-server :server/kicked [db msg]
+  ;; The host removed this seat. The same way out as being released from
+  ;; another tab, plus the reason: arriving on the landing screen unasked, with
+  ;; nothing saying why, reads as the app having crashed. Shown through :error
+  ;; like any other refusal, so it is in the player's own language.
+  (if (released? db msg) (assoc (unseat db) :error :kicked) db))
+
 (defn- with-chime
   "Add the phase chime, if this view turned the phase and the player wants to
    hear it. `fx` already holds the db AFTER the view, `db` is the one before.
@@ -693,9 +704,13 @@
     (fatal-errors (:code msg))
     (assoc ::ws/forget-seat true)
 
-    ;; Released from another tab: the same way out as leaving from this one,
-    ;; minus the command, which has already been sent.
-    (and (= :server/left (:type msg)) (released? db msg))
+    ;; Released from another tab, or removed by the host: the same way out as
+    ;; leaving from this one, minus the command — the seat is already gone. The
+    ;; hang-up matters most for the removed: a live microphone in a room you
+    ;; were taken out of is the worst kind of eavesdropping, the unwitting kind.
+    ;; And the stored seat goes, though a resume would be refused anyway — so
+    ;; the next load starts on the landing screen instead of on an error.
+    (and (#{:server/left :server/kicked} (:type msg)) (released? db msg))
     (assoc ::ws/forget-seat true
            :werwolf.audio/disconnect true
            :dispatch [::refresh-rooms])))

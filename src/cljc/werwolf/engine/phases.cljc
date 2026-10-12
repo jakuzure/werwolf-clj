@@ -607,9 +607,14 @@
       ;; And which roles are in the deck. Going back to the automatic deck is
       ;; offered only while there is a custom one to leave — a switch that does
       ;; nothing is a button somebody will press to see what happens.
+      ;;
+      ;; And who sits at it: a ghost seat, a typo, a host who was replaced while
+      ;; away and would otherwise be dealt in. Lobby only, like the hand-over —
+      ;; once the cards are out, removing a seat would remove a card from the
+      ;; game, and an absent player is something every phase already survives.
       (= :lobby phase)
       (cond-> #{:gm/toggle-narrated :gm/toggle-timer :gm/transfer-host
-                :gm/set-deck}
+                :gm/kick :gm/set-deck}
         (contains? state :deck) (conj :gm/auto-deck))
 
       ;; The deal is on the table and not yet final. Deliberately NOT the
@@ -903,6 +908,11 @@
       ;; Any other seat. The heir is chosen by the host, so it may be somebody
       ;; who is not connected right now — the seat is what is handed over.
       :gm/transfer-host (vec (remove #{pid} (sort (keys (:players state)))))
+      ;; The same seats, for the same reason: anybody but himself, connected or
+      ;; not — a seat nobody is behind is the commonest thing to remove. Never
+      ;; himself, because a room without its host has nobody to start it; he
+      ;; leaves the way everybody else does, and succession takes over.
+      :gm/kick         (vec (remove #{pid} (sort (keys (:players state)))))
       [])))
 
 (defn legal-choices

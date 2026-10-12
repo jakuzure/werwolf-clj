@@ -487,6 +487,24 @@
     (err :invalid-target {:target target})
     :else [{:type :host/changed :host target}]))
 
+(defmethod handle :gm/kick
+  ;; The host removes somebody from the lobby. Lobby only and never himself —
+  ;; see `phases/host-actions` and `legal-targets`. Its own event rather than a
+  ;; `:player/left` on somebody else's behalf: the Chronik has to say that the
+  ;; host did this, and the room has to tell the removed page something other
+  ;; than "you left", which it did not.
+  ;;
+  ;; No ban. It is a friend group, the room's password is the lock on the door,
+  ;; and a typo or a ghost seat is the usual reason — so the kicked page may
+  ;; join again like anybody, and gets a new seat number when it does.
+  [state {:keys [player target]}]
+  (cond
+    (not (allowed? state player :gm/kick))
+    (err :not-allowed {:action :gm/kick})
+    (not (valid-target? state player :gm/kick target))
+    (err :invalid-target {:target target})
+    :else [{:type :player/kicked :player target}]))
+
 (defmethod handle :claim-host
   ;; Taking the seat of a host who has gone missing. Who may, and when, is
   ;; `phases/claim-actions`; the event is the one every other change of host

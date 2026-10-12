@@ -33,6 +33,7 @@
   (:require [clojure.string :as str]
             [clojure.tools.logging :as log]
             [werwolf.engine.core :as engine]
+            [werwolf.engine.recap :as recap]
             [werwolf.password :as password]
             [werwolf.store :as store])
   (:import (java.security SecureRandom)))
@@ -174,6 +175,10 @@
         (keep (fn [[pid sinks]] (when (some (:voice r #{}) sinks) pid)))
         (:sinks r)))
 
+;; The end-of-game recap rides along with the view like `:voice`; see the recap
+;; section below for when it exists and who gets it.
+(declare with-recap remember-recap!)
+
 (defn- send-view! [ctx r pid]
   (doseq [sink (get-in r [:sinks pid])]
     (deliver! ctx sink {:type :room/view
@@ -184,8 +189,9 @@
                         ;; shares one call, so being in it says nothing about a
                         ;; role, and seeing who is already there is what tells
                         ;; a newcomer the call is where the game is.
-                        :view (assoc (engine/view-for (:state r) pid)
-                                     :voice (in-voice r))})))
+                        :view (-> (engine/view-for (:state r) pid)
+                                  (assoc :voice (in-voice r))
+                                  (with-recap r))})))
 
 (defn- broadcast!
   "Give every SEATED connected player their own view of the room.
@@ -225,14 +231,18 @@
          from    (:seq r)
          now     (System/currentTimeMillis)]
      (store/append-events! (:ds ctx) room-id from events now)
+     ;; :last-activity goes to disk as well, so that a boot can tell how long a
+     ;; room has really been abandoned — see `abandoned?`.
      (store/upsert-room! (:ds ctx) room-id (:phase state')
-                         (= :game-over (:phase state')) now)
+                         (= :game-over (:phase state')) now
+                         (if activity? now (:last-activity r)))
      (let [r' (-> r
                   (assoc :state state')
                   (update :seq + (count events)))]
        (swap! (:rooms ctx) update room-id merge
               (cond-> (select-keys r' [:state :seq])
                 activity? (assoc :last-activity now)))
+       (remember-recap! ctx room-id)
        (broadcast! ctx (room-of ctx room-id))
        ;; Last, and still under the lock: the clock gets to react to the new
        ;; phase. Doing it here rather than folding the deadline into this same
@@ -645,8 +655,12 @@
    the role still matters, so it is kept — and an absent seat holding sockets
    would be a contradiction that the eventual close would then announce a second
    time. With none left, taking the seat back with its token is a reconnect like
-   any other."
-  [ctx room-id pid]
+   any other.
+
+   `msg-type` is what the sockets are told: `:server/left`, or `:server/kicked`
+   when the host removed the seat — the release is the same either way, but
+   only one of them is news to the player."
+  [ctx room-id pid msg-type]
   (let [sinks (get-in (room-of ctx room-id) [:sinks pid])
         voiced? (contains? (in-voice (room-of ctx room-id)) pid)]
     (swap! (:rooms ctx) update room-id
@@ -658,7 +672,7 @@
            (fn [ix] (reduce (fn [m s] (cond-> m (= [room-id pid] (get m s)) (dissoc s)))
                             ix sinks)))
     (doseq [sink sinks]
-      (deliver! ctx sink {:type :server/left :room-id room-id}))
+      (deliver! ctx sink {:type msg-type :room-id room-id}))
     ;; The commit announcing the departure went out while these sockets still
     ;; counted as in the call. Mid-game the seat stays on the board, so without
     ;; a repaint it would keep a headset nobody is behind.
@@ -685,8 +699,57 @@
             (do (commit! ctx r (:events res) (:state res))
                 (settle-host! ctx room-id)
                 (when (= :leave (:type cmd))
-                  (release-seat! ctx room-id pid))
+                  (release-seat! ctx room-id pid :server/left))
+                ;; The seat the host removed, not the host's own: its pages are
+                ;; holding a seat that no longer exists, and in the call with it.
+                ;; The commit above already left them out of the broadcast, since
+                ;; it only reaches seated players.
+                (when (= :gm/kick (:type cmd))
+                  (release-seat! ctx room-id (:target cmd) :server/kicked))
                 {:ok? true})))))))
+
+;; ------------------------------------------------------------------- recap ---
+;;
+;; The Rückblick: every card and every night's doings, for the whole table, once
+;; the game is decided. The engine builds it (werwolf.engine.recap); this only
+;; decides when, and keeps it.
+;;
+;; From the store rather than from memory, because the room holds state and not
+;; events — and the private half of the story (the Seherin's looks, the pack's
+;; ballots) was never in state's public `:log` to begin with. Read once, inside
+;; the lock and after the append, so the log it reads ends with the game's end.
+
+(defn- remember-recap!
+  "Build the recap the first time the room is found at :game-over, and forget it
+   whenever it is not — a Spielleiter who sets the phase back has a game in
+   progress again, and an old recap must not outlive the ending it told.
+
+   Cached even when the builder came back empty, so a log that will not fold
+   into a finished game is read once rather than on every commit. And never
+   allowed to stop the commit it hangs off: the game has already ended, and a
+   bug in telling the story must not keep the table from seeing that it did."
+  [ctx room-id]
+  (let [rm (room-of ctx room-id)]
+    (cond
+      (not= :game-over (:phase (:state rm)))
+      (when (contains? rm :recap)
+        (swap! (:rooms ctx) update room-id #(when % (dissoc % :recap))))
+
+      (not (contains? rm :recap))
+      (let [rc (try (recap/recap (store/load-events (:ds ctx) room-id))
+                    (catch Exception ex
+                      (log/warn ex "could not build the recap for" room-id)
+                      nil))]
+        (swap! (:rooms ctx) update room-id #(when % (assoc % :recap rc)))))))
+
+(defn- with-recap
+  "Attach the cached recap to a view — at :game-over and never before. The
+   phase is checked here as well as when caching: this is the line that puts it
+   on a socket, so it is the one that has to be right."
+  [view r]
+  (cond-> view
+    (and (= :game-over (:phase (:state r))) (:recap r))
+    (assoc :recap (:recap r))))
 
 ;; -------------------------------------------------------------------- chat ---
 
@@ -766,45 +829,6 @@
 
 ;; ------------------------------------------------------------- lifecycle ---
 
-(defn rehydrate!
-  "Load unfinished games from the log on boot. Returns the room ids restored.
-
-   Everyone comes back marked disconnected, and that fact is appended to the
-   log rather than patched into memory: the server really did drop every
-   socket, so the log would be lying if it said otherwise — and `(= (replay
-   log) state)` has to keep holding."
-  [ctx]
-  (let [ids (store/unfinished-room-ids (:ds ctx))]
-    (doseq [room-id ids]
-      (when-let [{:keys [state updated-at] n :seq} (store/load-game (:ds ctx) room-id)]
-        (swap! (:rooms ctx) assoc room-id
-               (assoc (fresh-room room-id) :state state :seq n))
-        ;; Stamped with the boot, not with whenever the old process died: time
-        ;; nobody could play through is not time, so an absence is measured
-        ;; from the moment they could have come back.
-        (let [now   (System/currentTimeMillis)
-              drops (for [[pid p] (sort-by key (:players state))
-                          :when (:connected? p)]
-                      {:type :player/connection :player pid :connected? false :at now})]
-          (with-room ctx room-id
-            (fn [r] (apply-server-events! ctx r (vec drops)))))
-        ;; AFTER the drops, deliberately. `fresh-room` stamps :last-activity with
-        ;; now and appending the drops stamps it again, so a room abandoned weeks
-        ;; ago would look brand new to `sweep-idle!` and get a fresh five minutes
-        ;; on EVERY boot — restart often enough and it is never swept at all. A
-        ;; boot is not activity; the last write to the log is.
-        ;;
-        ;; Read before the drops are appended, since appending moves updated_at.
-        ;; A server that restarts repeatedly therefore measures from its previous
-        ;; boot rather than from the real last play, which is the right way to be
-        ;; wrong: it only ever delays a sweep.
-        (when updated-at
-          (swap! (:rooms ctx) update room-id assoc :last-activity updated-at))))
-    (vec ids)))
-
-;; Defined below; sweep-idle! is stated first because it is the interesting one.
-(declare forget-room!)
-
 (def ^:const default-lobby-idle-ms
   "How long a room with NOBODY CONNECTED may sit before it is dropped.
 
@@ -823,18 +847,109 @@
    far worse than keeping a dead one in memory for half an hour."
   (* 30 60 1000))
 
+(def ^:const default-abandon-after-hours
+  "How long an unfinished game may go without a player before it is closed for
+   good. Dropping it from memory is not enough: it comes back on every boot, and
+   one was found still being reloaded two months after anybody last played it.
+
+   A day: long past any evening that might yet be resumed, and comfortably
+   longer than a server that was down overnight."
+  24)
+
+(defn abandoned?
+  "Has nobody been back to this unfinished room for so long that nobody will?
+
+   `last-active` is the last thing a PLAYER did — the server's own writes, the
+   clock above all, say nothing about whether anyone is coming back. Callers
+   check first that nobody is there now.
+
+   A lobby goes at the same threshold the sweep drops it at. Nothing has been
+   dealt, so nothing is lost, and once swept it cannot be joined anyway: bringing
+   it back on the next boot only resurrected a room for the sweep to drop again."
+  [game-cfg now-ms phase last-active]
+  (let [{:keys [room-idle-ms abandon-after-hours]} game-cfg
+        limit (if (= :lobby phase)
+                (or room-idle-ms default-lobby-idle-ms)
+                (* 60 60 1000 (or abandon-after-hours default-abandon-after-hours)))]
+    (> (- now-ms last-active) limit)))
+
+(declare forget-room!)
+
+(defn- retire!
+  "Close an abandoned room for good, and forget it.
+
+   Ended in the log rather than only marked finished in the rooms table: the
+   log is the truth, and a game that replayed to a night nobody ever finished
+   would contradict the table that says it is over. Ending it is what marks it
+   finished, through the ordinary commit — and keeps it on disk for a recap."
+  [ctx room-id]
+  (with-room ctx room-id
+    (fn [r] (apply-server-events! ctx r [{:type :game/abandoned}])))
+  (forget-room! ctx room-id))
+
+(defn- idle-text [now-ms last-active phase]
+  (str "(idle " (quot (- now-ms last-active) 60000) " min, phase " phase ")"))
+
+(defn rehydrate!
+  "Load unfinished games from the log on boot. Returns the room ids restored.
+
+   Everyone comes back marked disconnected, and that fact is appended to the
+   log rather than patched into memory: the server really did drop every
+   socket, so the log would be lying if it said otherwise — and `(= (replay
+   log) state)` has to keep holding.
+
+   A room nobody was in and nobody has touched for too long is retired instead
+   — see `abandoned?`. Merely sweeping it was not enough: every boot loaded it
+   again."
+  ([ctx] (rehydrate! ctx (System/currentTimeMillis)))
+  ([ctx now-ms]
+   (into []
+         (keep
+          (fn [room-id]
+            (when-let [{:keys [state active-at] n :seq} (store/load-game (:ds ctx) room-id)]
+              (let [phase    (:phase state)
+                    ;; Somebody still seated when the process died was left by
+                    ;; the server, not the other way round: the boot is their
+                    ;; last activity, so a deploy cannot close the room they were
+                    ;; sitting in. Otherwise a boot is NOT activity — a server
+                    ;; restarting more often than the threshold would never
+                    ;; retire, or even sweep, anything.
+                    present? (some :connected? (vals (:players state)))
+                    last-active (if present? now-ms (or active-at now-ms))]
+                (swap! (:rooms ctx) assoc room-id
+                       (assoc (fresh-room room-id)
+                              :state state :seq n :last-activity last-active))
+                (if (and (not present?)
+                         (abandoned? (:game ctx) now-ms phase last-active))
+                  (do (log/info "retiring abandoned room" room-id
+                                (idle-text now-ms last-active phase))
+                      (retire! ctx room-id)
+                      nil)
+                  ;; Stamped with the boot, not with whenever the old process
+                  ;; died: time nobody could play through is not time, so an
+                  ;; absence is measured from the moment they could have come back.
+                  (let [drops (for [[pid p] (sort-by key (:players state))
+                                    :when (:connected? p)]
+                                {:type :player/connection :player pid
+                                 :connected? false :at now-ms})]
+                    (with-room ctx room-id
+                      (fn [r] (apply-server-events! ctx r (vec drops))))
+                    room-id))))))
+         (store/unfinished-room-ids (:ds ctx)))))
+
 (defn sweep-idle!
   "Drop rooms nobody is connected to and nothing has happened in.
 
    Returns the room ids dropped. The log stays on disk — `forget-room!` only
-   forgets, so a swept game can still be recapped and, if it was unfinished, will
-   be rehydrated on the next boot.
+   forgets, so a swept game can still be recapped and, if it is unfinished, will
+   be rehydrated on the next boot. Unless it has been `abandoned?`: then it is
+   retired, which closes it for good.
 
    Two conditions, both required. Idle alone is not enough: a table can sit in
    silence for a while and still be sitting there. What makes a room abandoned is
    that NO socket is attached to it."
   ([ctx now-ms] (sweep-idle! ctx now-ms (:game ctx)))
-  ([ctx now-ms {:keys [room-idle-ms game-idle-ms]}]
+  ([ctx now-ms {:keys [room-idle-ms game-idle-ms] :as game-cfg}]
    (let [lobby-limit (or room-idle-ms default-lobby-idle-ms)
          game-limit  (or game-idle-ms default-game-idle-ms)]
      (into []
@@ -844,11 +959,17 @@
                          limit      (if (#{:lobby :game-over nil} phase)
                                       lobby-limit
                                       game-limit)
-                         idle       (- now-ms (:last-activity r 0))]
+                         last-active (:last-activity r 0)
+                         idle       (- now-ms last-active)]
                      (when (and (not connected?) (> idle limit))
-                       (log/info "dropping idle room" room-id
-                                 (str "(" (quot idle 1000) "s, phase " phase ")"))
-                       (forget-room! ctx room-id)
+                       (if (and phase (not= :game-over phase)
+                                (abandoned? game-cfg now-ms phase last-active))
+                         (do (log/info "retiring abandoned room" room-id
+                                       (idle-text now-ms last-active phase))
+                             (retire! ctx room-id))
+                         (do (log/info "dropping idle room" room-id
+                                       (idle-text now-ms last-active phase))
+                             (forget-room! ctx room-id)))
                        room-id))))
            (rooms ctx)))))
 

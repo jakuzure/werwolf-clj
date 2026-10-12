@@ -18,8 +18,11 @@
 // rather than left passing vacuously. Everything up to "a live track is attached
 // and playing" is covered; the last inch needs ears.
 //
-// Requires a LiveKit, and SKIPS rather than fails without one:
+// Requires a LiveKit, and SKIPS rather than fails without one — unless
+// WERWOLF_REQUIRE_LIVEKIT is set, as CI sets it, where a missing LiveKit fails:
 //     docker compose -f deploy/livekit.dev.yml up -d
+// or, with no Docker at all:
+//     nix run nixpkgs#livekit -- --dev --bind 127.0.0.1 --node-ip 127.0.0.1 --udp-port 7882-7892
 //
 // Note that dev LiveKit must advertise 127.0.0.1 as its node IP or media never
 // establishes from a browser on this machine — see deploy/livekit.dev.yml. ICE
@@ -46,10 +49,10 @@ async function joinVoice(page) {
  * afternoon: an earlier version counted `el.srcObject.getAudioTracks()` and polled
  * that count, which read as zero for the first joiner even though a probe of the
  * same page showed a healthy element with one track, `paused: false` and
- * readyState 4. Hammering `page.evaluate` in a tight poll appears to be able to
- * observe the element mid-attach. Waiting for the element and THEN describing it
- * once is both stabler and closer to the actual claim: "an audio element carrying
- * live remote audio exists".
+ * readyState 4. A page can be observed mid-attach, which is why `expectHearing`
+ * polls the whole description until it holds rather than reading it once: a
+ * single read straight after the element appears can see readyState below 4
+ * simply because no packet has arrived YET.
  */
 function attached(page) {
   return page.evaluate((sel) => Array.from(document.querySelectorAll(sel)).map((el) => {
@@ -72,6 +75,19 @@ async function expectAttached(page, n, message) {
   await expect
     .poll(async () => (await page.locator(SINK).count()), { timeout: SETTLE, message })
     .toBe(n);
+}
+
+/**
+ * Wait until this page hears exactly one remote speaker: one element, carrying a
+ * live, enabled audio track, playing, with data arriving. readyState 4 is
+ * HAVE_ENOUGH_DATA — the browser's own statement that audio is arriving, which is
+ * as close to "heard" as a silent fake device allows anyone to get.
+ */
+async function expectHearing(page, message) {
+  await expectAttached(page, 1, message);
+  await expect
+    .poll(async () => attached(page), { timeout: SETTLE, message })
+    .toEqual([{ paused: false, readyState: 4, kind: 'audio', trackState: 'live', enabled: true }]);
 }
 
 test.describe('voice', () => {
@@ -108,12 +124,16 @@ test.describe('voice', () => {
     expect((await chunk).status()).toBe(200);
   });
 
-  // SKIPPED for the same unresolved reason as the one below it — see that note.
-  // Two-party media assertions pass in isolation and fail inside this suite, on
-  // whichever participant, regardless of polling, waiting, ordering, teardown
-  // delays or which direction is checked. Rather than tune it until it happens to
-  // go green, it is off, and the gap is written down.
-  test.skip('two players hear each other, and muting silences the far side', async ({ browser }) => {
+  // This test and the next were skipped for a long time: two-party media
+  // assertions passed in isolation and failed inside the suite, on whichever
+  // participant, and nobody could say why. Against a native LiveKit (nix, so no
+  // Docker Desktop UDP proxy in the media path) they then passed 5 of 5 with the
+  // voice spec alone and 5 of 5 inside the whole suite, retries off, and CI now
+  // runs them too. The old failures were never explained; the setup
+  // they happened in advertised the LAN address through Docker Desktop, and that
+  // is the first suspect if they come back. Read the trace before reaching for
+  // test.skip again — a voice regression looks exactly like a flaky voice test.
+  test('two players hear each other, and muting silences the far side', async ({ browser }) => {
     const table = await seatTable(browser, ['Anna', 'Bob']);
     pages = table.pages;
     const [anna, bob] = pages;
@@ -126,18 +146,9 @@ test.describe('voice', () => {
     await joinVoice(bob);
 
     // ONE direction. Bob joined second, so he picks up Anna's already-published
-    // track when he connects — no renegotiation needed, and the reliable half.
-    // The other direction is a separate, skipped test below; see the note there.
-    await expectAttached(bob, 1, 'Bob hears Anna');
-
-    const [el] = await attached(bob);
-    expect(el.kind, 'Bob has an audio track').toBe('audio');
-    expect(el.trackState, "Bob's track is live").toBe('live');
-    expect(el.enabled, "Bob's track is enabled").toBe(true);
-    expect(el.paused, "Bob's element is playing").toBe(false);
-    // 4 is HAVE_ENOUGH_DATA — the browser's own statement that audio is arriving,
-    // which is as close to "heard" as a silent fake device allows anyone to get.
-    expect(el.readyState, 'Bob is actually receiving data').toBe(4);
+    // track when he connects — no renegotiation needed. The other direction is
+    // its own test below, so a failure says which half broke.
+    await expectHearing(bob, 'Bob hears Anna');
 
     // Muting MUTES the publication rather than unpublishing it: the far side keeps
     // the track and sees it disabled. Asserted as observed, not as assumed — the
@@ -157,29 +168,17 @@ test.describe('voice', () => {
       .toBe(true);
   });
 
-  // SKIPPED, and left visible rather than quietly dropped.
-  //
-  // The claim: the player who joins voice FIRST also receives someone who joins
-  // AFTER them. That is the direction needing renegotiation, and the test above
-  // does not cover it.
-  //
-  // It appears to be TRUE. A standalone probe of both pages showed each holding
-  // one audio element with a live track, `paused: false` and readyState 4 — data
-  // flowing both ways. But asserted inside the suite it fails, whether polled or
-  // waited on, and not always on the same participant: one run failed on the
-  // first joiner, the next on the second. Something about running it alongside
-  // the other tests changes the outcome and I could not explain what.
-  //
-  // Skipped rather than deleted, slept past, or left red. A suite that is green
-  // while quietly failing is worse than one that admits what it does not know.
-  // If voice ever misbehaves for whoever joined first, start here.
-  test.skip('the first joiner also hears someone who joins later', async ({ browser }) => {
+  // The player who joins voice FIRST also receives someone who joins AFTER them.
+  // That is the direction needing renegotiation — Anna's subscription has to
+  // grow a track after her connection is already up — and the test above does
+  // not cover it. If voice ever misbehaves for whoever joined first, start here.
+  test('the first joiner also hears someone who joins later', async ({ browser }) => {
     const table = await seatTable(browser, ['Anna', 'Bob']);
     pages = table.pages;
     const [anna, bob] = pages;
     await joinVoice(anna);
     await joinVoice(bob);
-    await expectAttached(anna, 1, 'Anna hears Bob, who joined after her');
+    await expectHearing(anna, 'Anna hears Bob, who joined after her');
   });
 
   test('leaving the room hangs up the microphone', async ({ browser }) => {
