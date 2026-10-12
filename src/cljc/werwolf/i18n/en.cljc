@@ -39,7 +39,7 @@
    ;; ------------------------------------------------------------- lobby ---
    :lobby/title       "Lobby"
    :lobby/players     "Players"
-   :lobby/count       (fn [n mx mn] (str n " / " mx " players · best from " mn))
+   :lobby/count       (fn [n mx mn] (str n " / " mx " players · it is most fun with " mn " or more"))
    :lobby/start       "Start the game"
    :lobby/need-more   "Waiting for more players"
    ;; The host may start below the recommended size. A nudge, not a gate: four

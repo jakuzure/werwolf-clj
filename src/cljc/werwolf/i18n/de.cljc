@@ -38,7 +38,7 @@
    ;; ------------------------------------------------------------- lobby ---
    :lobby/title       "Warteraum"
    :lobby/players     "Mitspieler"
-   :lobby/count       (fn [n mx mn] (str n " / " mx " Mitspieler · schön ab " mn))
+   :lobby/count       (fn [n mx mn] (str n " / " mx " Mitspieler · am meisten Spaß macht es ab " mn " Mitspielern"))
    :lobby/start       "Spiel starten"
    :lobby/need-more   "Es fehlen noch Mitspieler"
    ;; Die Spielleitung darf unter der empfohlenen Größe starten. Ein Hinweis,
