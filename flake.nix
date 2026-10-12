@@ -17,15 +17,9 @@
       url = "github:jlesquembre/clj-nix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
-    # nix-snapshotter's buildImage needs it, and nixpkgs does not pass it in
-    # (see nix/preview-image.nix).
-    globset = {
-      url = "github:pdtpartners/globset";
-      inputs.nixpkgs-lib.follows = "nixpkgs";
-    };
   };
 
-  outputs = { self, nixpkgs, clj-nix, globset }:
+  outputs = { self, nixpkgs, clj-nix }:
     let
       systems = [ "x86_64-linux" "aarch64-linux" "aarch64-darwin" ];
       # clj-nix ships its builders as an overlay, not as per-system outputs.
@@ -50,7 +44,6 @@
       } // nixpkgs.lib.optionalAttrs (system == "x86_64-linux") {
         # What CI builds for every push-* branch and lain runs as a preview.
         preview-image = pkgs.callPackage ./nix/preview-image.nix {
-          inherit globset;
           werwolf = self.packages.${system}.werwolf;
         };
       });
