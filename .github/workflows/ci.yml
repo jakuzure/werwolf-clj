@@ -71,3 +71,29 @@ jobs:
 
       - name: ClojureScript suite
         run: nix shell nixpkgs#babashka nixpkgs#clojure nixpkgs#jdk21_headless nixpkgs#nodejs_22 -c bb test:cljs
+
+  # Uploads main's build to Cachix, which lain substitutes werwolf from instead
+  # of compiling it. CACHIX_AUTH_TOKEN is a secret of the `cachix` environment,
+  # which only main may use: no PR or other branch can read it, not even one
+  # that edits this workflow. Forks get no secrets anyway.
+  cache:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-26.04
+    environment: cachix
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: DeterminateSystems/nix-installer-action@3138316df39ed29be04236d7ffc686fa525866aa # v23
+      - uses: DeterminateSystems/magic-nix-cache-action@84c0677f58dcedf3b91f8223ce36a9ea5b3c84b7 # v15
+        with:
+          use-flakehub: false
+      - uses: cachix/cachix-action@38b082610b782e7e93e209c35fd730d399dee866 # v17
+        with:
+          name: werwolf-clj
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+
+      # Substituted from the build job's GitHub cache rather than rebuilt; the
+      # cachix action pushes everything new in the store when the job ends,
+      # minus what cache.nixos.org already has.
+      - name: Build
+        run: nix build .#werwolf -L
