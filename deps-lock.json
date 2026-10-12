@@ -2048,14 +2048,14 @@
       "hash": "sha256-F+iii6ZBWeGqI7lm1AlejvFgsxyV+tUILX6gxQk7woM="
     },
     {
-      "mvn-path": "thheller/shadow-cljs/3.5.5/shadow-cljs-3.5.5.jar",
+      "mvn-path": "thheller/shadow-cljs/3.5.7/shadow-cljs-3.5.7.jar",
       "mvn-repo": "https://repo.clojars.org/",
-      "hash": "sha256-CV4CqMqyBxHmNvmoJq5FUx0BEOXpALw58fM3W68ckeU="
+      "hash": "sha256-srYytIwEZOuj6TdFCYU11M/79HZg5TzaS/h27x0GnX8="
     },
     {
-      "mvn-path": "thheller/shadow-cljs/3.5.5/shadow-cljs-3.5.5.pom",
+      "mvn-path": "thheller/shadow-cljs/3.5.7/shadow-cljs-3.5.7.pom",
       "mvn-repo": "https://repo.clojars.org/",
-      "hash": "sha256-N09AgG6MyS6bNxJsDkaYHIAk+jZcCDxt17h/KLcypoc="
+      "hash": "sha256-4+oXyC+8vZ2rvSzbEZP2rNa+CbaFNrV7L9dn3wjclqE="
     },
     {
       "mvn-path": "thheller/shadow-cljsjs/0.0.22/shadow-cljsjs-0.0.22.jar",
