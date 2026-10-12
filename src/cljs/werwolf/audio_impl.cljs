@@ -112,17 +112,31 @@
     (.start osc t0)
     (.stop osc (+ t0 dur 0.02))))
 
+(defonce ^:private last-cue (atom {}))
+
 (defn cue!
   "A short earcon. `:joined` when you enter the call, `:arrived` when somebody
    else does — rising for both, but the other person is one quieter note, since it
-   happens without you doing anything and should not interrupt a sentence."
+   happens without you doing anything and should not interrupt a sentence.
+   `:left` is `:arrived` run backwards: the same E5, falling a fourth, so the ear
+   tells coming from going before the head has caught up.
+
+   One of each per moment. When the SDK restarts a connection it unwinds every
+   remote participant and then re-adds them, which is a `:left` and an `:arrived`
+   per person in the same instant — identical sines in phase add up, and eight of
+   them is no longer quiet."
   [what]
   (when-let [^js ctx (cue-context)]
-    (case what
-      :joined  (do (tone! ctx 523.25 0    0.10)   ; C5
-                   (tone! ctx 783.99 0.10 0.14))  ; G5
-      :arrived (tone! ctx 659.25 0 0.09)          ; E5
-      nil)))
+    (let [now (.-currentTime ctx)]
+      (when (< (+ (get @last-cue what -1) 0.3) now)
+        (swap! last-cue assoc what now)
+        (case what
+          :joined  (do (tone! ctx 523.25 0    0.10)   ; C5
+                       (tone! ctx 783.99 0.10 0.14))  ; G5
+          :arrived (tone! ctx 659.25 0 0.09)          ; E5
+          :left    (do (tone! ctx 659.25 0    0.07)   ; E5
+                       (tone! ctx 493.88 0.07 0.10))  ; B4
+          nil)))))
 
 (defn- attach! [^js track sid]
   (let [^js el (.attach track)]
@@ -176,6 +190,11 @@
   ;; often off-screen, and "did Bob get in?" is otherwise answered by asking.
   (.on room (.-ParticipantConnected RoomEvent)
        (fn [_] (cue! :arrived)))
+  ;; And somebody left it — a dropped connection as often as a goodbye, and the
+  ;; first sign that the silence is Bob's phone and not Bob thinking. Never fires
+  ;; for our own hang-up: the SDK clears its participants without the event.
+  (.on room (.-ParticipantDisconnected RoomEvent)
+       (fn [_] (cue! :left)))
   (.on room (.-Disconnected RoomEvent)
        (fn [_]
          (detach-all!)
