@@ -242,6 +242,20 @@
       ;; nobody has to take.
       (= :claim-host action)))
 
+(defn owing
+  "The participants the game is still waiting on: everybody who holds at least
+   one real move right now, by the same test the night uses to decide a role is
+   done. Sorted seat ids, never the Spielleiter.
+
+   For the Spielleiter's screen. At night this names the players behind the
+   role being called, so it must never reach anybody else — view.cljc puts it
+   in his notes only."
+  [state]
+  (into []
+        (filter (fn [pid]
+                  (some #(not (not-really-acting? %)) (legal-actions state pid))))
+        (e/participant-ids state)))
+
 (defn- nobody-can-act?
   "True when nobody who acts on `role-id`'s turn has any usable action left.
 

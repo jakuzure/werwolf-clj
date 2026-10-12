@@ -317,7 +317,11 @@
      ;; player's own knowledge would ever hand him.
      :narrator-info (when narrator?
                       {:lovers (vec (sort (:lovers state)))
-                       :centre (vec (:centre state []))})})))
+                       :centre (vec (:centre state []))
+                       ;; Who the game is still waiting on. At night that names
+                       ;; the holders of the role being called, which is why it
+                       ;; lives here and nowhere public.
+                       :owing  (phases/owing state)})})))
 
 ;; ------------------------------------------------------- leak detector ---
 

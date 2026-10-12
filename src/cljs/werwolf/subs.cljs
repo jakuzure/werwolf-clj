@@ -157,6 +157,9 @@
 ;; the server never builds it for them.
 (rf/reg-sub ::night-info    :<- [::view] (fn [v _] (or (:night-info v) {})))
 (rf/reg-sub ::narrator-info :<- [::view] (fn [v _] (:narrator-info v)))
+;; Who the game is still waiting on. Built by the server for the Spielleiter
+;; only, so for everybody else this is simply empty.
+(rf/reg-sub ::owing :<- [::narrator-info] (fn [n _] (vec (:owing n))))
 
 ;; Which ROLE the narrator is calling right now. Public by design — a human
 ;; narrator says it out loud ("Werwölfe, wacht auf") — and which player holds it

@@ -315,6 +315,56 @@
          " — " (t :target/hint)]]
        [btn (t :target/cancel) disarm! {:tone :quiet}]])))
 
+(defn- narrator-waits
+  "Who the game is still waiting on, by name and card, and a way past them.
+
+   The Spielleiter used to learn that the Seherin had not looked yet only from
+   the silence, and the override that ends her turn sat in a closed console under
+   the board. Now the names are on the stage, with the skip right beside them:
+   the role being called at night, the phase by day.
+
+   Two taps while somebody is still owed — skipping a player who is about to act
+   takes their move away — and one when nobody is."
+  []
+  (let [owing   @(rf/subscribe [::sub/owing])
+        players @(rf/subscribe [::sub/players])
+        known   @(rf/subscribe [::sub/known-roles])
+        actions @(rf/subscribe [::sub/actions])
+        cursor  @(rf/subscribe [::sub/night-cursor])
+        view    @(rf/subscribe [::sub/view])
+        armed   (:skip-confirm @(rf/subscribe [::sub/form]))
+        ;; Keyed on where the table is, so a confirm left armed cannot fire on
+        ;; the next role or phase.
+        here    [(:phase view) (:night view) cursor]
+        skip    (cond (and cursor (contains? actions :gm/skip-role)) :gm/skip-role
+                      (contains? actions :advance-phase)              :advance-phase)
+        fire!   (fn []
+                  (rf/dispatch (if (= :gm/skip-role skip)
+                                 [::ev/act-with :gm/skip-role {:role cursor}]
+                                 [::ev/act :advance-phase]))
+                  (rf/dispatch [::ev/form-set :skip-confirm nil]))
+        label   (if (= :gm/skip-role skip)
+                  (t :narrator/skip-role (str (i18n/icon-of cursor) " " (role-name cursor)))
+                  (t (if (seq owing) :narrator/advance :narrator/advance-free)))]
+    [:div {:class "mt-2 space-y-2"}
+     (if (seq owing)
+       [:div {:class "flex flex-wrap items-center gap-1.5 text-sm" :data-testid "owing"}
+        [:span {:class "opacity-80"} (str (t :narrator/owing) ":")]
+        (for [pid owing]
+          ^{:key pid}
+          [:span {:class "rounded-md bg-amber-500/90 text-slate-900 px-2 py-0.5 font-semibold"}
+           (str (some-> (get known pid) i18n/icon-of (str " "))
+                (get-in players [pid :name] (str "#" pid)))])]
+       [:div {:class "text-sm opacity-80"} (t :narrator/owing-none)])
+     (when skip
+       (if (and (seq owing) (= here armed))
+         [:div {:class "flex flex-wrap gap-2"}
+          [btn (t :narrator/really (count owing)) fire! {:tone :danger}]
+          [btn (t :narrator/keep-waiting) #(rf/dispatch [::ev/form-set :skip-confirm nil])
+           {:tone :ghost}]]
+         [btn label (if (seq owing) #(rf/dispatch [::ev/form-set :skip-confirm here]) fire!)
+          {:tone :quiet :testid "narrator-skip"}]))]))
+
 (defn- turn-banner
   "One line, high on the screen, answering 'is the game waiting for ME?'.
 
@@ -346,12 +396,12 @@
               ;; The Spielleiter is never "dran" and never waiting: his console
               ;; always offers something, so `can-act?` would call every moment
               ;; his turn. Tell him instead what the table is doing.
+              ;; Who he is waiting on is drawn below the headline, by
+              ;; `narrator-waits`, with the way past them.
               narrator?
               ["border-violet-500 bg-violet-950/50 text-violet-100"
                (t :turn/narrating)
-               (cond
-                 (= :setup phase) (t :setup/hint)
-                 (seq waiting) (str (t :badge/waiting-for) ": " (str/join ", " waiting)))]
+               (when (= :setup phase) (t :setup/hint))]
 
               reaction
               ["border-rose-500 bg-rose-950/60 text-rose-100"
@@ -375,7 +425,8 @@
                  (false? (:alive? me)) (t :game/dead-hint))])]
         [:div {:class (str "rounded-xl border-2 px-4 py-3 " tone)}
          [:div {:class "font-bold"} headline]
-         (when detail [:div {:class "text-sm opacity-90"} detail])]))))
+         (when detail [:div {:class "text-sm opacity-90"} detail])
+         (when (and narrator? (not= :setup phase)) [narrator-waits])]))))
 
 (defn- voice-panel
   "Join the call, and mute yourself.
@@ -616,8 +667,15 @@
       (empty? plain)
       [:div {:class "text-sm text-slate-500"} (t :game/nothing-to-do)]
 
+      ;; Framed and titled, because this is what "Du bist dran" points at: a row
+      ;; of ordinary buttons under the role card was easy to read past.
       :else
-      [:div {:class "flex flex-wrap gap-2"}
+      [:div {:class "rounded-xl border-2 border-emerald-500 bg-emerald-950/40 p-3 space-y-2
+                     ring-4 ring-emerald-500/20"
+             :data-testid "my-task"}
+       [:div {:class "text-xs font-bold uppercase tracking-wide text-emerald-300"}
+        (str "👉 " (t :turn/task))]
+       [:div {:class "flex flex-wrap gap-2"}
        (for [a plain]
          ^{:key (str a)}
          ;; The ellipsis marks the buttons that do NOT act yet — they arm a
@@ -630,7 +688,7 @@
             #(rf/dispatch [::ev/act a]))
           {:tone (cond (= armed a) :armed
                        (declines a) :quiet
-                       :else :primary)}])])))
+                       :else :primary)}])]])))
 
 ;; ---------------------------------------------------------------- GM console ---
 ;;
@@ -1524,6 +1582,7 @@
   ;; nothing most of the time — game-over except at the end, the GM console for
   ;; everyone who is not host — and an empty flex item still consumes a `gap-4`.
   ;; Without it every phone screen carried two mystery gaps.
+  (let [my-turn? @(rf/subscribe [::sub/can-act?])]
   [:div {:class "space-y-4"}
    [phase-stage]
    [target-prompt]
@@ -1531,7 +1590,10 @@
     [:div {:class "contents lg:block lg:col-span-3 lg:space-y-4"}
      [:div {:class "order-1 empty:hidden"} [game-over-panel]]
      [:div {:class "order-3 empty:hidden"} [me-panel]]
-     [:div {:class "order-4 empty:hidden"} [action-bar]]
+     ;; On your turn the task jumps above your role card, straight under the
+     ;; stage that says it is your turn: the answer to "what do I do" should not
+     ;; be a scroll away from the question.
+     [:div {:class (str (if my-turn? "order-2" "order-4") " empty:hidden")} [action-bar]]
      ;; Above the board on a phone: joining the call is something you do once, at
      ;; the start, and hunting for it under nine player cards is how people end up
      ;; playing in silence.
@@ -1552,7 +1614,7 @@
      [:div {:class "order-9 empty:hidden"} [chat-panel]]
      ;; Last, and on purpose: the way out of a game under way, as far from the
      ;; moves as the screen allows. Two taps, like the lobby's.
-     [:div {:class "order-10 empty:hidden flex justify-end"} [game-leave]]]]])
+     [:div {:class "order-10 empty:hidden flex justify-end"} [game-leave]]]]]))
 
 ;; ---------------------------------------------------------------------- app ---
 

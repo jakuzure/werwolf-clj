@@ -195,6 +195,13 @@
    ;; ---------------------------------------------------------- narrator ---
    :narrator/title    "Narrator"
    :narrator/desc     "You are not playing. You see every role, call the night and move the phases along."
+   :narrator/owing        "Still waiting for"
+   :narrator/owing-none   "Nobody owes a move right now."
+   :narrator/skip-role    (fn [role] (str "Skip " role))
+   :narrator/advance      "Move on without waiting"
+   :narrator/advance-free "Move on"
+   :narrator/really       (fn [n] (str "Really? " n " still to act"))
+   :narrator/keep-waiting "Keep waiting"
    :narrator/night    "Tonight"
    :narrator/wolf-votes "Wolf votes"
    :narrator/dying    "Dying tonight"
@@ -248,6 +255,7 @@
    :turn/urgent  "Everyone is waiting for you"
    :turn/calling (fn [role] (str "The Spielleiter calls: " role))
    :turn/narrating "You are running the game"
+   :turn/task      "Your move"
 
    ;; ------------------------------------------------------------ stage ---
    ;;

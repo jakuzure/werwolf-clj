@@ -196,6 +196,13 @@
    ;; ------------------------------------------------------- Spielleiter ---
    :narrator/title    "Spielleiter"
    :narrator/desc     "Du spielst nicht mit. Du siehst alle Rollen, rufst die Nacht aus und schaltest die Phasen weiter."
+   :narrator/owing        "Wartet noch auf"
+   :narrator/owing-none   "Niemand muss gerade etwas tun."
+   :narrator/skip-role    (fn [role] (str role " überspringen"))
+   :narrator/advance      "Weiter, ohne zu warten"
+   :narrator/advance-free "Weiter"
+   :narrator/really       (fn [n] (str "Wirklich? " n " " (if (= 1 n) "fehlt" "fehlen") " noch"))
+   :narrator/keep-waiting "Doch warten"
    :narrator/night    "Nachtgeschehen"
    :narrator/wolf-votes "Wolfsstimmen"
    :narrator/dying    "Stirbt heute Nacht"
@@ -251,6 +258,7 @@
    :turn/calling (fn [role] (str "Der Spielleiter ruft: " role))
    ;; Der Spielleiter ist nie "dran" und wartet nie — er führt.
    :turn/narrating "Du leitest das Spiel"
+   :turn/task      "Deine Aufgabe"
 
    ;; ------------------------------------------------------------ stage ---
    ;;
