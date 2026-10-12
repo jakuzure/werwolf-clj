@@ -207,10 +207,18 @@
 (declare legal-actions)
 
 (def always-allowed
-  "Preferences, not moves. Offered in every phase, to the living and the dead,
-   because a player must be able to change their language mid-game — asking them
-   to wait for the lobby that will never come again is absurd."
-  #{:set-locale})
+  "Preferences and the door, not moves. Offered in every phase, to the living
+   and the dead, because a player must be able to change their language
+   mid-game — asking them to wait for the lobby that will never come again is
+   absurd.
+
+   And `:leave`, for the same reason. It used to be lobby and game-over only, so
+   once the cards were dealt nobody could walk out — not even the Spielleiter —
+   and closing the tab did not help either: the page resumes its seat from the
+   token on reload. Leaving mid-game keeps the seat and the card (see
+   apply-event :player/left), so the game it leaves behind is one with an absent
+   player, which every phase already survives."
+  #{:set-locale :leave})
 
 (defn- not-really-acting?
   "Does this action count as 'this player still has something to do'? No, for
@@ -228,7 +236,11 @@
       ;; night, so it never mattered here — but an untimed room hands it to the
       ;; host in every phase the clock would otherwise end, and a host who also
       ;; holds a role would then look busy for the whole of that role's turn.
-      (= :advance-phase action)))
+      (= :advance-phase action)
+      ;; Offered to EVERY connected player while the host is missing, so with
+      ;; it counted every night turn would wait for somebody to take a seat
+      ;; nobody has to take.
+      (= :claim-host action)))
 
 (defn- nobody-can-act?
   "True when nobody who acts on `role-id`'s turn has any usable action left.
@@ -515,6 +527,36 @@
       (and (not (timed? state)) (contains? clock-ended phase))
       (some-> (seq (rest (timeout-events state))) vec))))
 
+(defn host-absent-events
+  "What it MEANS that the host has gone missing, or nil when there is nothing
+   to say. Pure, like `timeout-events`: the server decides WHEN a host counts as
+   gone — a grace period on the clock, or at once when he walks out — and this
+   decides what follows.
+
+   Always the flag itself, which is what offers the seat to the others (see
+   `claim-actions`). Beyond that, a narrated game under way cannot hand the seat
+   over — whoever took it holds a card and would see every other — so the room
+   is made to run without him:
+
+   * the clock comes on, and runs if it was paused, so every phase that waited
+     for his button ends on a timeout instead. `timeout-events` never invents a
+     decision, so a table driven by the clock plays the game it would have.
+   * in :setup the deal becomes final and the night falls. Only he could say so,
+     and with the clock now on the night then runs itself.
+
+   nil once flagged, and at :game-over, where nobody is waiting for anything."
+  [state]
+  (let [phase  (:phase state)
+        stuck? (and (e/narrator state) (not (#{:lobby :game-over} phase)))]
+    (when-not (or (:host-absent? state) (= :game-over phase))
+      (cond-> [{:type :host/absent}]
+        (and stuck? (not (timed? state)))
+        (conj {:type :clock/timer-set :on? true :cause :host-absent})
+        (and stuck? (:paused? state))
+        (conj {:type :clock/resumed})
+        (and stuck? (= :setup phase))
+        (conj {:type :night/began :night 1})))))
+
 (defn- night-actor?
   "Is pid one of the players whose role is currently on the night cursor?
 
@@ -572,6 +614,27 @@
         (and (not (:paused? state)) (timed? state)) (conj :gm/pause)
         (:deadline state)                          (conj :gm/add-time)))))
 
+(defn- claim-actions
+  "Taking the seat of a host who has gone missing.
+
+   To anybody still at the table — a connected seat, alive or dead, since a
+   dead host keeps his powers too — and only where the heir would not hold a
+   secret worth having: in the lobby, where nobody holds a card yet, and in a
+   game the host was PLAYING, where the seat carries GM powers but no view of
+   the deal. In a narrated game under way the heir would hold a card and see
+   every other one; `host-absent-events` keeps that game going on the clock
+   instead."
+  [state pid]
+  (let [phase (:phase state)]
+    (if (and (:host-absent? state)
+             (not= pid (:host state))
+             (get-in state [:players pid :connected?])
+             (or (= :lobby phase)
+                 (and (not (:narrated? state))
+                      (not (#{:setup :game-over} phase)))))
+      #{:claim-host}
+      #{})))
+
 (defn- player-actions
   "What pid may do as a *player* (ignoring GM powers)."
   [state pid]
@@ -581,11 +644,10 @@
         ;; Counted without the narrator: he is in the room but not in the deal.
         table  (count (e/participant-ids state))]
     (cond
-      ;; The game is decided, so there is nothing left to play — but there is
-      ;; something left to DO, and it used to be nothing at all: the final
-      ;; screen offered no way out, so the only exit from a finished game was
-      ;; closing the tab. Leaving is not a move; it is the door.
-      (= :game-over phase) #{:leave}
+      ;; The game is decided, so there is nothing left to play. The way out —
+      ;; which this branch was once the only source of — is `:leave`, now in
+      ;; `always-allowed` and so offered here like everywhere else.
+      (= :game-over phase) #{}
 
       ;; The lobby is where people arrange the game, so of course they may talk.
       ;;
@@ -596,7 +658,7 @@
       ;; does bind is the deck's: below three there is no game to start, and
       ;; that limit belongs to the role composition, not to a preference.
       (= :lobby phase)
-      (cond-> #{:chat :leave :set-locale}
+      (cond-> #{:chat}
         (and host? (>= table roles/absolute-min-players))
         (conj :start-game))
 
@@ -709,7 +771,10 @@
   (into #{:chat :jaeger-shoot :jaeger-pass :leave
           ;; A dead Bürgermeister names who follows him. Like the Jäger's shot,
           ;; this is an act performed while already dead.
-          :mayor-appoint :mayor-decline}
+          :mayor-appoint :mayor-decline
+          ;; Not a move in the game: taking the seat of a host who has gone.
+          ;; A dead host keeps his powers, so a dead heir may take them up.
+          :claim-host}
         always-allowed))
 
 (def no-target-actions
@@ -725,7 +790,9 @@
     :dieb-keep
     ;; Switches and a starting gun: the Spielleiter's, and none of them names
     ;; anybody.
-    :begin-night :gm/toggle-narrated :gm/toggle-timer})
+    :begin-night :gm/toggle-narrated :gm/toggle-timer
+    ;; Names nobody: the seat it takes is the host's.
+    :claim-host})
 
 (declare legal-targets legal-choices)
 
@@ -745,6 +812,7 @@
     #{}
     (let [candidates (-> (player-actions state pid)
                          (into (host-actions state pid))
+                         (into (claim-actions state pid))
                          (into always-allowed))]
       (into #{}
             (remove (fn [action]

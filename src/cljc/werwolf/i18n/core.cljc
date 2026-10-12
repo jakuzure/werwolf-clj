@@ -77,6 +77,8 @@
    :player/nominated :vote
    :gm/forced        :gm
    :host/changed     :gm
+   :host/absent      :gm
+   :host/returned    :gm
    :clock/paused     :gm
    :clock/resumed    :gm
    :clock/timer-set  :gm
@@ -161,14 +163,22 @@
       :player/left         (t locale :log/left (nm player))
       :player/disconnected (t locale :log/disconnected (nm player))
       :player/reconnected  (t locale :log/reconnected (nm player))
-      :host/changed        (t locale :log/host-changed (nm host))
+      ;; Taken from a host who had gone missing, or handed over — the table
+      ;; should know which.
+      :host/changed        (t locale (if (:claimed? entry) :log/host-claimed :log/host-changed)
+                              (nm host))
+      :host/absent         (t locale :log/host-absent (nm host))
+      :host/returned       (t locale :log/host-returned (nm host))
       ;; In a narrated room the night does not fall with the deal — the
       ;; Spielleiter still has the cards in hand.
       :game/started        (t locale (if (:narrated? entry)
                                        :log/game-started-setup
                                        :log/game-started))
       :game/narrated-set   (t locale (if (:narrated? entry) :log/narrated-on :log/narrated-off))
-      :clock/timer-set     (t locale (if (:on? entry) :log/timer-on :log/timer-off))
+      ;; Switched by nobody: the clock taking over from a missing Spielleiter.
+      :clock/timer-set     (t locale (cond (= :host-absent (:cause entry)) :log/timer-on-absent
+                                           (:on? entry) :log/timer-on
+                                           :else :log/timer-off))
       :night/began         (t locale :log/night-began)
       ;; Published without the ids on purpose: THAT there are lovers is public,
       ;; WHO they are is not. See apply-event :amor/linked.

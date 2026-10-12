@@ -39,6 +39,18 @@
 (defn- secs-for [game-cfg phase]
   (get game-cfg (engine/timed-phases phase)))
 
+(defn- nobody-here?
+  "Is every seat in the room disconnected?
+
+   Read from state rather than from the room's sockets, which it mirrors — a
+   seat goes absent when its LAST socket closes and comes back with its first —
+   so that the clock's policy stays a pure function of state, and so the commit
+   that records the first player returning is also the one that re-arms the
+   clock, through the ordinary reconcile, with no special case."
+  [state]
+  (and (seq (:players state))
+       (not-any? :connected? (vals (:players state)))))
+
 (defn clock-events
   "Events that make the deadline agree with the phase. Idempotent: given a state
    whose clock is already correct it returns nil, which is what lets it be
@@ -58,6 +70,13 @@
       ;; pause and for the same reason: whatever deadline is left over from
       ;; before it was switched off has to go, and none may come back.
       (not (engine/timed? state)) (when deadline [{:type :phase/deadline :at nil}])
+      ;; Nobody is in the room, so nobody is being timed. A clock that ran on
+      ;; regardless ended phase after phase in front of an empty table — one
+      ;; abandoned game was found at night 1384 — and handed whoever came back a
+      ;; game that had played itself. Same shape again: drop the deadline, arm
+      ;; none, and the reconcile after the first seat reconnects gives the phase
+      ;; a full fresh clock. Time nobody could play through is not time.
+      (nobody-here? state)        (when deadline [{:type :phase/deadline :at nil}])
       (and secs (nil? deadline)) [{:type :phase/deadline :at (+ now-ms (* 1000 secs))}]
       (and (not secs) deadline)  [{:type :phase/deadline :at nil}]
       :else nil)))
@@ -72,7 +91,9 @@
    arm a fresh clock for whoever acts next — one mechanism, no special case."
   [now-ms state]
   (when-let [deadline (:deadline state)]
-    (when (>= now-ms deadline)
+    ;; Belt and braces: `clock-events` already clears the deadline of an empty
+    ;; room on the commit that emptied it.
+    (when (and (>= now-ms deadline) (not (nobody-here? state)))
       (conj (vec (engine/timeout-events state))
             {:type :phase/deadline :at nil}))))
 
@@ -120,10 +141,57 @@
    passed in, not from whenever the hook next happens to look at a wall clock."
   [game-cfg now-ms state]
   (when-let [deadline (:deadline state)]
-    (when (>= now-ms deadline)
+    (cond
+      ;; Everybody comes back from a restart disconnected, so this is the usual
+      ;; case: no clock until somebody is there to be timed. Live or expired.
+      (nobody-here? state) [{:type :phase/deadline :at nil}]
+
+      (>= now-ms deadline)
       (or (clock-events game-cfg now-ms (assoc state :deadline nil))
           ;; A stale deadline on a phase that has no clock at all: just stop it.
           [{:type :phase/deadline :at nil}]))))
+
+;; ---------------------------------------------------------------- absence ---
+
+(def default-host-grace-secs
+  "How long the host's seat may stand empty before the room stops waiting for
+   him. Long enough for a phone to lose its signal on the way to the kitchen and
+   find it again; short enough that a table does not sit staring at a frozen
+   night. Config: `:host-grace-secs`."
+  45)
+
+(defn absence-events
+  "Events for a host who has been gone too long, or nil.
+
+   This decides only WHEN: the host's seat disconnected for longer than the
+   grace period. What follows — the flag, a clock taking over, the night
+   falling, his seat offered to the others — is a rule, and lives in
+   `engine/host-absent-events`, which also makes this idempotent: once the room
+   is flagged it has nothing more to say.
+
+   A disconnected seat with no `:absent-since` gets no grace at all. That is
+   either a host who LEFT mid-game, which is a decision rather than a dropout,
+   or a log from before absences were measured, where how long he has been
+   gone is unknown and waiting longer would not make it known.
+
+   An empty room is left alone. Nobody is there to take the seat or to be timed,
+   and the first player back is measured afresh on the next tick."
+  [game-cfg now-ms state]
+  (let [host  (get-in state [:players (:host state)])
+        grace (* 1000 (or (:host-grace-secs game-cfg) default-host-grace-secs))
+        since (:absent-since host)]
+    (when (and host
+               (false? (:connected? host))
+               (not (nobody-here? state))
+               (or (nil? since) (>= (- now-ms since) grace)))
+      (engine/host-absent-events state))))
+
+(defn notice-absence!
+  "Flag one room's host as absent if he has been gone too long. Returns true if
+   it did."
+  [ctx room-id now-ms]
+  (let [res (room/narrate! ctx room-id #(absence-events (:game ctx) now-ms %))]
+    (boolean (and (:ok? res) (not (:noop? res))))))
 
 (defn rearm-all!
   "Re-arm every restored room's clock. Call once, after `room/rehydrate!`."
@@ -135,7 +203,8 @@
         (room/room-ids ctx)))
 
 (defn tick!
-  "Fire every expired deadline. Returns the room ids that timed out.
+  "Fire every expired deadline, and notice every host who has been gone too
+   long. Returns the room ids that timed out.
 
    Takes `now-ms` rather than reading a clock so the whole timer can be tested
    at simulated instants, instantly."
@@ -149,6 +218,9 @@
   (into []
         (filter (fn [room-id]
                   (try
+                    ;; Absence first: in a narrated game it may switch the clock
+                    ;; on, and the reconcile that follows arms it at once.
+                    (notice-absence! ctx room-id now-ms)
                     (fire! ctx room-id now-ms)
                     (catch Throwable t
                       ;; One sick room must never stop the clock for the others.

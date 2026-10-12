@@ -127,6 +127,7 @@
    :action/vote-abstain    "Abstain"
    :action/begin-night     "Begin the first night"
    :action/advance-phase   "Next phase (GM)"
+   :action/claim-host      "Take over as game master"
    :action/gm-toggle-narrated "Narrator mode (GM)"
    :action/gm-toggle-timer "Time limit on/off (GM)"
    :action/gm-transfer-host "Hand over the game master role (GM)"
@@ -173,6 +174,11 @@
    :game/you           "you"
    :game/dead          "dead"
    :game/absent        "away"
+
+   ;; ---------------------------------------------------------- absence ---
+   :absence/title      (fn [n] (str "The game master (" n ") is away"))
+   :absence/claim-hint "Anyone at the table can take over as game master."
+   :absence/clock-hint "The clock has taken over: every phase ends on its time limit until the game master is back."
    :game/your-role     "Your role"
    :game/in-love       "You are in love with"
    :game/heiltrank     "Healing potion"
@@ -280,12 +286,16 @@
    :log/disconnected  (fn [n] (str n " is away"))
    :log/reconnected   (fn [n] (str n " is back"))
    :log/host-changed  (fn [n] (str n " is now the game master"))
+   :log/host-claimed  (fn [n] (str n " takes over as game master"))
+   :log/host-absent   (fn [n] (str "The game master (" n ") is away"))
+   :log/host-returned (fn [n] (str n " is back and running the game again"))
    :log/game-started  "The first night falls"
    :log/game-started-setup "The cards are dealt — the narrator is preparing the first night"
    :log/narrated-on   "The game master narrates and does not play"
    :log/narrated-off  "The game master plays along"
    :log/timer-on      "The clock is running — every phase has a time limit"
    :log/timer-off     "The clock is off — the game master sets the pace"
+   :log/timer-on-absent "The clock takes over — without a game master every phase ends on its time limit"
    :log/amor-linked   "Amor has chosen two lovers"
    :log/night-began   "Night falls"
    :log/night-quiet-first "The first night passes quietly — nobody dies"

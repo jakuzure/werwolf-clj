@@ -108,9 +108,9 @@
 (deftest the-narrator-is-never-a-target-or-a-voter
   (let [s (tu/narrated-game-with cast-of-5)]
     (testing "at night"
-      (is (= #{:chat :set-locale} (set (remove (phases/host-actions s 0)
-                                               (phases/legal-actions s 0))))
-          "his voice, his language — and nothing the game counts")
+      (is (= #{:chat :set-locale :leave} (set (remove (phases/host-actions s 0)
+                                                      (phases/legal-actions s 0))))
+          "his voice, his language, the door — and nothing the game counts")
       (doseq [pid (range 1 6), a (phases/legal-actions s pid)]
         (is (not (some #{0} (phases/legal-targets s pid a))) (str pid " " a))))
     (testing "and by day, nobody waits on him"

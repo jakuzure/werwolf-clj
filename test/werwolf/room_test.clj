@@ -95,6 +95,11 @@
         (room/submit! ctx room-id (:host st) {:type :gm/skip-role})
         (recur (inc guard))))))
 
+(defn- age-room!
+  "Backdate a room's last activity, so idleness can be tested without waiting."
+  [ctx room-id ms]
+  (swap! (:rooms ctx) update room-id update :last-activity - ms))
+
 (defn- wolves-in [state]
   (set (filter #(= :werewolf (engine/team-of-player state %)) (engine/living-ids state))))
 
@@ -616,6 +621,54 @@
             "disconnected is never dead — the role still matters to the outcome")
         (is (some #(and (= :player/disconnected (:type %)) (= pid (:player %))) (:log state)))))))
 
+(deftest a-closing-socket-is-stamped-with-when
+  (testing "the engine has no clock, so the room stamps the disconnect — it is
+            how the timer tells a phone that blinked from a seat nobody is
+            coming back to"
+    (with-ctx [ctx]
+      (let [{:keys [room-id seats]} (table ctx 5)
+            {:keys [pid sink]} (second seats)
+            before (System/currentTimeMillis)]
+        (room/detach! ctx sink)
+        (let [since (get-in (room/state-of ctx room-id) [:players pid :absent-since])]
+          (is (int? since))
+          (is (<= before since (System/currentTimeMillis))))
+        (is (some #(and (= :player/connection (:type %)) (false? (:connected? %)) (int? (:at %)))
+                  (store/load-events (:ds ctx) room-id))
+            "and the stamp is in the log, so a replay measures the same absence")
+        (testing "coming back forgets it"
+          (room/attach! ctx room-id pid (mk-sink))
+          (is (nil? (get-in (room/state-of ctx room-id) [:players pid :absent-since]))))))))
+
+(deftest a-restart-measures-absence-from-the-boot
+  (testing "time nobody could play through is not time"
+    (let [path (tmp-path)]
+      (try
+        (let [ctx (ctx-on path)
+              {:keys [room-id] :as t} (table ctx 5)]
+          (start! ctx t)
+          (let [ctx2 (ctx-on path)
+                boot (System/currentTimeMillis)]
+            (room/rehydrate! ctx2)
+            (is (every? #(<= boot (:absent-since %))
+                        (vals (:players (room/state-of ctx2 room-id)))))))
+        (finally (cleanup! path))))))
+
+(deftest the-servers-own-commits-are-not-activity
+  (testing "a clock firing in front of an empty table used to push the sweep
+            back with every timeout, and an abandoned game ran on for months"
+    (with-ctx [ctx]
+      (let [{:keys [room-id seats] :as t} (table ctx 5)]
+        (start! ctx t)
+        (doseq [{:keys [sink]} seats] (room/detach! ctx sink))
+        (age-room! ctx room-id (* 2 60 60 1000))
+        (let [aged (:last-activity (get @(:rooms ctx) room-id))]
+          (room/narrate! ctx room-id (fn [_] [{:type :phase/timed-out :phase :night}]))
+          (is (= aged (:last-activity (get @(:rooms ctx) room-id))))
+          (is (= [room-id] (room/sweep-idle! ctx (System/currentTimeMillis)
+                                             {:room-idle-ms 1000
+                                              :game-idle-ms (* 30 60 1000)}))))))))
+
 (deftest closing-one-of-two-tabs-is-not-an-absence
   (with-ctx [ctx]
     (let [{:keys [room-id pid]} (host-seat! ctx "Anna")
@@ -732,11 +785,6 @@
         (is (= 40 (count (chats sink))) "everyone saw every public message")))))
 
 ;; --------------------------------------------------------- idle sweeping ---
-
-(defn- age-room!
-  "Backdate a room's last activity, so idleness can be tested without waiting."
-  [ctx room-id ms]
-  (swap! (:rooms ctx) update room-id update :last-activity - ms))
 
 (deftest an-abandoned-lobby-is-dropped
   (with-ctx [ctx]

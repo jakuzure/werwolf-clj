@@ -47,13 +47,19 @@
    `:narrated? true` seats a Spielleiter in seat 0 AS WELL AS the n players, and
    switches the clock off the way a real narrated room starts. n is always the
    table that plays, so a narrated game of n deals the same deck as an
-   unnarrated one and the two are comparable."
+   unnarrated one and the two are comparable.
+
+   `:host-absent? true` opens the room with its host already gone and flagged,
+   as the server's ticker would leave it, so the random walk gets to take his
+   seat — or not — at any point the engine offers it."
   ([n seed] (sim-genesis n seed {}))
-  ([n seed {:keys [narrated?]}]
-   (into [(cond-> {:type :game/created :room-id "SIM" :host 0 :seed seed :min-players 5}
-            narrated? (assoc :narrated? true :timer? false))]
-         (map (fn [i] {:type :player/joined :player i :name (str "P" i) :locale :de}))
-         (range (if narrated? (inc n) n)))))
+  ([n seed {:keys [narrated? host-absent?]}]
+   (cond-> (into [(cond-> {:type :game/created :room-id "SIM" :host 0 :seed seed :min-players 5}
+                    narrated? (assoc :narrated? true :timer? false))]
+                 (map (fn [i] {:type :player/joined :player i :name (str "P" i) :locale :de}))
+                 (range (if narrated? (inc n) n)))
+     host-absent? (into [{:type :player/connection :player 0 :connected? false :at 0}
+                         {:type :host/absent}]))))
 
 (defn new-sim-game
   "A game in the lobby with n joined players, plus its genesis event log."

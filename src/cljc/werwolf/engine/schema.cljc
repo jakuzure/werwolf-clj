@@ -37,6 +37,11 @@
    [:role {:optional true} [:maybe RoleId]]
    [:alive? :boolean]
    [:connected? :boolean]
+   ;; Epoch ms of the disconnect, so the server's clock can tell a phone that
+   ;; blinked from a seat nobody is coming back to. The server stamps it; the
+   ;; engine only records it and never reads a clock. Absent while connected,
+   ;; and on any seat whose log predates the stamp.
+   [:absent-since {:optional true} :int]
    [:locale [:enum :de :en]]
    ;; one-shot resources, e.g. {:heiltrank 1 :gifttrank 1}
    [:resources {:optional true} [:map-of :keyword :int]]
@@ -70,6 +75,11 @@
    [:night :int]                              ; 0 in lobby, 1-based thereafter
    [:players [:map-of PlayerId Player]]
    [:host PlayerId]
+   ;; The host has been gone longer than the grace period — see
+   ;; `timer/absence-events`. Cleared by his return or by anybody taking the
+   ;; seat. A flag rather than something derived on the fly, because the
+   ;; fallbacks it triggers happen ONCE and the table has to be told.
+   [:host-absent? {:optional true} :boolean]
    [:seed :int]                               ; RNG seed — replay determinism
    [:min-players :int]
    [:max-players {:optional true} :int]
