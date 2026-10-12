@@ -45,6 +45,8 @@
                                          n " or more"))
    :lobby/share       "Share this code"
    :lobby/leave       "Leave the game"
+   :lobby/leave-confirm "Really leave?"
+   :lobby/leave-cancel  "Stay"
 
    ;; ------------------------------------------------------------ phases ---
    :phase/lobby       "Lobby"

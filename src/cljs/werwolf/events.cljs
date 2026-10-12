@@ -348,8 +348,12 @@
    by leaving here and by being released from another tab, so the two resets
    cannot drift apart — this one has to be COMPLETE, and once was not."
   [db]
-  (merge db (select-keys initial-db
-                         [:screen :me :view :view/seq :chat :error :audio])))
+  (-> db
+      (merge (select-keys initial-db
+                          [:screen :me :view :view/seq :chat :error :audio]))
+      ;; The confirm that got us here. Left armed, it would put 'really?' on the
+      ;; next room's leave button before anyone had touched it.
+      (update :form dissoc :leave)))
 
 (defn leave-fx
   "Also the way out of a finished game. Landing on the landing screen with a
@@ -421,7 +425,10 @@
          ;; leaving you on a room screen with nothing on it.
          :view/seq nil
          :view nil
-         :me {:room-id room-id :player-id player-id :host? host?}))
+         :me {:room-id room-id :player-id player-id :host? host?}
+         ;; Nor its half-confirmed leave. `leave-fx` clears that on the way out,
+         ;; but a fatal error throws a session away without passing through it.
+         :form (dissoc (:form db) :leave)))
 
 (defmethod handle-server :room/view [db {:keys [view] n :seq}]
   ;; A view only means anything if we hold a seat, and this guard is why leaving

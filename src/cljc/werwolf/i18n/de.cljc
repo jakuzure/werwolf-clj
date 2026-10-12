@@ -42,6 +42,8 @@
                                          n " Mitspielern"))
    :lobby/share       "Teile diesen Code"
    :lobby/leave       "Runde verlassen"
+   :lobby/leave-confirm "Wirklich verlassen?"
+   :lobby/leave-cancel  "Doch bleiben"
 
    ;; ------------------------------------------------------------ phases ---
    :phase/lobby       "Warteraum"

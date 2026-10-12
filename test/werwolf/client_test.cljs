@@ -146,6 +146,28 @@
       (is (= {:action :vote :picks []}
              (sub/armed-action {:pending {:action :vote :picks []}}))))))
 
+;; ------------------------------------------------------- the leave confirm ---
+
+(deftest leaving-asks-twice-and-forgets-that-it-asked
+  (let [lobby {:phase :lobby}]
+    (is (not (sub/leave-armed? (:form ev/initial-db) lobby)) "a fresh form asks nothing")
+    (is (not (sub/leave-armed? {:leave ""} lobby)) "\"\" is truthy, still not armed")
+    (is (sub/leave-armed? {:leave :lobby} lobby))
+    (testing "armed in one phase means nothing in the next — the game starting
+              is a screen change, and must not carry a 'really?' along"
+      (is (not (sub/leave-armed? {:leave :lobby} {:phase :night})))))
+  (let [armed (-> seated
+                  (assoc-in [:form :leave] :lobby)
+                  (assoc-in [:form :name] "Anna"))]
+    (testing "leaving disarms it, or the next room's button opens on 'really?'"
+      (is (not (contains? (:form (:db (ev/leave-fx {:db armed} nil))) :leave))))
+    (testing "and so does sitting down anywhere, since a fatal error drops the
+              session without passing through leave-fx"
+      (let [db' (apply* armed {:type :server/welcome :room-id "WXYZ" :player-id 1
+                               :host? false :token "t2"})]
+        (is (not (contains? (:form db') :leave)))
+        (is (= "Anna" (get-in db' [:form :name])) "and nothing else in the form")))))
+
 ;; -------------------------------------------------------------- room list ---
 
 (deftest the-room-list-replaces-wholesale

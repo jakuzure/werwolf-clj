@@ -58,6 +58,20 @@
 
 (rf/reg-sub ::gm :<- [::form] (fn [form _] (gm-console form)))
 
+(defn leave-armed?
+  "Whether 'leave' has had its first tap and is waiting for the second.
+
+   The form holds the PHASE that first tap happened in, not a flag, so the
+   question goes stale by itself: once the game starts, a 'really?' armed in the
+   lobby matches nothing, and cannot greet whoever next sees a leave button.
+   `keyword?` for the same reason as `armed-action` — \"\" is truthy."
+  [form view]
+  (let [p (:leave form)]
+    (and (keyword? p) (= p (:phase view)))))
+
+(rf/reg-sub ::leave-armed? :<- [::form] :<- [::view]
+            (fn [[form view] _] (leave-armed? form view)))
+
 (rf/reg-sub ::show-all-log? (fn [db _] (boolean (:log/show-all? db))))
 
 (rf/reg-sub ::rooms (fn [db _] (or (:rooms db) [])))

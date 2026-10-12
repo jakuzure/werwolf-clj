@@ -30,6 +30,7 @@ test.describe('getting in and out of a room', () => {
     const first = await createRoom(page, 'Anna');
 
     await page.getByRole('button', { name: DE.leave }).click();
+    await page.getByRole('button', { name: DE.leaveConfirm }).click();
     await expect(page.getByPlaceholder(DE.name)).toBeVisible();
 
     await page.getByRole('button', { name: DE.create }).click();
@@ -66,7 +67,9 @@ test.describe('getting in and out of a room', () => {
 
     // And it goes again once there is nobody left in it to play with.
     await anna.getByRole('button', { name: DE.leave }).click();
+    await anna.getByRole('button', { name: DE.leaveConfirm }).click();
     await bob.getByRole('button', { name: DE.leave }).click();
+    await bob.getByRole('button', { name: DE.leaveConfirm }).click();
     await expect(anna.getByRole('button', { name: new RegExp(code) }))
       .toHaveCount(0, { timeout: 10_000 });
   });

@@ -753,6 +753,23 @@
 
 ;; -------------------------------------------------------------------- lobby ---
 
+(defn- leave-button
+  "Two taps, like the GM's public overrides, and for a reason of the same kind:
+   the first tap is already final. Leaving gives up the seat and hangs up the
+   call, and on a phone this button sits a thumb away from 'start' — a seat
+   lost by brushing it means asking the table for the code again.
+
+   Inline rather than `js/confirm`: a browser dialog on a phone is a modal in
+   the wrong typeface that looks like the page broke."
+  []
+  (let [armed? @(rf/subscribe [::sub/leave-armed?])
+        phase (:phase @(rf/subscribe [::sub/view]))]
+    (if armed?
+      [:<>
+       [btn (t :lobby/leave-confirm) #(rf/dispatch [::ev/leave]) {:tone :danger}]
+       [btn (t :lobby/leave-cancel) #(rf/dispatch [::ev/form-set :leave nil]) {:tone :ghost}]]
+      [btn (t :lobby/leave) #(rf/dispatch [::ev/form-set :leave phase]) {:tone :quiet}])))
+
 (defn lobby []
   (let [view @(rf/subscribe [::sub/view])
         me @(rf/subscribe [::sub/me])
@@ -773,7 +790,7 @@
          [btn (t :lobby/start) #(rf/dispatch [::ev/act :start-game])]
          [:span {:class "text-sm text-slate-500"}
           (if (:host? me) (t :lobby/need-more) (t :game/waiting))])
-       [btn (t :lobby/leave) #(rf/dispatch [::ev/leave]) {:tone :quiet}]]
+       [leave-button]]
       ;; The host may start under the recommended size, so say so rather than
       ;; letting a start button next to "3 / 5" look like a bug. Derived from
       ;; the offer, not from a rule of its own: if the server did not offer
@@ -811,6 +828,9 @@
        ;; Every role is public now — view-for reveals them all once the game is
        ;; decided — so the table can finally read who everyone was.
        [:p {:class "text-sm text-amber-100/80"} (t :game/over-hint)]
+       ;; One tap, unlike the lobby's `leave-button`. Nothing is in progress
+       ;; to lose any more, and this is the move the screen exists to offer —
+       ;; asking 'really?' of the only way forward is friction, not safety.
        (when (contains? actions :leave)
          [btn (t :game/new-round) #(rf/dispatch [::ev/leave])])])))
 

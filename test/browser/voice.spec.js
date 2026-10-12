@@ -194,7 +194,9 @@ test.describe('voice', () => {
     // The worst bug available in a game about who knows what: a microphone still
     // published into a room the player has walked out of, audible to a table they
     // are no longer at.
+    // Two taps: the first only turns the button into its 'really?'.
     await anna.getByRole('button', { name: DE.leave }).click();
+    await anna.getByRole('button', { name: DE.leaveConfirm }).click();
     await expect(anna.getByPlaceholder(DE.name)).toBeVisible();
 
     await expectAttached(bob, 0, 'Anna is gone from the call');
