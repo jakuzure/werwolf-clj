@@ -49,6 +49,12 @@
    :view/seq    nil
    :chat        []
    :rooms       []          ; joinable lobbies, from :server/rooms
+   ;; When the list was last asked for, so the landing screen's poll can ride the
+   ;; half-second tick without asking twice a second.
+   :rooms/asked-at nil
+   ;; A create or join is on its way and has not been answered. Repeat taps are
+   ;; dropped meanwhile: the server would only answer them with the same seat.
+   :seat/pending? false
    :error       nil
    ;; Only covers the landing screen. Once seated, the server's per-player copy
    ;; wins — see ::set-locale and the ::locale subscription.
@@ -67,9 +73,18 @@
  ;; screen that only fills in after you tap refresh looks like there are no
  ;; games, which is the one thing it exists to answer.
  (fn [{:keys [db]} _]
-   {:db (assoc db :conn/status :connected)
+   ;; Stamped as an ask, or the landing screen's poll would repeat it on the
+   ;; very next tick.
+   {:db (assoc db :conn/status :connected :rooms/asked-at (:now db))
     ::ws/send {:type :client/rooms}}))
-(rf/reg-event-db ::disconnected (fn [db _] (assoc db :conn/status :disconnected)))
+(defn disconnected-db
+  "The socket is gone. A create or join that was in flight may have been lost
+   with it, so the buttons are freed — a repeat that turns out to have been
+   unnecessary is answered by the server with the seat you already got."
+  [db]
+  (assoc db :conn/status :disconnected :seat/pending? false))
+
+(rf/reg-event-db ::disconnected (fn [db _] (disconnected-db db)))
 
 (def ^:const error-ttl-ms
   "How long an error stays on screen before retiring itself.
@@ -148,20 +163,28 @@
 ;; Named and public rather than anonymous, so the guard clauses are testable
 ;; without a browser — the same reason `handle-server` is.
 
+;; All three also refuse to send while an earlier create or join is unanswered.
+;; A double tap on a slow phone used to send both: the first seated you, the
+;; second was refused as :already-in-room, and the error landed on top of the
+;; room you had just entered. The tap is dropped rather than queued, because the
+;; only possible answer to it is the seat the first one is about to give you.
+
 (defn create-room-fx [{:keys [db]} _]
   (let [nm (.trim (get-in db [:form :name] ""))]
-    (if (empty? nm)
-      {:db (assoc db :error :name-required)}
-      {:db (assoc db :error nil)
-       ::ws/send {:type :client/create :name nm :locale (:locale db :de)}})))
+    (cond
+      (:seat/pending? db) nil
+      (empty? nm)         {:db (assoc db :error :name-required)}
+      :else {:db (assoc db :error nil :seat/pending? true)
+             ::ws/send {:type :client/create :name nm :locale (:locale db :de)}})))
 
 (defn join-room-fx [{:keys [db]} _]
   (let [nm   (.trim (get-in db [:form :name] ""))
         code (.toUpperCase (.trim (get-in db [:form :code] "")))]
     (cond
-      (empty? nm)   {:db (assoc db :error :name-required)}
-      (empty? code) {:db (assoc db :error :code-required)}
-      :else {:db (assoc db :error nil)
+      (:seat/pending? db) nil
+      (empty? nm)         {:db (assoc db :error :name-required)}
+      (empty? code)       {:db (assoc db :error :code-required)}
+      :else {:db (assoc db :error nil :seat/pending? true)
              ::ws/send {:type :client/join :room-id code :name nm
                         :locale (:locale db :de)}})))
 
@@ -171,13 +194,14 @@
    appears to do nothing."
   [{:keys [db]} [_ code]]
   (let [nm (.trim (get-in db [:form :name] ""))]
-    (if (empty? nm)
-      {:db (assoc db :error :name-required)}
+    (cond
+      (:seat/pending? db) nil
+      (empty? nm)         {:db (assoc db :error :name-required)}
       ;; form-put so the code field actually shows what you tapped, even if you
       ;; had started typing a different one by hand.
-      {:db (-> db (assoc :error nil) (form-put :code code))
-       ::ws/send {:type :client/join :room-id code :name nm
-                  :locale (:locale db :de)}})))
+      :else {:db (-> db (assoc :error nil :seat/pending? true) (form-put :code code))
+             ::ws/send {:type :client/join :room-id code :name nm
+                        :locale (:locale db :de)}})))
 
 (rf/reg-event-fx ::create-room create-room-fx)
 (rf/reg-event-fx ::join-room   join-room-fx)
@@ -188,6 +212,37 @@
  ;; Pull, not push. The server answers the asker alone, so a room list can
  ;; never become a side channel into a game somebody is not in.
  (fn [_ _] {::ws/send {:type :client/rooms}}))
+
+(def ^:const rooms-poll-ms
+  "How often the landing screen asks for the room list by itself.
+
+   It used to be asked for on connect, after leaving and on a tap of refresh, and
+   at no other time — so a room opened a minute after you arrived was not there
+   until you thought to tap, and the report was 'the others cannot be found'.
+   Pushing the list would make it a broadcast, which `::refresh-rooms` explains
+   it must not be; asking every few seconds keeps it pull-only, and the answer is
+   a handful of codes. Short enough that a friend's new room appears while they
+   are still reading the code out."
+  4000)
+
+(defn poll-rooms-fx
+  "Ask again if the list is stale — only on the landing screen, the one place it
+   is shown, and only while connected: a send on a closed socket goes to the
+   outbox, and a poll there would queue one ask per interval to all go out at
+   once on reconnect.
+
+   Reads the clock from `:now`, which the tick keeps, so this stays pure and
+   testable without a timer."
+  [{:keys [db]} _]
+  (let [now (:now db)
+        at  (:rooms/asked-at db)]
+    (when (and (= :landing (:screen db))
+               (= :connected (:conn/status db))
+               (or (nil? at) (>= (- now at) rooms-poll-ms)))
+      {:db (assoc db :rooms/asked-at now)
+       ::ws/send {:type :client/rooms}})))
+
+(rf/reg-event-fx ::poll-rooms poll-rooms-fx)
 
 (rf/reg-event-fx
  ::act
@@ -288,6 +343,14 @@
      {:db (assoc-in db [:audio :muted?] muted?)
       :werwolf.audio/set-muted muted?})))
 
+(defn- unseat
+  "Back to the landing screen with nothing of the last room left behind. Shared
+   by leaving here and by being released from another tab, so the two resets
+   cannot drift apart — this one has to be COMPLETE, and once was not."
+  [db]
+  (merge db (select-keys initial-db
+                         [:screen :me :view :view/seq :chat :error :audio])))
+
 (defn leave-fx
   "Also the way out of a finished game. Landing on the landing screen with a
    stale room list would mean the first thing you see after a game is the game
@@ -296,8 +359,7 @@
    Named and public so the reset is testable — it has to be COMPLETE, and it
    was not: `:view/seq` stayed behind and rejected the next room's views."
   [{:keys [db]} _]
-  {:db (merge db (select-keys initial-db
-                              [:screen :me :view :view/seq :chat :error :audio]))
+  {:db (unseat db)
    ::ws/forget-seat true
    ;; Hang up on the way out. Without this the microphone stays live and
    ;; published into a room the player has walked out of — they would be audible
@@ -352,6 +414,7 @@
   (assoc db
          :screen :room
          :error nil
+         :seat/pending? false
          ;; A new room numbers its views from its own beginning, so the previous
          ;; room's high-water mark has to go. Keeping it meant leaving a long game
          ;; and joining a fresh one dropped every view of the new room as "old",
@@ -395,27 +458,61 @@
   #{:seat-gone :expired :bad-signature :wrong-room})
 
 (defmethod handle-server :server/error [db {:keys [code]}]
-  (cond-> (assoc db :error code)
-    ;; :view/seq goes with the rest of it — a discarded session must not leave a
-    ;; sequence number behind to reject the next room's views.
-    (fatal-errors code)
-    (assoc :screen :landing :me nil :view nil :view/seq nil :chat [])))
+  (cond
+    ;; A refusal to seat you somewhere because you are already seated, arriving
+    ;; while you ARE seated, is about the seat on your screen. It happens when a
+    ;; join waited in the outbox through a reconnect: the stored seat's resume
+    ;; goes out first and seats you, and the join behind it is refused. A banner
+    ;; saying 'you are already in a round' over that round says nothing useful.
+    (and (= :already-in-room code) (:me db))
+    (assoc db :seat/pending? false)
 
-(rf/reg-event-fx
- ::server-message
- (fn [{:keys [db]} [_ msg]]
-   (cond-> {:db (handle-server db msg)}
-     ;; Persisting on every welcome matters: a resume hands back a REFRESHED
-     ;; token, and keeping the old one would expire the session at its original
-     ;; time however long the game runs.
-     (= :server/welcome (:type msg))
-     (assoc ::ws/save-seat (select-keys msg [:room-id :token]))
+    :else
+    (cond-> (assoc db :error code :seat/pending? false)
+      ;; :view/seq goes with the rest of it — a discarded session must not leave
+      ;; a sequence number behind to reject the next room's views.
+      (fatal-errors code)
+      (assoc :screen :landing :me nil :view nil :view/seq nil :chat []))))
 
-     ;; Ask what the voice situation is as soon as there is a seat to ask about.
-     ;; Asking only fetches a credential — it does not open a microphone, which
-     ;; stays behind an explicit tap.
-     (= :server/welcome (:type msg))
-     (assoc :dispatch [::request-media])
+(defn- released?
+  "Is this :server/left about the room this page is sitting in?
 
-     (fatal-errors (:code msg))
-     (assoc ::ws/forget-seat true))))
+   It goes to every socket of the seat, including the one whose tap caused it —
+   which has already gone back to the landing screen, and may by now have sat
+   down somewhere else. Only a page still showing THAT room has anything to do."
+  [db {:keys [room-id]}]
+  (and (:me db) (= room-id (get-in db [:me :room-id]))))
+
+(defmethod handle-server :server/left [db msg]
+  ;; The player left from another tab: this page's seat is gone (or, mid-game,
+  ;; no longer this page's), and the server has stopped sending it anything.
+  (if (released? db msg) (unseat db) db))
+
+(defn server-message-fx
+  "Named and public so the effects of a message, not only its db change, are
+   testable — the same reason `leave-fx` is."
+  [{:keys [db]} [_ msg]]
+  (cond-> {:db (handle-server db msg)}
+    ;; Persisting on every welcome matters: a resume hands back a REFRESHED
+    ;; token, and keeping the old one would expire the session at its original
+    ;; time however long the game runs.
+    (= :server/welcome (:type msg))
+    (assoc ::ws/save-seat (select-keys msg [:room-id :token]))
+
+    ;; Ask what the voice situation is as soon as there is a seat to ask about.
+    ;; Asking only fetches a credential — it does not open a microphone, which
+    ;; stays behind an explicit tap.
+    (= :server/welcome (:type msg))
+    (assoc :dispatch [::request-media])
+
+    (fatal-errors (:code msg))
+    (assoc ::ws/forget-seat true)
+
+    ;; Released from another tab: the same way out as leaving from this one,
+    ;; minus the command, which has already been sent.
+    (and (= :server/left (:type msg)) (released? db msg))
+    (assoc ::ws/forget-seat true
+           :werwolf.audio/disconnect true
+           :dispatch [::refresh-rooms])))
+
+(rf/reg-event-fx ::server-message server-message-fx)

@@ -113,11 +113,18 @@
    else's phone: anyone who can reach the server can see that a room exists and
    join it. That is right for a private group on a private host, and would want
    revisiting before the server is opened to the public — see the plan's
-   deferred 'public lobby browser'."
+   deferred 'public lobby browser'.
+
+   Not an EMPTY lobby, though it can still be joined by its code: with nobody
+   left there is no host to recognise it by and nobody to play with, and an
+   entry reading '0 / 18' with no name is noise on a phone screen. The code may
+   already be on its way to a friend, so the room itself stays until the idle
+   sweep retires it."
   [ctx]
   (->> (vals (rooms ctx))
        (keep (fn [{s :state}]
                (when (and (= :lobby (:phase s))
+                          (seq (:players s))
                           (< (count (:players s)) (:max-players s 18)))
                  {:room-id     (:room-id s)
                   :players     (count (:players s))
@@ -235,9 +242,17 @@
 
    Recycling would be a security bug, not a tidiness question: reconnect tokens
    name a seat, so handing seat 3 to a newcomer would let the previous
-   occupant's token drive them."
+   occupant's token drive them.
+
+   Counted from every seat ever ISSUED, which the public log remembers, rather
+   than from the seats still taken. Counting the taken ones recycled exactly the
+   seat that mattered: the newest player leaving handed their number — and their
+   token — to the next arrival, and an emptied lobby started again at 0. The log
+   is part of state, so this survives a restart without a counter of its own."
   [state]
-  (let [ids (keys (:players state))]
+  (let [ids (concat (keys (:players state))
+                    (keep #(when (= :player/joined (:type %)) (:player %))
+                          (:log state)))]
     (if (seq ids) (inc (apply max ids)) 0)))
 
 (defn- fresh-room [room-id]
@@ -315,6 +330,28 @@
             (do (commit! ctx r (into [genesis] (:events joined)) (:state joined))
                 {:room-id room-id :player-id 0})))))))
 
+(defn- succession
+  "If the host has walked out of the lobby, hand the powers to the lowest
+   remaining seat. Without this the room is unstartable and no command can fix
+   it — nobody but the host may start a game.
+
+   Asked after a join as well as after a command. When the LAST player leaves
+   there is no heir, so the room keeps a host who is no longer in it; the next
+   person to walk in is the first heir there is, and an empty room has nobody
+   left to issue the command that used to be the only trigger."
+  [state]
+  (let [host (:host state)]
+    (when-not (get-in state [:players host])
+      (when-let [heir (first (sort (keys (:players state))))]
+        [{:type :host/changed :host heir}]))))
+
+(defn- settle-host!
+  "Run `succession` against the room as it now stands. Must run under the lock."
+  [ctx room-id]
+  (let [r (room-of ctx room-id)]
+    (when-let [heir-events (succession (:state r))]
+      (apply-server-events! ctx r heir-events))))
+
 (defn join!
   "Seat a new player. Returns {:room-id .. :player-id n} or {:error ..}."
   [ctx room-id {:keys [name locale]}]
@@ -326,6 +363,7 @@
         (if (engine/error? res)
           res
           (do (commit! ctx r (:events res) (:state res))
+              (settle-host! ctx room-id)
               {:room-id room-id :player-id pid}))))))
 
 (defn seated?
@@ -399,17 +437,38 @@
                                   [{:type :player/connection :player pid :connected? false}]))
           {:room-id room-id :player-id pid})))))
 
-;; ---------------------------------------------------------------- commands ---
+(defn- release-seat!
+  "Unbind every socket of a player who has just LEFT. Must run under the lock.
 
-(defn- succession
-  "If the host just walked out of the lobby, hand the powers to the lowest
-   remaining seat. Without this the room is unstartable and no command can fix
-   it — nobody but the host may start a game."
-  [state]
-  (let [host (:host state)]
-    (when-not (get-in state [:players host])
-      (when-let [heir (first (sort (keys (:players state))))]
-        [{:type :host/changed :host heir}]))))
+   `detach!` is the socket closing; this is the player walking out with the page
+   still open, and until it existed nothing on that path touched the index. The
+   page that had just left stayed bound to the seat it gave up, so the server
+   refused its next create or join as :already-in-room until it was reloaded —
+   the 'it says I'm already in a round' report.
+
+   Every socket of the seat, not just the one that asked: a second tab at the
+   same seat would otherwise stay bound to a seat that, in the lobby, no longer
+   exists. Each is told with `:server/left` so that tab does not sit on a frozen
+   room; the tab that asked has already gone, and ignores it.
+
+   No connection event. Mid-game `:player/left` already marks the seat absent —
+   the role still matters, so it is kept — and an absent seat holding sockets
+   would be a contradiction that the eventual close would then announce a second
+   time. With none left, taking the seat back with its token is a reconnect like
+   any other."
+  [ctx room-id pid]
+  (let [sinks (get-in (room-of ctx room-id) [:sinks pid])]
+    (swap! (:rooms ctx) update room-id
+           (fn [rm] (when rm (-> rm
+                                 (update :sinks dissoc pid)
+                                 (assoc :last-activity (System/currentTimeMillis))))))
+    (swap! (:index ctx)
+           (fn [ix] (reduce (fn [m s] (cond-> m (= [room-id pid] (get m s)) (dissoc s)))
+                            ix sinks)))
+    (doseq [sink sinks]
+      (deliver! ctx sink {:type :server/left :room-id room-id}))))
+
+;; ---------------------------------------------------------------- commands ---
 
 (defn submit!
   "Run a player command. Returns {:ok? true} or {:error code :detail d}.
@@ -426,10 +485,11 @@
         (let [res (engine/execute (:state r) (assoc cmd :player pid))]
           (if (engine/error? res)
             res
-            (let [r' (commit! ctx r (:events res) (:state res))]
-              (when-let [heir-events (succession (:state r'))]
-                (apply-server-events! ctx (room-of ctx room-id) heir-events))
-              {:ok? true})))))))
+            (do (commit! ctx r (:events res) (:state res))
+                (settle-host! ctx room-id)
+                (when (= :leave (:type cmd))
+                  (release-seat! ctx room-id pid))
+                {:ok? true})))))))
 
 ;; -------------------------------------------------------------------- chat ---
 

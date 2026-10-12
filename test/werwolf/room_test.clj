@@ -419,6 +419,90 @@
           (room/join! ctx room-id {:name "Extra"})
           (is (:ok? (room/submit! ctx room-id 1 {:type :start-game}))))))))
 
+;; ----------------------------------------------------------------- leaving ---
+
+(deftest the-highest-seat-is-not-reissued-when-it-leaves
+  (testing "seat numbers were computed from the seats still TAKEN, so the
+            newest player walking out handed their number to the next arrival —
+            and with it their reconnect token, which would then drive a stranger"
+    (with-ctx [ctx]
+      (let [{:keys [room-id]} (room/create! ctx {:name "Anna"})]
+        (room/join! ctx room-id {:name "Bob"})
+        (is (= 2 (:player-id (room/join! ctx room-id {:name "Cem"}))))
+        (room/submit! ctx room-id 2 {:type :leave})
+        (is (= 3 (:player-id (room/join! ctx room-id {:name "Dana"}))))
+        (testing "nor when everybody has gone, which used to restart at seat 0"
+          (doseq [pid [0 1 3]] (room/submit! ctx room-id pid {:type :leave}))
+          (is (= 4 (:player-id (room/join! ctx room-id {:name "Eve"})))))))))
+
+(deftest leaving-releases-every-socket-of-the-seat
+  (testing "a socket left the registry only when it CLOSED, so after tapping
+            leave the page was still bound to the seat it had just given up, and
+            every create or join from it was refused as :already-in-room until
+            the page was reloaded"
+    (with-ctx [ctx]
+      (let [{:keys [room-id seats]} (table ctx 3)
+            {:keys [pid sink]} (second seats)
+            other-tab (mk-sink)]
+        (room/attach! ctx room-id pid other-tab)
+        (is (:ok? (room/submit! ctx room-id pid {:type :leave})))
+        (is (nil? (room/whereis ctx sink)))
+        (is (nil? (room/whereis ctx other-tab)) "the second tab is released too")
+        (testing "and each is told, so a second tab does not sit on a frozen
+                  lobby it can no longer act in"
+          (doseq [s [sink other-tab]]
+            (is (= {:type :server/left :room-id room-id} (last (msgs s))))))
+        (testing "while everyone still seated stays bound"
+          (is (= [room-id 0] (room/whereis ctx (:sink (first seats))))))
+        (testing "and the socket closing later is a no-op for the room"
+          (let [seq0 (:seq (get @(:rooms ctx) room-id))]
+            (room/detach! ctx sink)
+            (is (= seq0 (:seq (get @(:rooms ctx) room-id))))))))))
+
+(deftest leaving-mid-game-keeps-the-seat-but-not-the-socket
+  (testing "the role still matters to the outcome, so the seat stays and reads
+            as absent — and absent means no socket, the same thing a closed tab
+            means, so a later reconnect is announced like any other"
+    (with-ctx [ctx]
+      (let [{:keys [room-id seats] :as t} (table ctx 5)
+            {:keys [pid sink]} (second seats)]
+        (start! ctx t)
+        (is (:ok? (room/submit! ctx room-id pid {:type :leave})))
+        (let [state (room/state-of ctx room-id)]
+          (is (room/seated? ctx room-id pid))
+          (is (false? (get-in state [:players pid :connected?]))))
+        (is (nil? (room/whereis ctx sink)))
+        (let [before (count (views sink))]
+          (is (:ok? (room/submit! ctx room-id 0 {:type :gm/pause})))
+          (is (= before (count (views sink))) "no more views for a page that left"))
+        (testing "the seat can still be taken back"
+          (let [back (mk-sink)]
+            (room/attach! ctx room-id pid back)
+            (is (true? (get-in (room/state-of ctx room-id)
+                               [:players pid :connected?])))))))))
+
+(deftest an-emptied-lobby-is-unlisted-but-its-code-still-works
+  (testing "with nobody left there is nobody to recognise it by and nothing to
+            join — but the code may already be on its way to a friend, and the
+            idle sweep is what retires a room, not the last person leaving"
+    (with-ctx [ctx]
+      (let [{:keys [room-id sink]} (host-seat! ctx "Anna")]
+        (room/submit! ctx room-id 0 {:type :leave})
+        (is (not-any? #(= room-id (:room-id %)) (room/open-rooms ctx)))
+        (testing "whoever walks in first holds the powers, or the room could
+                  never be started: succession used to run only after a command,
+                  and an empty room has nobody left to issue one"
+          (let [{:keys [player-id]} (room/join! ctx room-id {:name "Bob"})]
+            (is (= 1 player-id))
+            (is (= 1 (:host (room/state-of ctx room-id))))
+            (is (= "Bob" (:host (first (filter #(= room-id (:room-id %))
+                                               (room/open-rooms ctx))))))
+            (room/join! ctx room-id {:name "Cem"})
+            (room/join! ctx room-id {:name "Dana"})
+            (is (:ok? (room/submit! ctx room-id 1 {:type :start-game})))))
+        (testing "and the leaver's still-open page is no longer bound to it"
+          (is (nil? (room/whereis ctx sink))))))))
+
 ;; -------------------------------------------------------------------- chat ---
 
 (deftest lobby-chat-reaches-everyone
@@ -665,6 +749,18 @@
 
       (testing "and it is no longer offered to anyone arriving"
         (is (not-any? #(= room-id (:room-id %)) (room/open-rooms ctx)))))))
+
+(deftest an-emptied-lobby-is-swept-though-the-leavers-page-is-open
+  (testing "the departed player's socket stayed in :sinks until it closed, so a
+            room everybody had walked out of still counted as occupied for as
+            long as one of their tabs stayed open"
+    (with-ctx [ctx]
+      (let [{:keys [room-id]} (host-seat! ctx "Anna")]
+        (room/submit! ctx room-id 0 {:type :leave})
+        (age-room! ctx room-id (* 60 60 1000))
+        (is (= [room-id] (room/sweep-idle! ctx (System/currentTimeMillis)
+                                           {:room-idle-ms 1000
+                                            :game-idle-ms 1000})))))))
 
 (deftest a-game-in-progress-gets-a-longer-grace
   (testing "a locked phone drops its socket, so a table that put their phones

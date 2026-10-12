@@ -166,6 +166,90 @@
       (is (= "ABCD" (get-in out [:db :form :code]))
           "the code field follows the tap, so the screen agrees with itself"))))
 
+(deftest the-room-list-keeps-itself-current-on-the-landing-screen
+  (testing "it was asked for on connect, after leaving and on a tap of refresh —
+            so a room opened a minute after you arrived was simply not there,
+            which reads as 'the others cannot be found'"
+    (let [landing (assoc db :conn/status :connected :now 100000)
+          out (ev/poll-rooms-fx {:db landing} nil)]
+      (is (= {:type :client/rooms} (:werwolf.ws/send out)))
+      (testing "and not again until the interval has passed — it rides a tick
+                that fires twice a second"
+        (let [db' (:db out)]
+          (is (nil? (ev/poll-rooms-fx {:db (assoc db' :now (+ 100000 1000))} nil)))
+          (is (some? (:werwolf.ws/send
+                      (ev/poll-rooms-fx {:db (assoc db' :now (+ 100000 ev/rooms-poll-ms))}
+                                        nil)))))))
+    (testing "not while seated: the list is for choosing a room, and an answer
+              nobody looks at is a message for nothing"
+      (is (nil? (ev/poll-rooms-fx {:db (assoc seated :conn/status :connected
+                                              :now 100000)} nil))))
+    (testing "and not while disconnected, where every ask would pile up in the
+              outbox and all go out at once on reconnect"
+      (is (nil? (ev/poll-rooms-fx {:db (assoc db :conn/status :disconnected
+                                              :now 100000)} nil))))))
+
+;; ------------------------------------------------------- joining robustly ---
+
+(def named (assoc-in db [:form :name] "Anna"))
+
+(deftest a-second-tap-on-create-or-join-sends-nothing
+  (testing "two taps on a slow connection sent two requests; the first seated
+            you and the second came back :already-in-room"
+    (let [once (ev/create-room-fx {:db named} nil)]
+      (is (some? (:werwolf.ws/send once)))
+      (is (nil? (:werwolf.ws/send (ev/create-room-fx {:db (:db once)} nil))))
+      (is (nil? (:werwolf.ws/send (ev/join-listed-fx {:db (:db once)} [nil "ABCD"])))
+          "nor does a different button while the first is in flight"))
+    (let [coded (assoc-in named [:form :code] "abcd")
+          once (ev/join-room-fx {:db coded} nil)]
+      (is (some? (:werwolf.ws/send once)))
+      (is (nil? (:werwolf.ws/send (ev/join-room-fx {:db (:db once)} nil)))))
+    (testing "the answer, either way, frees the buttons again"
+      (let [pending (:db (ev/create-room-fx {:db named} nil))]
+        (is (not (:seat/pending? (apply* pending {:type :server/welcome :room-id "ABCD"
+                                                  :player-id 0 :host? true}))))
+        (is (not (:seat/pending? (apply* pending {:type :server/error
+                                                  :code :room-full}))))
+        (testing "as does losing the socket, or a request lost with it would
+                  leave them locked until a reload"
+          (is (not (:seat/pending? (ev/disconnected-db pending)))))))))
+
+(deftest already-in-room-is-not-an-error-when-you-are-in-the-room
+  (testing "a join queued while reconnecting goes out after the stored seat's
+            resume, which seats you first — the refusal that follows is about a
+            seat you have, and a banner over it said the opposite"
+    (let [db' (apply* seated {:type :server/error :code :already-in-room})]
+      (is (nil? (:error db')))
+      (is (= :room (:screen db'))))
+    (testing "while on the landing screen it still says so"
+      (is (= :already-in-room
+             (:error (apply* db {:type :server/error :code :already-in-room})))))))
+
+(deftest being-released-from-another-tab-lands-you-on-the-landing-screen
+  (testing "leaving in one tab releases every tab at that seat; the other one
+            used to sit on a lobby that no longer answered"
+    (let [db' (apply* seated {:type :room/view :seq 3 :view {:phase :lobby}}
+                      {:type :server/left :room-id "ABCD"})]
+      (is (= :landing (:screen db')))
+      (is (nil? (:me db')))
+      (is (nil? (:view db')))
+      (is (nil? (:view/seq db'))))
+    (testing "and forgets the seat, hangs up and asks what else is open"
+      (let [out (ev/server-message-fx {:db seated}
+                                      [nil {:type :server/left :room-id "ABCD"}])]
+        (is (true? (:werwolf.ws/forget-seat out)))
+        (is (true? (:werwolf.audio/disconnect out)))
+        (is (= [::ev/refresh-rooms] (:dispatch out)))))
+    (testing "but one about a room you are not in changes nothing — it is the
+              echo of your own leave arriving after you sat down elsewhere"
+      (let [elsewhere (apply* db {:type :server/welcome :room-id "WXYZ" :player-id 1
+                                  :host? false :token "t"})]
+        (is (= elsewhere (apply* elsewhere {:type :server/left :room-id "ABCD"})))
+        (is (nil? (:werwolf.ws/forget-seat
+                   (ev/server-message-fx {:db elsewhere}
+                                         [nil {:type :server/left :room-id "ABCD"}]))))))))
+
 ;; ------------------------------------------------------- typing on a phone ---
 
 (deftest typing-does-not-bump-a-field-generation-but-writing-to-it-does

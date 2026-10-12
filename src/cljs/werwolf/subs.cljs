@@ -61,6 +61,7 @@
 (rf/reg-sub ::show-all-log? (fn [db _] (boolean (:log/show-all? db))))
 
 (rf/reg-sub ::rooms (fn [db _] (or (:rooms db) [])))
+(rf/reg-sub ::seat-pending? (fn [db _] (boolean (:seat/pending? db))))
 
 ;; ---- voice ----
 ;;

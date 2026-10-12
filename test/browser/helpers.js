@@ -105,6 +105,10 @@ async function createRoom(page, name) {
   await landOn(page);
   await page.getByPlaceholder(DE.name).fill(name);
   await page.getByRole('button', { name: DE.create }).click();
+  // Wait for the lobby before reading. The landing screen lists open rooms in
+  // the same monospace, so reading too early returns some OTHER room's code —
+  // which, now that the list fills itself, is whatever the last test left open.
+  await expect(page.getByRole('button', { name: DE.leave })).toBeVisible();
   // The lobby shows the code in a tracking-wide monospace block; it is the only
   // four-character A-Z2-9 string on the screen.
   const code = await page.locator('.font-mono').first().innerText();

@@ -181,7 +181,8 @@
    else's phone. Only rooms with a free seat are listed — the server decides
    that, since a game in progress cannot be joined at all."
   []
-  (let [rooms @(rf/subscribe [::sub/rooms])]
+  (let [rooms @(rf/subscribe [::sub/rooms])
+        pending? @(rf/subscribe [::sub/seat-pending?])]
     [:div {:class "space-y-2"}
      [:div {:class "flex items-baseline justify-between"}
       [:span {:class "text-sm text-slate-400"} (t :landing/open-rooms)]
@@ -195,7 +196,9 @@
           ^{:key room-id}
           [:button {:class "w-full flex items-center justify-between gap-3 px-3 py-3
                             rounded-lg bg-slate-800 border border-slate-700
-                            hover:border-indigo-500 hover:bg-slate-700 transition text-left"
+                            hover:border-indigo-500 hover:bg-slate-700 transition text-left
+                            disabled:opacity-40 disabled:cursor-not-allowed"
+                    :disabled pending?
                     :on-click #(rf/dispatch [::ev/join-listed room-id])}
            [:div {:class "min-w-0"}
             [:div {:class "font-mono text-lg tracking-[0.2em] text-indigo-300"} room-id]
@@ -205,22 +208,26 @@
             (str players " / " max-players)]])])]))
 
 (defn landing []
-  [:div {:class "max-w-sm mx-auto mt-16 space-y-8"}
-   [:div {:class "flex justify-center"} [language-switch]]
-   [:h1 {:class "text-3xl font-bold text-center"} (t :app/title)]
-   [:div {:class "space-y-3"}
-    [field :name (t :landing/name)]
-    [btn (t :landing/create) #(rf/dispatch [::ev/create-room])]]
-   [:div {:class "text-center text-slate-500 text-sm"} (t :landing/or)]
-   ;; The list first, the code field under it: typing a code is now the
-   ;; fallback for a room the list cannot show, not the normal way in.
-   [open-rooms]
-   [:div {:class "space-y-3"}
-    [field :code (t :landing/code) {:on-enter [::ev/join-room] :maxlength 4}]
-    [btn (t :landing/join) #(rf/dispatch [::ev/join-room]) {:tone :ghost}]]
-   ;; Which build is running: the first question when a friend reports a bug.
-   [:div {:class "text-center text-xs text-slate-600" :data-testid "app-version"}
-    (str "v" build-info/version " · " build-info/commit)]])
+  ;; Greyed out while a create or join is unanswered. The events already drop a
+  ;; second tap; this is so the first one visibly took.
+  (let [pending? @(rf/subscribe [::sub/seat-pending?])]
+    [:div {:class "max-w-sm mx-auto mt-16 space-y-8"}
+     [:div {:class "flex justify-center"} [language-switch]]
+     [:h1 {:class "text-3xl font-bold text-center"} (t :app/title)]
+     [:div {:class "space-y-3"}
+      [field :name (t :landing/name)]
+      [btn (t :landing/create) #(rf/dispatch [::ev/create-room]) {:disabled? pending?}]]
+     [:div {:class "text-center text-slate-500 text-sm"} (t :landing/or)]
+     ;; The list first, the code field under it: typing a code is now the
+     ;; fallback for a room the list cannot show, not the normal way in.
+     [open-rooms]
+     [:div {:class "space-y-3"}
+      [field :code (t :landing/code) {:on-enter [::ev/join-room] :maxlength 4}]
+      [btn (t :landing/join) #(rf/dispatch [::ev/join-room])
+       {:tone :ghost :disabled? pending?}]]
+     ;; Which build is running: the first question when a friend reports a bug.
+     [:div {:class "text-center text-xs text-slate-600" :data-testid "app-version"}
+      (str "v" build-info/version " · " build-info/commit)]]))
 
 ;; ---------------------------------------------------------------- targeting ---
 ;;

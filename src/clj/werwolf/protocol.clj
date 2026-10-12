@@ -165,6 +165,21 @@
   (cond-> msg
     (string? (:room-id msg)) (update :room-id str/upper-case)))
 
+(defn- asking-again?
+  "Is a seated socket's create or join only asking for the seat it already has?
+
+   A double tap does this, and so can a join that waited in the client's outbox
+   through a reconnect, behind the resume of the very seat it asks for: the first
+   copy seats the player and the second arrives at a socket already bound. Refusing it put an :already-in-room banner
+   over the room the player had just walked into. A create names no room, so any
+   create from a seated socket is the same tap twice; a join is a repeat only
+   when it names the room this socket is already in."
+  [msg room-id]
+  (case (:type msg)
+    :client/create true
+    :client/join   (= room-id (:room-id msg))
+    false))
+
 (defn dispatch
   "Handle one decoded message. Total: nil, junk and hostile input all produce a
    reply rather than an exception, because this runs on the socket's read loop
@@ -172,17 +187,26 @@
 
    A socket that is already seated may not create or join again. Without that
    check one connection could seat itself repeatedly, and every seat but the
-   last would be a ghost nothing can ever reconnect to."
+   last would be a ghost nothing can ever reconnect to.
+
+   What it gets instead depends on what it asked. The same request twice is
+   answered with the seat it already has — welcomed and repainted exactly as a
+   resume would be, and no new seat — because the answer to a repeat is the
+   answer to the first. Asking for a DIFFERENT room while seated is a real
+   conflict, and is still refused."
   [{:keys [rooms] :as deps} sock raw-msg]
   (try
-    (let [msg (when (map? raw-msg) (normalise raw-msg))]
+    (let [msg (when (map? raw-msg) (normalise raw-msg))
+          [room-id pid] (room/whereis rooms sock)]
       (cond
         (not (proto/valid-client-message? msg))
         (error! deps sock :malformed {:errors (proto/explain-client-message msg)})
 
-        (and (#{:client/create :client/join :client/resume} (:type msg))
-             (room/whereis rooms sock))
-        (error! deps sock :already-in-room {})
+        (and room-id (#{:client/create :client/join :client/resume} (:type msg)))
+        (if (asking-again? msg room-id)
+          (do (welcome! deps sock room-id pid)
+              (room/attach! rooms room-id pid sock))
+          (error! deps sock :already-in-room {}))
 
         :else (handle deps sock msg)))
     (catch Throwable t
