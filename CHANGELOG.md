@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.4.0](https://github.com/jakuzure/werwolf-clj/compare/v0.3.0...v0.4.0) (2026-10-12)
+
+
+### Features
+
+* install the game on the home screen ([fb437da](https://github.com/jakuzure/werwolf-clj/commit/fb437da7f9df8768d60843cecab246eeb075e476))
+* keep the game going when the Spielleiter goes missing ([01212e1](https://github.com/jakuzure/werwolf-clj/commit/01212e11f07f35b28e1f215986e3a6f8978ed67e))
+* let the host remove players from the lobby ([16b67fb](https://github.com/jakuzure/werwolf-clj/commit/16b67fbdbdf62bd7d64df5b1d6cc580857dda6ad))
+* let the Spielleiter choose the roles ([ac8024a](https://github.com/jakuzure/werwolf-clj/commit/ac8024ab659a06a22d3ba5eb5d2620a32a939c48))
+* optional password for rooms ([8d9a4a3](https://github.com/jakuzure/werwolf-clj/commit/8d9a4a36ed1cc0b569b15aba5cdbaead18e84bc1))
+* show a recap of the whole game at the end ([628991a](https://github.com/jakuzure/werwolf-clj/commit/628991a69dcf855f4a1b6dff50bc1ee46878f3a7))
+* **ui:** chime on every device when night falls or day breaks ([db8786d](https://github.com/jakuzure/werwolf-clj/commit/db8786d4a9ca0f93e576dbb07161000f2db4d4b7))
+* **ui:** make the phase readable at a glance ([40bc524](https://github.com/jakuzure/werwolf-clj/commit/40bc524922fbe80ed6f513d836da7080df15656d))
+* **ui:** make the phase readable at a glance ([8d3e513](https://github.com/jakuzure/werwolf-clj/commit/8d3e5132c61eca3311535fbb86a33b9b2cae9fd0))
+* **voice:** show who is already in the call ([5e70715](https://github.com/jakuzure/werwolf-clj/commit/5e707159674b028c14f97c3991d24c2b4a960c79))
+
+
+### Bug Fixes
+
+* **deps:** update react monorepo to v19 ([7baf2c7](https://github.com/jakuzure/werwolf-clj/commit/7baf2c74696bc8116c2cf68c614abaa01695e991))
+* **deps:** update react monorepo to v19 ([4a4b12c](https://github.com/jakuzure/werwolf-clj/commit/4a4b12c223316d65ec311eb382684e5c073e2ff7))
+* **i18n:** say the game is most fun from five players ([083d7ac](https://github.com/jakuzure/werwolf-clj/commit/083d7ac35505d676a72283784c3192861a2afae1))
+* **server:** retire abandoned games instead of reloading them forever ([0d1a3a1](https://github.com/jakuzure/werwolf-clj/commit/0d1a3a1d6b33bc118596ca5e1c42c40a0858a143))
+* **ui:** fold the Chronik by default and lift the board ([88e70ca](https://github.com/jakuzure/werwolf-clj/commit/88e70ca7294139675540a1a19e8ade7a34eca67b))
+* **ui:** tidy the role selection ([edc7321](https://github.com/jakuzure/werwolf-clj/commit/edc73214db082a35ce53da105ba3c1de4a8ea65f))
+
 ## [0.3.0](https://github.com/jakuzure/werwolf-clj/compare/v0.2.0...v0.3.0) (2026-10-12)
 
 
