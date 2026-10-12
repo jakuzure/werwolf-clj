@@ -144,5 +144,15 @@ pkgs.testers.runNixOSTest {
         machine.succeed("cp ${noPrs} /run/fake-github.json")
         machine.wait_until_succeeds(f"[ -z \"$({kubectl} get deployment,service,secret,pvc -l werwolf-previews/pr=1 -o name)\" ]", timeout=60)
         machine.fail("curl -sf 'http://127.0.0.1:8341/ask?domain=pr-1.${domain}'")
+
+    with subtest("its image and the GC root on its closure go with the next prune"):
+        roots = "/var/lib/rancher/k3s/agent/containerd/io.containerd.snapshotter.v1.nix/gcroots"
+        machine.succeed("k3s crictl images | grep nix-image-werwolf")
+        machine.succeed(f"ls {roots}/*/ | grep closure-info")
+        machine.wait_until_succeeds("! k3s crictl ps -a | grep -w werwolf", timeout=60)
+        machine.succeed("systemctl start werwolf-previews-prune-images")
+        machine.fail("k3s crictl images | grep nix-image-werwolf")
+        # containerd's GC drops the snapshot, and nix-snapshotter its root, async
+        machine.wait_until_succeeds(f"! ls {roots}/*/ 2>/dev/null | grep closure-info", timeout=60)
   '';
 }

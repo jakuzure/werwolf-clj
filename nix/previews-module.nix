@@ -99,6 +99,28 @@ let
     mv ${kubeconfig}.tmp ${kubeconfig}
   '';
 
+  # Every pulled image keeps nix-snapshotter's GC root on its whole closure
+  # (app, deps, JDK) until containerd drops the image, and nothing drops
+  # images short of the kubelet's disk-pressure GC. So: delete every preview
+  # image no container uses, and the next nix GC frees what only it held.
+  # Only preview images; a sleeping preview's image goes too and is fetched
+  # again when it wakes.
+  pruneImages = pkgs.writeShellScript "werwolf-previews-prune-images" ''
+    set -euo pipefail
+    crictl="${k3s}/bin/k3s crictl"
+    used=$($crictl ps -a -o json)
+    $crictl images -o json | ${pkgs.jq}/bin/jq -r --argjson used "$used" '
+      ($used.containers | map(.imageRef)) as $refs
+      | .images[]
+      | select(any(.repoTags[]?; test("^nix:0/nix/store/[0-9a-z]{32}-nix-image-werwolf\\.tar")))
+      | select(.id as $id | $refs | any(. == $id) | not)
+      | "\(.id) \(.repoTags[0])"' |
+    while read -r id tag; do
+      echo "removing $tag"
+      $crictl rmi "$id" || true
+    done
+  '';
+
   start = pkgs.writeShellScript "werwolf-previews-start" ''
     export KUBECONFIG="$CREDENTIALS_DIRECTORY/kubeconfig"
     export GITHUB_TOKEN_FILE="$CREDENTIALS_DIRECTORY/github-token"
@@ -275,6 +297,23 @@ in
         RestrictNamespaces = true;
         LockPersonality = true;
         UMask = "0077";
+      };
+    };
+
+    systemd.services.werwolf-previews-prune-images = {
+      description = "Remove werwolf preview images no container uses";
+      requires = [ "k3s.service" ];
+      after = [ "k3s.service" ];
+      serviceConfig = {
+        Type = "oneshot";
+        ExecStart = pruneImages;
+      };
+    };
+    systemd.timers.werwolf-previews-prune-images = {
+      wantedBy = [ "timers.target" ];
+      timerConfig = {
+        OnCalendar = "hourly";
+        RandomizedDelaySec = "10m";
       };
     };
 
