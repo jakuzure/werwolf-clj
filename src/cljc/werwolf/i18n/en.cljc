@@ -47,9 +47,24 @@
    :lobby/leave       "Leave the game"
    :lobby/leave-confirm "Really leave?"
    :lobby/leave-cancel  "Stay"
+   :lobby/mode               "Narrator"
+   :lobby/mode-narrated      "With a narrator: they do not play, see every role and guide the table through the game."
+   :lobby/mode-players       "Without a narrator: the game master plays along, with their switches on the side."
+   :lobby/narrator-is        (fn [n] (str "Narrator: " n))
+   :lobby/you-narrate        "You are the narrator — you are dealt no role."
+   :lobby/narrate            "I will narrate"
+   :lobby/play-along         "I will play along"
+   :lobby/timer              "Time limit"
+   :lobby/timer-on           "Phases have a time limit."
+   :lobby/timer-off          "No time limit — the narrator sets the pace."
+   :lobby/timer-switch-on    "Turn the time limit on"
+   :lobby/timer-switch-off   "Turn the time limit off"
+   :lobby/make-narrator      "Make narrator"
+   :lobby/make-host          "Hand over the game master role"
 
    ;; ------------------------------------------------------------ phases ---
    :phase/lobby       "Lobby"
+   :phase/setup       "Dealing roles"
    :phase/night       "Night"
    :phase/election    "Mayoral election"
    :phase/day-reveal  "Dawn"
@@ -109,7 +124,11 @@
    :action/nominate-pass   "Accuse nobody"
    :action/vote            "Condemn"
    :action/vote-abstain    "Abstain"
+   :action/begin-night     "Begin the first night"
    :action/advance-phase   "Next phase (GM)"
+   :action/gm-toggle-narrated "Narrator mode (GM)"
+   :action/gm-toggle-timer "Time limit on/off (GM)"
+   :action/gm-transfer-host "Hand over the game master role (GM)"
    :action/gm-force-kill   "Kill (GM)"
    :action/gm-revive       "Revive (GM)"
    :action/gm-skip-role    "Skip role (GM)"
@@ -130,6 +149,24 @@
    :gm/confirm        "Sure?"
    :gm/clock          "Clock"
    :gm/nothing        "Nothing to control right now."
+   :gm/timer-on       "Turn the time limit on (GM)"
+   :gm/timer-off      "Turn the time limit off (GM)"
+
+   ;; ---------------------------------------------------------- narrator ---
+   :narrator/title    "Narrator"
+   :narrator/desc     "You are not playing. You see every role, call the night and move the phases along."
+   :narrator/night    "Tonight"
+   :narrator/wolf-votes "Wolf votes"
+   :narrator/dying    "Dying tonight"
+   :narrator/protected "Protected"
+   :narrator/lovers   "Lovers"
+   :narrator/centre   "Centre (Dieb)"
+   :narrator/nobody   "—"
+   :narrator/new      "New narrator"
+   :setup/title       "Dealing roles"
+   :setup/hint        "Everyone has their card. You can still change any role — then begin the first night. None of it appears in the Chronicle."
+   :setup/waiting     "The narrator is dealing the roles …"
+   :setup/your-card   "Your card may still change until the first night."
 
    ;; -------------------------------------------------------------- game ---
    :game/you           "you"
@@ -147,6 +184,7 @@
    :game/nothing-to-do "Nothing for you to do right now."
    :game/wolves-channel "Only the werewolves can hear you"
    :game/dead-channel   "Only the dead can hear you"
+   :game/narrator-channel "Everyone hears you — you are the narrator"
    :game/paused         "Clock paused"
    :game/new-round      "Back — new game"
    :game/over-hint      "Every role is revealed now."
@@ -164,6 +202,7 @@
    :turn/hint    "Choose an action below"
    :turn/urgent  "Everyone is waiting for you"
    :turn/calling (fn [role] (str "The Spielleiter calls: " role))
+   :turn/narrating "You are running the game"
 
    ;; ------------------------------------------------------------ voice ---
    ;;
@@ -208,6 +247,11 @@
    :log/reconnected   (fn [n] (str n " is back"))
    :log/host-changed  (fn [n] (str n " is now the game master"))
    :log/game-started  "The first night falls"
+   :log/game-started-setup "The cards are dealt — the narrator is preparing the first night"
+   :log/narrated-on   "The game master narrates and does not play"
+   :log/narrated-off  "The game master plays along"
+   :log/timer-on      "The clock is running — every phase has a time limit"
+   :log/timer-off     "The clock is off — the game master sets the pace"
    :log/amor-linked   "Amor has chosen two lovers"
    :log/night-began   "Night falls"
    :log/night-quiet-first "The first night passes quietly — nobody dies"
@@ -254,6 +298,7 @@
    :log/gm-skip-role  (fn [r] (str "The game master skips the " r))
    :log/gm-set-phase  (fn [p] (str "The game master sets the phase to " p))
    :log/gm-reassign-role (fn [n] (str n " was given a new role by the game master"))
+   :log/gm-advance-phase (fn [p] (str "The game master ends: " p))
    :log/clock-paused  "The game master pauses the clock"
    :log/clock-resumed "The clock is running again"
    :log/win-village   "The village wins"
@@ -302,6 +347,11 @@
    :error/no-deadline      "No clock is running"
    :error/not-night        "That only works at night"
    :error/cannot-advance   "This phase cannot be advanced"
+   :error/no-game-in-progress "The game has to be running for that"
+   :error/already-that-role "That player already has this role"
+   :error/invalid-choice   "That choice is not allowed"
+   :error/no-such-player   "There is no such player"
+   :error/unknown-role     "There is no such role"
    :error/distinct-targets-required "Please choose two different players"
    :error/unsupported-locale "No such language"
    :error/unknown-command  "Unknown command"

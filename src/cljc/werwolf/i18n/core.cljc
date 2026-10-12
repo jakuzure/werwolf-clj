@@ -79,6 +79,8 @@
    :host/changed     :gm
    :clock/paused     :gm
    :clock/resumed    :gm
+   :clock/timer-set  :gm
+   :game/narrated-set :gm
    ;; Bookkeeping. Real, auditable, and not what anyone opens the Chronik for.
    :phase/timed-out  :muted
    :player/ready     :muted
@@ -128,7 +130,10 @@
    can see is exactly what logging them was supposed to prevent."
   {:skip-role     :log/gm-skip-role
    :set-phase     :log/gm-set-phase
-   :reassign-role :log/gm-reassign-role})
+   :reassign-role :log/gm-reassign-role
+   ;; The Spielleiter ending a phase only the clock used to end. Publishes
+   ;; nothing else of its own, and closes a turn somebody was owed.
+   :advance-phase :log/gm-advance-phase})
 
 (defn- gm-line
   "One GM override, named. The argument depends on which noun the override
@@ -138,6 +143,7 @@
     (case action
       :skip-role     (t locale k (role-name locale (:role detail)))
       :set-phase     (t locale k (phase-name locale (:phase detail)))
+      :advance-phase (t locale k (phase-name locale (:phase detail)))
       ;; The player, never the role. `:detail` does not carry one — see
       ;; `handle :gm/reassign-role` — and this is the reader's half of that
       ;; decision: the table learns whose card changed, not what it now says.
@@ -156,7 +162,13 @@
       :player/disconnected (t locale :log/disconnected (nm player))
       :player/reconnected  (t locale :log/reconnected (nm player))
       :host/changed        (t locale :log/host-changed (nm host))
-      :game/started        (t locale :log/game-started)
+      ;; In a narrated room the night does not fall with the deal — the
+      ;; Spielleiter still has the cards in hand.
+      :game/started        (t locale (if (:narrated? entry)
+                                       :log/game-started-setup
+                                       :log/game-started))
+      :game/narrated-set   (t locale (if (:narrated? entry) :log/narrated-on :log/narrated-off))
+      :clock/timer-set     (t locale (if (:on? entry) :log/timer-on :log/timer-off))
       :night/began         (t locale :log/night-began)
       ;; Published without the ids on purpose: THAT there are lovers is public,
       ;; WHO they are is not. See apply-event :amor/linked.

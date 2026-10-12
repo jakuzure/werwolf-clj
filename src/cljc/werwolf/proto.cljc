@@ -39,6 +39,9 @@
     :hexe-heal :hexe-poison :hexe-pass
     :jaeger-shoot :jaeger-pass
     :ready :nominate :nominate-pass :vote :vote-abstain :advance-phase
+    ;; The Spielleiter's: ending the setup step, and arranging the table.
+    :begin-night
+    :gm/toggle-narrated :gm/toggle-timer :gm/transfer-host
     :gm/force-kill :gm/revive :gm/skip-role :gm/set-phase :gm/reassign-role
     :gm/pause :gm/resume :gm/add-time})
 

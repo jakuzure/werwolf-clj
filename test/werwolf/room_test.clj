@@ -39,7 +39,11 @@
   [path]
   (room/registry {:ds (store/open {:dbtype "sqlite" :dbname path})
                   :send! (fn [s msg] (swap! s conj msg))
-                  :game {:first-night-kill? true}}))
+                  ;; The creator plays unless a test says otherwise: most of
+                  ;; these were written when the host was always dealt a card.
+                  ;; Narrated rooms are opted into per room — see
+                  ;; `create!`'s :narrated? — by the tests about them.
+                  :game {:first-night-kill? true :narrated? false}}))
 
 (defn- msgs [s] @s)
 (defn- views [s] (filter #(= :room/view (:type %)) (msgs s)))
@@ -115,7 +119,8 @@
         (let [ctx (room/registry {:ds (store/open {:dbtype "sqlite" :dbname path})
                                   :send! (fn [s m] (swap! s conj m))
                                   :game {:min-players 3 :max-players 4}})
-              {:keys [room-id]} (room/create! ctx {:name "Anna"})]
+              ;; Anna plays: the counts below are of a table she sits at.
+              {:keys [room-id]} (room/create! ctx {:name "Anna" :narrated? false})]
           (is (= 3 (:min-players (room/state-of ctx room-id))))
           (room/join! ctx room-id {:name "Bob"})
           (testing "and the host can start once the DECK can make a game"
@@ -177,7 +182,7 @@
         (let [ctx (room/registry {:ds (store/open {:dbtype "sqlite" :dbname path})
                                   :send! (fn [s m] (swap! s conj m))
                                   :game {:min-players 3}})
-              {:keys [room-id]} (room/create! ctx {:name "P0"})]
+              {:keys [room-id]} (room/create! ctx {:name "P0" :narrated? false})]
           (room/join! ctx room-id {:name "P1"})
           (room/join! ctx room-id {:name "P2"})
           (is (:ok? (room/submit! ctx room-id 0 {:type :start-game})))
@@ -196,7 +201,9 @@
       (try
         (let [ctx (room/registry {:ds (store/open {:dbtype "sqlite" :dbname path})
                                   :send! (fn [s m] (swap! s conj m))})
-              {:keys [room-id]} (room/create! ctx {:name "P0"})]
+              ;; Explicitly a playing host, so "no config" still means no
+              ;; config for the rule under test.
+              {:keys [room-id]} (room/create! ctx {:name "P0" :narrated? false})]
           (doseq [i (range 1 7)] (room/join! ctx room-id {:name (str "P" i)}))
           (room/submit! ctx room-id 0 {:type :start-game})
           (is (false? (:first-night-kill? (room/state-of ctx room-id)))
@@ -828,3 +835,90 @@
             (is (contains? (set (room/rehydrate! ctx2)) room-id)
                 "the swept game is restored from the log")))
         (finally (cleanup! path))))))
+
+;; ------------------------------------------------------------ Spielleiter ---
+
+(deftest a-new-room-is-narrated-unless-config-says-otherwise
+  (testing "the creator is the Spielleiter by default, with no clock — and a
+            deployment, or a single room, can ask for the old table instead"
+    (with-ctx [ctx]
+      (let [bare (assoc ctx :game {})
+            narrated (room/state-of bare (:room-id (room/create! bare {:name "SL"})))]
+        (is (true? (:narrated? narrated)))
+        (is (false? (:timer? narrated)) "a narrated room starts without a clock")
+        (is (= 0 (engine/narrator narrated))))
+      (let [playing (room/state-of ctx (:room-id (room/create! ctx {:name "Anna"})))]
+        (is (false? (:narrated? playing)) "config said no")
+        (is (true? (:timer? playing))))
+      (let [asked (room/state-of ctx (:room-id (room/create! ctx {:name "SL" :narrated? true})))]
+        (is (true? (:narrated? asked)) "and the room's own option wins over config")))))
+
+(defn- narrated-table
+  "A narrated room: the Spielleiter in seat 0 and `n` attached players, already
+   through setup and into night 1."
+  [ctx n]
+  (let [{:keys [room-id player-id]} (room/create! ctx {:name "SL" :narrated? true})
+        sl {:room-id room-id :pid player-id :sink (mk-sink)}]
+    (room/attach! ctx room-id player-id (:sink sl))
+    (let [seats (into [sl] (mapv #(guest-seat! ctx room-id (str "P" %)) (range 1 (inc n))))]
+      (room/submit! ctx room-id 0 {:type :start-game})
+      (room/submit! ctx room-id 0 {:type :begin-night})
+      {:room-id room-id :seats seats})))
+
+(deftest the-narrator-hears-every-channel-and-speaks-to-everyone
+  (with-ctx [ctx]
+    (let [{:keys [room-id seats]} (narrated-table ctx 7)]
+      (is (= :night (:phase (room/state-of ctx room-id))))
+      (advance-to-wolves! ctx room-id)
+      (let [state (room/state-of ctx room-id)
+            wolves (wolves-in state)]
+        (is (= :werwolf (:night-cursor state)))
+        (testing "the wolves' whisper reaches the narrator too, and nobody else"
+          (let [res (room/chat! ctx room-id (first (sort wolves)) "die Seherin")]
+            (is (= :wolves (:channel res)))
+            (is (= (conj wolves 0) (:recipients res)))))
+        (testing "he may talk at night, and the whole table hears him"
+          (is (contains? (engine/legal-actions state 0) :chat))
+          (let [res (room/chat! ctx room-id 0 "Die Werwölfe erwachen")]
+            (is (= :narrator (:channel res)))
+            (is (= (set (map :pid seats)) (:recipients res)))
+            (doseq [{:keys [sink]} seats]
+              (is (= "Die Werwölfe erwachen" (:text (last (chats sink))))))))
+        (testing "the dead talk among themselves — and to the narrator"
+          (let [victim (first (remove wolves (engine/living-ids state)))]
+            (room/submit! ctx room-id 0 {:type :gm/force-kill :target victim})
+            (let [res (room/chat! ctx room-id victim "huhu")]
+              (is (= :dead (:channel res)))
+              (is (= #{victim 0} (:recipients res))))))))))
+
+(deftest the-narrator-is-never-dealt-a-card-through-the-room
+  (with-ctx [ctx]
+    (let [{:keys [room-id]} (narrated-table ctx 5)
+          st (room/state-of ctx room-id)]
+      (is (nil? (get-in st [:players 0 :role])))
+      (is (= 5 (count (keep :role (vals (:players st))))))
+      (testing "and the view he is sent carries every card, which no one else's does"
+        (is (= 5 (count (:known-roles (engine/view-for st 0)))))
+        (doseq [pid (range 6)]
+          (is (nil? (engine/redaction-leaks? st pid))))))))
+
+(deftest a-narrator-who-leaves-the-lobby-hands-on-the-narration
+  (testing "succession moves the host's seat, and the Spielleitung is that seat:
+            whoever inherits it is the narrator now, and the view says so"
+    (with-ctx [ctx]
+      (let [{:keys [room-id]} (room/create! ctx {:name "SL" :narrated? true})
+            heir (guest-seat! ctx room-id "Bea")]
+        (guest-seat! ctx room-id "Cem")
+        (room/submit! ctx room-id 0 {:type :leave})
+        (let [st (room/state-of ctx room-id)]
+          (is (= (:pid heir) (engine/narrator st)))
+          (is (= (:pid heir) (:narrator (last-view (:sink heir))))))))))
+
+(deftest the-host-can-hand-the-narration-to-somebody-else
+  (with-ctx [ctx]
+    (let [{:keys [room-id]} (room/create! ctx {:name "SL" :narrated? true})
+          bea (guest-seat! ctx room-id "Bea")]
+      (is (:ok? (room/submit! ctx room-id 0 {:type :gm/transfer-host :target (:pid bea)})))
+      (let [st (room/state-of ctx room-id)]
+        (is (= (:pid bea) (:host st)))
+        (is (= (:pid bea) (:narrator (last-view (:sink bea)))))))))

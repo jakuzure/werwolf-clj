@@ -128,3 +128,34 @@
       (testing "and he has not taken the game over either"
         (is (pos? (get winners :village 0)))
         (is (pos? (get winners :werewolf 0)))))))
+
+;; ------------------------------------------------------------ narrated ---
+
+(deftest narrated-games-complete-without-a-clock
+  (testing "a Spielleiter and no clock is the configuration most likely to
+            stall: every phase the clock used to end now waits for a human. The
+            harness only ever does what `legal-actions` offers, so a phase with
+            no way out shows up here as a deadlock — and every narrator
+            invariant (no card, no move, never a target) is checked after every
+            event, on top of the usual ones"
+    (let [{:keys [failures summary]} (h/play-many 60 {:narrated? true})]
+      (is (empty? failures) (str "failures: " (describe failures)))
+      (is (= 60 (:games summary)))
+      (is (> (:avg-turns summary) 10) "games are being played, not aborted")
+      (testing "and both sides still win — the narrator moving things along
+                must not hand the game to either of them"
+        (is (pos? (get-in summary [:winners :village] 0)))
+        (is (pos? (get-in summary [:winners :werewolf] 0)))))))
+
+(deftest a-narrated-game-replays-and-keeps-its-schema
+  (let [r (h/play-game 10 4711 {:narrated? true})]
+    (is (:ok? r) (str "game failed: " (pr-str (select-keys r [:reason :phase :violations]))))
+    (is (nil? (h/replay-mismatch r)))
+    (is (some #{:begin-night} (map :type (:history r)))
+        "the game passed through the Spielleiter's setup step")
+    (loop [state nil, evs (:log r)]
+      (when-let [ev (first evs)]
+        (let [state' (e/apply-event state ev)]
+          (is (schema/valid-state? state')
+              (str "invalid after " (:type ev) ": " (pr-str (schema/explain-state state'))))
+          (recur state' (rest evs)))))))

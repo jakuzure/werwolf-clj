@@ -42,17 +42,25 @@
 
 (defn sim-genesis
   "The events that create a lobby of n players. Returned as data so the whole
-   game — setup included — can be replayed from its log."
-  [n seed]
-  (into [{:type :game/created :room-id "SIM" :host 0 :seed seed :min-players 5}]
-        (map (fn [i] {:type :player/joined :player i :name (str "P" i) :locale :de}))
-        (range n)))
+   game — setup included — can be replayed from its log.
+
+   `:narrated? true` seats a Spielleiter in seat 0 AS WELL AS the n players, and
+   switches the clock off the way a real narrated room starts. n is always the
+   table that plays, so a narrated game of n deals the same deck as an
+   unnarrated one and the two are comparable."
+  ([n seed] (sim-genesis n seed {}))
+  ([n seed {:keys [narrated?]}]
+   (into [(cond-> {:type :game/created :room-id "SIM" :host 0 :seed seed :min-players 5}
+            narrated? (assoc :narrated? true :timer? false))]
+         (map (fn [i] {:type :player/joined :player i :name (str "P" i) :locale :de}))
+         (range (if narrated? (inc n) n)))))
 
 (defn new-sim-game
   "A game in the lobby with n joined players, plus its genesis event log."
-  [n seed]
-  (let [evs (sim-genesis n seed)]
-    [(e/replay evs) evs]))
+  ([n seed] (new-sim-game n seed {}))
+  ([n seed opts]
+   (let [evs (sim-genesis n seed opts)]
+     [(e/replay evs) evs])))
 
 (def ^:private no-target-actions
   "Commands that carry no :target at all.
@@ -132,11 +140,45 @@
 
 ;; ------------------------------------------------------------ invariants ---
 
+(def ^:private narrator-may
+  "Everything a Spielleiter may hold beyond his host powers: his voice, his
+   preferences, and the lobby's own buttons. Any game move here is a rule
+   reaching him that should have stopped at `participant-ids`."
+  #{:chat :leave :set-locale :start-game})
+
+(defn- narrator-violations
+  [state]
+  (if-let [n (e/narrator state)]
+    (cond-> []
+      (some? (get-in state [:players n :role]))
+      (conj {:violation :narrator-dealt-a-role
+             :detail (get-in state [:players n :role])})
+
+      (seq (remove (into narrator-may (phases/host-actions state n))
+                   (phases/legal-actions state n)))
+      (conj {:violation :narrator-can-play
+             :detail (vec (remove (into narrator-may (phases/host-actions state n))
+                                  (phases/legal-actions state n)))})
+
+      ;; Never a target of anything that is a move in the game. Handing over the
+      ;; host's seat is the one action that MAY name him — it names a seat.
+      (some (fn [pid]
+              (some (fn [a]
+                      (and (not= :gm/transfer-host a)
+                           (some #{n} (phases/legal-targets state pid a))))
+                    (phases/legal-actions state pid)))
+            (keys (:players state)))
+      (conj {:violation :narrator-is-a-target}))
+    []))
+
 (defn check-invariants
   "Return a seq of violation maps (empty when healthy). Run after EVERY event."
   [state]
   (let [players (:players state)
-        living  (set (e/living-ids state))]
+        ;; Not `e/living-ids`, which leaves the narrator out: he is not a
+        ;; living PARTICIPANT, but he is not dead either, and treating his seat
+        ;; as a corpse reported his perfectly legal :start-game as a ghost acting.
+        living  (into #{} (keep (fn [[id p]] (when (:alive? p) id))) players)]
     (cond-> []
       ;; --- redaction: the one that must never fail ---
       (some #(engine/redaction-leaks? state %) (keys players))
@@ -185,7 +227,11 @@
       (conj {:violation :game-over-without-winner})
 
       (and (not= :game-over (:phase state)) (some? (:winner state)))
-      (conj {:violation :winner-without-game-over}))))
+      (conj {:violation :winner-without-game-over})
+
+      ;; --- the Spielleiter is in the room and out of the game ---
+      (seq (narrator-violations state))
+      (into (narrator-violations state)))))
 
 ;; --------------------------------------------------------------- runner ---
 
@@ -194,51 +240,57 @@
    Reproducible from :seed and :players alone.
 
    Also accumulates the full event log so callers can assert the replay property
-   (= (replay log) final-state)."
-  [n seed]
-  (let [[start genesis] (new-sim-game n seed)]
-    (loop [state start, s seed, turns 0, history [], log genesis]
-      (let [violations (check-invariants state)]
-        (cond
-          (seq violations)
-          {:ok? false :reason :invariant :violations violations
-           :seed seed :players n :turns turns :state state
-           :history (vec (take-last 20 history)) :log log}
+   (= (replay log) final-state).
 
-          (engine/over? state)
-          ;; The FULL history, untruncated, on success too: it is the complete
-          ;; set of commands the engine considered legal in a real game, which
-          ;; makes it the natural corpus for testing the wire protocol against.
-          {:ok? true :winner (:winner state) :seed seed :players n
-           :turns turns :events (count log) :log log :state state
-           :history history
-           :survivors (e/living-ids state)}
+   `opts` is passed to `sim-genesis`; `{:narrated? true}` plays the game with a
+   Spielleiter and no clock, which is the configuration most likely to stall —
+   every phase the clock used to end now waits for a human — so it is the one
+   the deadlock check is most worth running on."
+  ([n seed] (play-game n seed {}))
+  ([n seed opts]
+   (let [[start genesis] (new-sim-game n seed opts)]
+     (loop [state start, s seed, turns 0, history [], log genesis]
+       (let [violations (check-invariants state)]
+         (cond
+           (seq violations)
+           {:ok? false :reason :invariant :violations violations
+            :seed seed :players n :turns turns :state state
+            :history (vec (take-last 20 history)) :log log}
 
-          (> turns max-turns)
-          {:ok? false :reason :livelock :seed seed :players n
-           :turns turns :state state :history (vec (take-last 20 history)) :log log}
+           (engine/over? state)
+           ;; The FULL history, untruncated, on success too: it is the complete
+           ;; set of commands the engine considered legal in a real game, which
+           ;; makes it the natural corpus for testing the wire protocol against.
+           {:ok? true :winner (:winner state) :seed seed :players n
+            :turns turns :events (count log) :log log :state state
+            :history history
+            :survivors (e/living-ids state)}
 
-          :else
-          (let [[s' state' cmd evs] (step state s)]
-            (cond
-              (nil? cmd)
-              {:ok? false :reason :deadlock :seed seed :players n :turns turns
-               :phase (:phase state) :state state
-               :history (vec (take-last 20 history)) :log log}
+           (> turns max-turns)
+           {:ok? false :reason :livelock :seed seed :players n
+            :turns turns :state state :history (vec (take-last 20 history)) :log log}
 
-              (:no-target cmd)
-              {:ok? false :reason :action-without-target :cmd cmd
-               :seed seed :players n :turns turns :phase (:phase state)
-               :state state :history (vec (take-last 20 history)) :log log}
+           :else
+           (let [[s' state' cmd evs] (step state s)]
+             (cond
+               (nil? cmd)
+               {:ok? false :reason :deadlock :seed seed :players n :turns turns
+                :phase (:phase state) :state state
+                :history (vec (take-last 20 history)) :log log}
 
-              (:rejected cmd)
-              {:ok? false :reason :legal-action-rejected :cmd cmd
-               :seed seed :players n :turns turns :phase (:phase state)
-               :state state :history (vec (take-last 20 history)) :log log}
+               (:no-target cmd)
+               {:ok? false :reason :action-without-target :cmd cmd
+                :seed seed :players n :turns turns :phase (:phase state)
+                :state state :history (vec (take-last 20 history)) :log log}
 
-              :else
-              (recur state' s' (inc turns) (conj history cmd)
-                     (into log evs)))))))))
+               (:rejected cmd)
+               {:ok? false :reason :legal-action-rejected :cmd cmd
+                :seed seed :players n :turns turns :phase (:phase state)
+                :state state :history (vec (take-last 20 history)) :log log}
+
+               :else
+               (recur state' s' (inc turns) (conj history cmd)
+                      (into log evs))))))))))
 
 (defn replay-mismatch
   "nil when the game's event log folds back to exactly its final state.
@@ -254,22 +306,23 @@
 (defn play-many
   "Play `count-games` games across a range of table sizes.
    Returns {:failures [...] :summary {...}}."
-  [count-games]
-  (let [results (for [i (range count-games)
-                      :let [n    (+ 5 (mod i 14))   ; 5..18 players
-                            seed (+ 1 (* i 7919))]] ; distinct primes-ish seeds
-                  (play-game n seed))
-        ;; A completed game that cannot be replayed is also a failure.
-        checked  (map (fn [r]
-                        (if-let [m (and (:ok? r) (replay-mismatch r))]
-                          (assoc r :ok? false :reason :replay :violations [m])
-                          r))
-                      results)
-        failures (vec (remove :ok? checked))]
-    {:failures failures
-     :summary  {:games   (count checked)
-                :winners (frequencies (map :winner (filter :ok? checked)))
-                :avg-turns (when-let [ts (seq (map :turns (filter :ok? checked)))]
-                             (quot (reduce + ts) (count ts)))
-                :avg-events (when-let [es (seq (map :events (filter :ok? checked)))]
-                              (quot (reduce + es) (count es)))}}))
+  ([count-games] (play-many count-games {}))
+  ([count-games opts]
+   (let [results (for [i (range count-games)
+                       :let [n    (+ 5 (mod i 14))   ; 5..18 players
+                             seed (+ 1 (* i 7919))]] ; distinct primes-ish seeds
+                   (play-game n seed opts))
+         ;; A completed game that cannot be replayed is also a failure.
+         checked  (map (fn [r]
+                         (if-let [m (and (:ok? r) (replay-mismatch r))]
+                           (assoc r :ok? false :reason :replay :violations [m])
+                           r))
+                       results)
+         failures (vec (remove :ok? checked))]
+     {:failures failures
+      :summary  {:games   (count checked)
+                 :winners (frequencies (map :winner (filter :ok? checked)))
+                 :avg-turns (when-let [ts (seq (map :turns (filter :ok? checked)))]
+                              (quot (reduce + ts) (count ts)))
+                 :avg-events (when-let [es (seq (map :events (filter :ok? checked)))]
+                               (quot (reduce + es) (count es)))}})))

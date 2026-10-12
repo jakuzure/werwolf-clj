@@ -50,7 +50,7 @@
   (doseq [locale i18n/locales]
     (testing (str locale)
       (doseq [p (concat (keys phases/next-phase)
-                        [:lobby :night :day-reveal :reaction :game-over])]
+                        [:lobby :setup :night :day-reveal :reaction :game-over])]
         (is (not (untranslated? (i18n/phase-name locale p))) (str p)))
       (doseq [r (keys roles/registry)]
         (is (not (untranslated? (i18n/role-name locale r))) (str r))
@@ -70,8 +70,14 @@
     ;; reads, and it is the only thing that needs a sentence.
     (let [logged (into #{}
                        (comp (map (comp :log :state)) cat (map :type))
-                       (for [[n seed] [[5 11] [7 22] [9 33] [12 44] [18 55]]]
-                         (h/play-game n seed)))]
+                       (concat
+                        (for [[n seed] [[5 11] [7 22] [9 33] [12 44] [18 55]]]
+                          (h/play-game n seed))
+                        ;; And narrated ones: the setup step, the clock
+                        ;; switched off, and the Spielleiter ending the phases
+                        ;; it used to end each log something of their own.
+                        (for [[n seed] [[6 66] [10 77]]]
+                          (h/play-game n seed {:narrated? true}))))]
       (is (> (count logged) 10) "the corpus is real games")
       (doseq [locale i18n/locales
               type logged]
@@ -112,6 +118,10 @@
             (doseq [r (keys roles/registry)]
               (is (not (str/includes? l (i18n/role-name locale r)))
                   (str r " must not appear in a public reassignment line")))))
+        (testing "the Spielleiter ending a phase the clock used to end names it"
+          (is (str/includes? (line {:type :gm/forced :action :advance-phase
+                                    :detail {:phase :night}})
+                             (i18n/phase-name locale :night))))
         (testing "an override with no line of its own still reads as something"
           (is (not (untranslated? (line {:type :gm/forced :action :pause :detail {}})))))))))
 
@@ -160,6 +170,20 @@
     (testing "and the verb agrees with the subject, which a count spliced into
               the singular form could not do"
       (is (not (str/includes? (:text (first de-rows)) "ist fertig"))))))
+
+(deftest the-table-switches-read-both-ways
+  (testing "each switch logs its new position, and both positions need a line"
+    (doseq [locale i18n/locales
+            entry [{:type :game/narrated-set :narrated? true}
+                   {:type :game/narrated-set :narrated? false}
+                   {:type :clock/timer-set :on? true}
+                   {:type :clock/timer-set :on? false}
+                   {:type :game/started :players 5 :narrated? true}]]
+      (is (not (untranslated? (i18n/log-line locale players entry)))
+          (str entry " in " locale)))
+    (is (not= (i18n/log-line :de players {:type :game/started :players 5})
+              (i18n/log-line :de players {:type :game/started :players 5 :narrated? true}))
+        "a narrated deal does not claim the night has fallen")))
 
 (deftest an-unknown-event-type-is-visible-not-blank
   (testing "a newer server may log something this client has never heard of;

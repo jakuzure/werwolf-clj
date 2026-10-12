@@ -123,11 +123,14 @@
   [ctx]
   (->> (vals (rooms ctx))
        (keep (fn [{s :state}]
+               ;; Players, not seats: a Spielleiter takes no card, so he neither
+               ;; fills the table nor counts towards it — the same count
+               ;; `handle :join` refuses on.
                (when (and (= :lobby (:phase s))
                           (seq (:players s))
-                          (< (count (:players s)) (:max-players s 18)))
+                          (< (count (engine/participant-ids s)) (:max-players s 18)))
                  {:room-id     (:room-id s)
-                  :players     (count (:players s))
+                  :players     (count (engine/participant-ids s))
                   :max-players (:max-players s 18)
                   :host        (get-in s [:players (:host s) :name])})))
        (sort-by :room-id)
@@ -302,14 +305,21 @@
 
    `min-players`/`max-players` default to the registry's config, which is what
    makes MIN_PLAYERS actually mean something — it was read into config and then
-   never plumbed here, so the limit was silently always 5."
-  [ctx {:keys [name locale min-players max-players seed]}]
+   never plumbed here, so the limit was silently always 5.
+
+   `narrated?` likewise, and it defaults to TRUE when config says nothing: the
+   creator is the Spielleiter, dealt no card, and the room has no clock until
+   somebody switches one on. That is how the game is played at a real table, and
+   the host can change it in the lobby. Whoever needs the old room — the creator
+   playing, the clock running — passes `:narrated? false`, here or in config."
+  [ctx {:keys [name locale min-players max-players seed narrated?]}]
   (let [room-id (reserve-code! ctx)
         cfg (:game ctx)
         min* (max absolute-min-players
                   (or min-players (:min-players cfg) 5))
         max* (max min* (or max-players (:max-players cfg) 18))
-        first-kill? (boolean (:first-night-kill? cfg))]
+        first-kill? (boolean (:first-night-kill? cfg))
+        narrated?* (boolean (if (some? narrated?) narrated? (get cfg :narrated? true)))]
     (with-room ctx room-id
       (fn [r]
         ;; The genesis event is built once and both applied and persisted, so
@@ -320,7 +330,11 @@
                        :seed        (or seed (random-seed))
                        :min-players min*
                        :max-players max*
-                       :first-night-kill? first-kill?}
+                       :first-night-kill? first-kill?
+                       :narrated?   narrated?*
+                       ;; The clock follows the mode, as it does when the host
+                       ;; flips it later — see :game/narrated-set.
+                       :timer?      (not narrated?*)}
               joined  (engine/execute (engine/apply-event nil genesis)
                                       {:type :join :player 0
                                        :name name :locale locale})]
@@ -499,20 +513,35 @@
    * dead players talk only to the dead, so a ghost cannot feed the living;
    * at night only the wolves have a channel at all, and only to each other;
    * otherwise chat is public, and the dead hear it too (they are spectators,
-     not exiles)."
+     not exiles).
+
+   The Spielleiter is outside all three. He hears every channel — the wolves'
+   whispers and the dead's asides are exactly what he is narrating — and
+   whatever he says reaches the whole table, at any hour, as a narrator's voice
+   does. Neither direction can leak: he already knows every card, and what he
+   says is his choice to say."
   [state pid]
-  (let [players (:players state)
-        alive?  #(get-in players [% :alive?])]
+  (let [players  (:players state)
+        narrator (engine/narrator state)
+        alive?   #(get-in players [% :alive?])
+        ;; Added to the private channels' audiences, never to a public one,
+        ;; which already includes him.
+        +sl      #(cond-> % narrator (conj narrator))]
     (cond
+      ;; Outside the lobby only: before the game there are no channels to stand
+      ;; outside of, and his lines should read like everybody else's.
+      (and narrator (= pid narrator) (not= :lobby (:phase state)))
+      {:channel :narrator :to (set (keys players))}
+
       (not (alive? pid))
       {:channel :dead
-       :to (set (remove alive? (keys players)))}
+       :to (+sl (set (remove alive? (keys players))))}
 
       (= :night (:phase state))
       (if (= :werewolf (engine/team-of-player state pid))
         {:channel :wolves
-         :to (set (filter #(and (alive? %) (= :werewolf (engine/team-of-player state %)))
-                          (keys players)))}
+         :to (+sl (set (filter #(and (alive? %) (= :werewolf (engine/team-of-player state %)))
+                               (keys players))))}
         ;; Unreachable while `legal-actions` gates chat, and deliberately a dead
         ;; drop rather than a fallback to :all if that ever changes.
         {:channel :none :to #{}})

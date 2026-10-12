@@ -44,9 +44,27 @@
    :lobby/leave       "Runde verlassen"
    :lobby/leave-confirm "Wirklich verlassen?"
    :lobby/leave-cancel  "Doch bleiben"
+   ;; Der Spielleiter. Er sitzt im Raum, spielt aber nicht mit — der Warteraum
+   ;; muss das sagen, sonst zählt jeder ihn als Mitspieler und wundert sich über
+   ;; die Kartenzahl.
+   :lobby/mode               "Spielleitung"
+   :lobby/mode-narrated      "Mit Spielleiter: er spielt nicht mit, sieht alle Rollen und führt durchs Spiel."
+   :lobby/mode-players       "Ohne Spielleiter: die Spielleitung spielt mit und hat nur ihre Schalter nebenher."
+   :lobby/narrator-is        (fn [n] (str "Spielleiter: " n))
+   :lobby/you-narrate        "Du bist der Spielleiter — du bekommst keine Rolle."
+   :lobby/narrate            "Ich leite das Spiel"
+   :lobby/play-along         "Ich spiele mit"
+   :lobby/timer              "Zeitlimit"
+   :lobby/timer-on           "Phasen haben ein Zeitlimit."
+   :lobby/timer-off          "Kein Zeitlimit — der Spielleiter bestimmt das Tempo."
+   :lobby/timer-switch-on    "Zeitlimit einschalten"
+   :lobby/timer-switch-off   "Zeitlimit ausschalten"
+   :lobby/make-narrator      "Zum Spielleiter machen"
+   :lobby/make-host          "Spielleitung übergeben"
 
    ;; ------------------------------------------------------------ phases ---
    :phase/lobby       "Warteraum"
+   :phase/setup       "Rollenvergabe"
    :phase/night       "Nacht"
    :phase/election    "Bürgermeisterwahl"
    :phase/day-reveal  "Morgengrauen"
@@ -105,7 +123,11 @@
    :action/nominate-pass   "Niemanden anklagen"
    :action/vote            "Verurteilen"
    :action/vote-abstain    "Enthalten"
+   :action/begin-night     "Erste Nacht beginnen"
    :action/advance-phase   "Phase weiter (SL)"
+   :action/gm-toggle-narrated "Spielleiter-Modus (SL)"
+   :action/gm-toggle-timer "Zeitlimit an/aus (SL)"
+   :action/gm-transfer-host "Spielleitung übergeben (SL)"
    :action/gm-force-kill   "Töten (SL)"
    :action/gm-revive       "Wiederbeleben (SL)"
    :action/gm-skip-role    "Rolle überspringen (SL)"
@@ -126,6 +148,24 @@
    :gm/confirm        "Wirklich?"
    :gm/clock          "Zeit"
    :gm/nothing        "Gerade nichts zu steuern."
+   :gm/timer-on       "Zeitlimit einschalten (SL)"
+   :gm/timer-off      "Zeitlimit ausschalten (SL)"
+
+   ;; ------------------------------------------------------- Spielleiter ---
+   :narrator/title    "Spielleiter"
+   :narrator/desc     "Du spielst nicht mit. Du siehst alle Rollen, rufst die Nacht aus und schaltest die Phasen weiter."
+   :narrator/night    "Nachtgeschehen"
+   :narrator/wolf-votes "Wolfsstimmen"
+   :narrator/dying    "Stirbt heute Nacht"
+   :narrator/protected "Beschützt"
+   :narrator/lovers   "Verliebte"
+   :narrator/centre   "Mitte (Dieb)"
+   :narrator/nobody   "—"
+   :narrator/new      "Neuer Spielleiter"
+   :setup/title       "Rollenvergabe"
+   :setup/hint        "Alle haben ihre Karte. Du kannst jede Rolle noch ändern — dann beginne die erste Nacht. Bis dahin steht nichts davon in der Chronik."
+   :setup/waiting     "Der Spielleiter verteilt die Rollen …"
+   :setup/your-card   "Deine Karte kann sich bis zur ersten Nacht noch ändern."
 
    ;; -------------------------------------------------------------- game ---
    :game/you           "du"
@@ -143,6 +183,7 @@
    :game/nothing-to-do "Für dich ist gerade nichts zu tun."
    :game/wolves-channel "Nur die Werwölfe hören dich"
    :game/dead-channel   "Nur die Toten hören dich"
+   :game/narrator-channel "Alle hören dich — du bist der Spielleiter"
    :game/paused         "Zeit angehalten"
    :game/new-round      "Zurück — neue Runde"
    :game/over-hint      "Alle Rollen sind jetzt aufgedeckt."
@@ -157,6 +198,8 @@
    :turn/hint    "Wähle unten eine Aktion"
    :turn/urgent  "Alle warten auf dich"
    :turn/calling (fn [role] (str "Der Spielleiter ruft: " role))
+   ;; Der Spielleiter ist nie "dran" und wartet nie — er führt.
+   :turn/narrating "Du leitest das Spiel"
 
    ;; ------------------------------------------------------------ voice ---
    ;;
@@ -201,6 +244,11 @@
    :log/reconnected   (fn [n] (str n " ist zurück"))
    :log/host-changed  (fn [n] (str n " ist jetzt Spielleitung"))
    :log/game-started  "Die erste Nacht bricht an"
+   :log/game-started-setup "Die Karten sind verteilt — der Spielleiter bereitet die erste Nacht vor"
+   :log/narrated-on   "Die Spielleitung spielt nicht mit und führt durchs Spiel"
+   :log/narrated-off  "Die Spielleitung spielt mit"
+   :log/timer-on      "Die Uhr läuft — jede Phase hat ein Zeitlimit"
+   :log/timer-off     "Die Uhr ist aus — die Spielleitung bestimmt das Tempo"
    :log/amor-linked   "Amor hat zwei Verliebte bestimmt"
    :log/night-began   "Die Nacht bricht an"
    :log/night-quiet-first "Die erste Nacht bleibt ruhig — niemand stirbt"
@@ -247,6 +295,7 @@
    :log/gm-skip-role  (fn [r] (str "Die Spielleitung überspringt " r))
    :log/gm-set-phase  (fn [p] (str "Die Spielleitung setzt die Phase auf " p))
    :log/gm-reassign-role (fn [n] (str n " hat von der Spielleitung eine neue Rolle bekommen"))
+   :log/gm-advance-phase (fn [p] (str "Die Spielleitung beendet: " p))
    :log/clock-paused  "Die Spielleitung hält die Zeit an"
    :log/clock-resumed "Die Zeit läuft weiter"
    :log/win-village   "Das Dorf hat gewonnen"
@@ -297,6 +346,11 @@
    :error/no-deadline      "Es läuft gerade keine Zeit"
    :error/not-night        "Das geht nur nachts"
    :error/cannot-advance   "Diese Phase lässt sich nicht weiterschalten"
+   :error/no-game-in-progress "Dafür muss das Spiel erst laufen"
+   :error/already-that-role "Diese Rolle hat der Mitspieler schon"
+   :error/invalid-choice   "Diese Wahl ist nicht erlaubt"
+   :error/no-such-player   "Diesen Mitspieler gibt es nicht"
+   :error/unknown-role     "Diese Rolle gibt es nicht"
    :error/distinct-targets-required "Bitte zwei verschiedene Mitspieler"
    :error/unsupported-locale "Diese Sprache gibt es nicht"
    :error/unknown-command  "Unbekannter Befehl"

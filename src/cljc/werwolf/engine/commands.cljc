@@ -36,7 +36,9 @@
    than being whatever fell out of the shuffle — see `roles/centre-extras` for why
    a random middle produces tables nobody asked for."
   [state]
-  (let [ids  (vec (sort (keys (:players state))))
+  ;; Participants only: the Spielleiter is dealt nothing, and the deck is
+  ;; composed for the table that actually plays.
+  (let [ids  (e/participant-ids state)
         {:keys [deck centre]} (roles/compose-deck (count ids))
         [seed' shuffled] (rng/shuffle (:seed state) deck)]
     {:assignments (zipmap ids shuffled)
@@ -62,7 +64,9 @@
     (not= :lobby (:phase state))          (err :game-in-progress {})
     (contains? (:players state) player)   (err :already-joined {:player player})
     ;; From state, not a literal: the room keeps the limit it was opened with.
-    (>= (count (:players state))
+    ;; Counts the people who will PLAY — a Spielleiter does not take a card, so
+    ;; he does not take a seat at the table either.
+    (>= (count (e/participant-ids state))
         (:max-players state 18))          (err :room-full {})
     (str/blank? (str name))               (err :name-required {})
     :else [{:type :player/joined
@@ -89,7 +93,22 @@
     (err :not-allowed {:action :start-game})
     (let [{:keys [assignments centre seed]} (deal state)]
       [{:type :game/started :assignments assignments :centre centre :seed seed}
-       {:type :night/began :night 1}])))
+       ;; With a Spielleiter the cards are dealt face down to the table and
+       ;; face up to him, and the night falls when he says so — he may want to
+       ;; rearrange the deal first. Without one there is nobody to wait for.
+       (if (e/narrator state)
+         {:type :phase/changed :phase :setup :deadline nil}
+         {:type :night/began :night 1})])))
+
+(defmethod handle :begin-night
+  ;; The end of :setup. Its own command rather than :advance-phase, because it
+  ;; is not "the next phase" in the sense the day uses — it is the moment the
+  ;; deal becomes final, and the button saying so should not look like the one
+  ;; that hurries a discussion along.
+  [state {:keys [player]}]
+  (if-not (allowed? state player :begin-night)
+    (err :not-allowed {:action :begin-night})
+    [{:type :night/began :night 1}]))
 
 ;; ---- night actions ----
 
@@ -279,11 +298,20 @@
     [{:type :vote/cast :voter player :target nil}]))
 
 (defmethod handle :advance-phase
+  ;; What it does is `phases/advance-events`' business: the next day phase, or,
+  ;; in a room without a clock, whatever the clock would have done. The second
+  ;; kind is logged as an override, because it ends a turn somebody else was
+  ;; owed — a Jäger's shot, a wolf's vote — and the table must be able to see
+  ;; that it was the Spielleiter and not the player who closed it.
   [state {:keys [player]}]
   (if-not (allowed? state player :advance-phase)
     (err :not-allowed {:action :advance-phase})
-    (if-let [nxt (next-phase (:phase state))]
-      [{:type :phase/changed :phase nxt :deadline nil}]
+    (if-let [evs (phases/advance-events state)]
+      (if (next-phase (:phase state))
+        evs
+        (into [{:type :gm/forced :actor player :action :advance-phase
+                :detail {:phase (:phase state)}}]
+              evs))
       (err :cannot-advance {:phase (:phase state)}))))
 
 ;; ---- GM overrides -------------------------------------------------------
@@ -292,11 +320,25 @@
 
 (defn- host? [state pid] (= pid (:host state)))
 
+(defn- before-play?
+  "No game to override yet. These handlers used to check only that the caller
+   was the host, which was harmless while the lobby was the only such phase —
+   nobody had a role to lose. :setup has dealt cards and no night, and a forced
+   death or a jump to the vote there would start a game the phase machine never
+   began."
+  [state]
+  (contains? #{:lobby :setup} (:phase state)))
+
 (defmethod handle :gm/force-kill
   [state {:keys [player target]}]
   (cond
     (not (host? state player)) (err :not-host {})
+    (before-play? state)       (err :no-game-in-progress {})
     (not (get-in state [:players target :alive?])) (err :already-dead {:target target})
+    ;; The narrator is "alive" only in the sense that he is in the room. Killing
+    ;; him would put a Spielleiter in the dead players' channel and on nobody's
+    ;; ballot — not a game state anything downstream expects.
+    (= target (e/narrator state))  (err :invalid-target {:target target})
     :else [{:type :gm/forced :actor player :action :force-kill :detail {:target target}}
            {:type :player/died :player target :cause :gm}]))
 
@@ -304,6 +346,7 @@
   [state {:keys [player target]}]
   (cond
     (not (host? state player)) (err :not-host {})
+    (before-play? state)       (err :no-game-in-progress {})
     (get-in state [:players target :alive?]) (err :already-alive {:target target})
     :else [{:type :gm/forced :actor player :action :revive :detail {:target target}}
            {:type :player/revived :player target}]))
@@ -330,17 +373,63 @@
   ;; and this command exists precisely to override a composition — refusing a
   ;; second Seherin here would block the correction the GM reached for. Two
   ;; Seherinnen is a table's problem, and it is in the log.
+  ;;
+  ;; During :setup it is something else: the Spielleiter arranging the deal
+  ;; before anybody has played a card. Then there is no public line at all —
+  ;; nothing has happened yet that the table could audit, and a Chronik naming
+  ;; every seat he touched would be a map of where he thought the deal needed
+  ;; fixing. The spare cards follow the Dieb in or out of the deal; see
+  ;; `roles/centre-for`.
   [state {:keys [player target role]}]
   (cond
     (not (host? state player))                (err :not-host {})
     (#{:lobby :game-over} (:phase state))     (err :no-game-in-progress {})
     (not (get-in state [:players target]))    (err :no-such-player {:target target})
+    (= target (e/narrator state))             (err :invalid-target {:target target})
     (not (contains? roles/all-ids role))      (err :unknown-role {:role role})
     (= role (get-in state [:players target :role]))
     (err :already-that-role {:target target})
+
+    (= :setup (:phase state))
+    (let [dealt (vals (assoc (into {} (map (fn [id] [id (get-in state [:players id :role])]))
+                                   (e/participant-ids state))
+                             target role))]
+      [{:type :player/role-changed :player target :role role
+        :centre (roles/centre-for dealt)}])
+
     :else [{:type :gm/forced :actor player :action :reassign-role
             :detail {:target target}}
            {:type :player/role-changed :player target :role role}]))
+
+;; ---- the table itself: who narrates, the clock, whose seat this is ----
+
+(defmethod handle :gm/toggle-narrated
+  [state {:keys [player]}]
+  (if-not (allowed? state player :gm/toggle-narrated)
+    (err :not-allowed {:action :gm/toggle-narrated})
+    [{:type :game/narrated-set :narrated? (not (:narrated? state))}]))
+
+(defmethod handle :gm/toggle-timer
+  ;; In the lobby and during the game alike. A table that finds the clock
+  ;; rushing it, or a Spielleiter who wants it back to keep a slow table
+  ;; moving, should not have to start over to change its mind.
+  [state {:keys [player]}]
+  (if-not (allowed? state player :gm/toggle-timer)
+    (err :not-allowed {:action :gm/toggle-timer})
+    [{:type :clock/timer-set :on? (not (phases/timed? state))}]))
+
+(defmethod handle :gm/transfer-host
+  ;; Hand the host's seat — and in a narrated room, the Spielleitung with it —
+  ;; to somebody else. Lobby only: see `phases/host-actions`. The same event
+  ;; succession uses, so the Chronik and every reader of `:host` already know
+  ;; what it means.
+  [state {:keys [player target]}]
+  (cond
+    (not (allowed? state player :gm/transfer-host))
+    (err :not-allowed {:action :gm/transfer-host})
+    (not (valid-target? state player :gm/transfer-host target))
+    (err :invalid-target {:target target})
+    :else [{:type :host/changed :host target}]))
 
 ;; ---- GM control of the clock ----
 ;;
@@ -386,8 +475,10 @@
 
 (defmethod handle :gm/set-phase
   [state {:keys [player phase]}]
-  (if-not (host? state player)
-    (err :not-host {})
+  (cond
+    (not (host? state player)) (err :not-host {})
+    (before-play? state)       (err :no-game-in-progress {})
+    :else
     [{:type :gm/forced :actor player :action :set-phase :detail {:phase phase}}
      {:type :phase/changed :phase phase :deadline nil}]))
 

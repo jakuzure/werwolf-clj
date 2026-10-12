@@ -34,6 +34,10 @@
 (defn- deps-on [path]
   (let [rooms (room/registry {:ds (store/open {:dbtype "sqlite" :dbname path})
                               :send! (fn [sock msg] (swap! sock conj msg))
+                              ;; The creator PLAYS here: these tests deal a
+                              ;; table and count its seats, and were written
+                              ;; when the creator was always one of them.
+                              :game {:narrated? false}
                               :after-commit (timer/hook game-cfg)})]
     {:rooms rooms
      :tokens tokens-cfg

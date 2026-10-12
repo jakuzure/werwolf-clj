@@ -27,19 +27,46 @@
 (defn- alive? [state pid]
   (get-in state [:players pid :alive?]))
 
-(defn living-ids [state]
-  (->> (:players state)
-       (filter (fn [[_ p]] (:alive? p)))
-       (map key)
-       sort
-       vec))
+(defn narrator
+  "The Spielleiter's seat, or nil when the host plays like everybody else.
+
+   Not a field of its own: the narrator IS the host whenever the room is
+   narrated. Succession and a deliberate hand-over both move `:host`, so they
+   move the narrator with it and there is no second pointer to keep in step.
+
+   The narrator stays in `:players` — seats, tokens, sockets, reconnects and chat
+   all hang off that map, and a narrator who was not in it would need a parallel
+   copy of each — but takes no part in the game: no card, no vote, no target, no
+   win. Everything below that counts PLAYERS of the game goes through
+   `participant-ids` or `living-ids` for exactly that reason."
+  [state]
+  (when (:narrated? state) (:host state)))
+
+(defn participant-ids
+  "Everyone seated who plays the game: every seat but the narrator's. Sorted."
+  [state]
+  (let [n (narrator state)]
+    (->> (keys (:players state)) (remove #(= n %)) sort vec)))
+
+(defn living-ids
+  "Living PARTICIPANTS. The narrator is never among them: he is alive in the
+   sense that he is in the room, and in no sense the game cares about — counting
+   him here would put him on every ballot and keep the village alive forever."
+  [state]
+  (let [n (narrator state)]
+    (->> (:players state)
+         (filter (fn [[id p]] (and (:alive? p) (not= n id))))
+         (map key)
+         sort
+         vec)))
 
 (defn living-with-role [state role-id]
-  (->> (:players state)
-       (filter (fn [[_ p]] (and (:alive? p) (= role-id (:role p)))))
-       (map key)
-       sort
-       vec))
+  (let [n (narrator state)]
+    (->> (:players state)
+         (filter (fn [[id p]] (and (:alive? p) (not= n id) (= role-id (:role p)))))
+         (map key)
+         sort
+         vec)))
 
 (defn team-of-player
   "The player's DEALT team: :village or :werewolf.
@@ -100,25 +127,34 @@
 ;; ---- lifecycle ----
 
 (defmethod apply-event :game/created
-  [_ {:keys [room-id host seed min-players max-players first-night-kill?]}]
-  {:room-id        room-id
-   :phase          :lobby
-   :night          0
-   :players        {}
-   :host           host
-   :seed           seed
-   ;; Kept in state rather than read from config, so the engine stays pure and
-   ;; a replayed game uses the same thresholds it was created with. A config
-   ;; change must never be able to make a game in progress unstartable.
-   :min-players    (or min-players 5)
-   :max-players    (or max-players 18)
-   ;; Rule variant, stamped in at creation so a replay plays the game it was:
-   ;; false (the default) means the werewolves have no turn on night 1.
-   :first-night-kill? (boolean first-night-kill?)
-   :lovers         nil
-   :reactions      []
-   :pending-deaths []
-   :log            []})
+  [_ {:keys [room-id host seed min-players max-players first-night-kill?
+             narrated? timer?]}]
+  (cond-> {:room-id        room-id
+           :phase          :lobby
+           :night          0
+           :players        {}
+           :host           host
+           :seed           seed
+           ;; Kept in state rather than read from config, so the engine stays
+           ;; pure and a replayed game uses the same thresholds it was created
+           ;; with. A config change must never be able to make a game in
+           ;; progress unstartable.
+           :min-players    (or min-players 5)
+           :max-players    (or max-players 18)
+           ;; Rule variant, stamped in at creation so a replay plays the game
+           ;; it was: false (the default) means the werewolves have no turn on
+           ;; night 1.
+           :first-night-kill? (boolean first-night-kill?)
+           :lovers         nil
+           :reactions      []
+           :pending-deaths []
+           :log            []}
+    ;; Both ABSENT unless the genesis event says so, rather than defaulted to
+    ;; false: a log written before the Spielleiter existed must replay into the
+    ;; very state it always did, and "absent" is how every reader spells "the
+    ;; host plays, and the clock runs".
+    (some? narrated?) (assoc :narrated? (boolean narrated?))
+    (some? timer?)    (assoc :timer? (boolean timer?))))
 
 (defmethod apply-event :player/joined
   [state {:keys [player name locale]}]
@@ -204,6 +240,29 @@
       (assoc :host host)
       (publish {:type :host/changed :host host})))
 
+(defmethod apply-event :game/narrated-set
+  ;; The host chose, in the lobby, whether to narrate or to play. The clock
+  ;; follows the choice to its own default — a Spielleiter at the table paces the
+  ;; game himself, a table without one needs the clock to do it — and stays a
+  ;; separate switch after that, see :clock/timer-set.
+  ;;
+  ;; Public: who is playing and who is narrating is the first thing a table
+  ;; agrees on, and the seat count the lobby shows changes with it.
+  [state {:keys [narrated?]}]
+  (-> state
+      (assoc :narrated? (boolean narrated?)
+             :timer? (not narrated?))
+      (publish {:type :game/narrated-set :narrated? (boolean narrated?)})))
+
+(defmethod apply-event :clock/timer-set
+  ;; Whether the room has a clock at all. Distinct from a pause: a pause is
+  ;; "hang on a moment" inside a timed game, this is "nobody is timed in this
+  ;; room". `timer/clock-events` reads it and arms nothing while it is off.
+  [state {:keys [on?]}]
+  (-> state
+      (assoc :timer? (boolean on?))
+      (publish {:type :clock/timer-set :on? (boolean on?)})))
+
 (defmethod apply-event :game/started
   [state {:keys [assignments centre seed]}]
   (-> (reduce (fn [s [pid role-id]]
@@ -219,7 +278,11 @@
       (assoc :night 0 :winner nil :centre (vec centre))
       ;; Carry the advanced seed so any later randomness stays reproducible.
       (cond-> seed (assoc :seed seed))
-      (publish {:type :game/started :players (count assignments)})))
+      ;; The narrated flag rides along so the Chronik can say "the cards are
+      ;; being dealt" rather than "the first night falls" — in a narrated room
+      ;; the night does not fall until the Spielleiter says so.
+      (publish (cond-> {:type :game/started :players (count assignments)}
+                 (:narrated? state) (assoc :narrated? true)))))
 
 ;; ---- phase plumbing ----
 
@@ -556,15 +619,22 @@
 ;; unlearn what she saw, and her inspections were true when she made them. The
 ;; redaction boundary agrees: `revealed-roles` reads that same map, so she keeps
 ;; seeing exactly what she is still entitled to.
+;;
+;; `:centre`, when present, replaces the two spare cards. Only the Spielleiter's
+;; setup step sends it: rearranging the deal before night 1 can add a Dieb to a
+;; table that was dealt none, or take away the only one, and his two cards have
+;; to appear or vanish with him. The command decides which; this only records it.
 (defmethod apply-event :player/role-changed
-  [state {:keys [player role]}]
+  [state {:keys [player role] :as event}]
   (if-not (get-in state [:players player])
     state ; a replay must not resurrect a player who left
     (-> state
         (assoc-in [:players player :role] role)
         (update-in [:players player] dissoc :resources)
         (cond-> (roles/initial-resources role)
-          (assoc-in [:players player :resources] (roles/initial-resources role))))))
+          (assoc-in [:players player :resources] (roles/initial-resources role)))
+        (cond-> (contains? event :centre)
+          (assoc :centre (vec (:centre event)))))))
 
 ;; ------------------------------------------------------------- replay ---
 
