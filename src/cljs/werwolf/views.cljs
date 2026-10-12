@@ -1188,8 +1188,10 @@
   ;; below the board. The only record of what the night did was the last thing
   ;; you could reach, and the chat was easier to find than the story.
   ;;
-  ;; Now it reads: where are we, is it my turn, who am I, what can I do, what
-  ;; just happened, the board, then talk.
+  ;; Now it reads: where are we and is it my turn (the stage), who am I, what
+  ;; can I do, the call, the board to pick from, the Spielleiter's tools, the
+  ;; folded Chronik, then talk. The stage's 'Zuletzt' line is what keeps the
+  ;; story near the top now that the Chronik starts folded.
   ;;
   ;; `contents` is what makes that possible without touching the desktop layout.
   ;; Below `lg` the two column wrappers are display:contents, so their children
@@ -1220,11 +1222,14 @@
      [:div {:class "order-5 empty:hidden"} [voice-panel]]
      ;; His notes before his switches: the Spielleiter reads the night far more
      ;; often than he overrides it.
-     [:div {:class "order-6 empty:hidden"} [narrator-panel]]
-     [:div {:class "order-6 empty:hidden"} [gm-panel]]
-     [:div {:class "order-8 empty:hidden"} [player-grid]]]
+     ;; The board straight after the call: picking a player is what an armed
+     ;; action asks for next, and it used to wait below the Spielleiter's
+     ;; panels and the Chronik, a long scroll away from the button that asked.
+     [:div {:class "order-6 empty:hidden"} [player-grid]]
+     [:div {:class "order-7 empty:hidden"} [narrator-panel]]
+     [:div {:class "order-7 empty:hidden"} [gm-panel]]]
     [:div {:class "contents lg:block lg:col-span-2 lg:space-y-4"}
-     [:div {:class "order-7 empty:hidden"} [log-panel]]
+     [:div {:class "order-8 empty:hidden"} [log-panel]]
      [:div {:class "order-9 empty:hidden"} [chat-panel]]]]])
 
 ;; ---------------------------------------------------------------------- app ---

@@ -66,20 +66,7 @@
    ;; the last room is never carried into the next one.
    :audio       nil})
 
-(def ^:private chronik-key "werwolf/chronik-open")
-
-(defn- stored-chronik
-  "The player's last word on the Chronik, or nil. Storage can be missing (Node,
-   a private window) or refuse outright; either way the default applies."
-  []
-  (try
-    (case (.getItem js/localStorage chronik-key)
-      "true" true
-      "false" false
-      nil)
-    (catch :default _ nil)))
-
-(rf/reg-event-db ::init (fn [_ _] (assoc initial-db :log/open? (stored-chronik))))
+(rf/reg-event-db ::init (fn [_ _] initial-db))
 
 (rf/reg-event-fx
  ::connected
@@ -167,22 +154,8 @@
 
 (rf/reg-event-db ::toggle-log (fn [db _] (update db :log/show-all? not)))
 
-(rf/reg-fx
- ::store-chronik
- (fn [open?]
-   (try (.setItem js/localStorage chronik-key (str open?))
-        (catch :default _ nil))))
-
-(defn toggle-chronik-fx
-  "Fold or unfold the Chronik, from whatever it currently SHOWS — which may be the
-   narrated default rather than anything the player chose — and remember it, so a
-   player who wants it open has it open in the next game too."
-  [{:keys [db]} _]
-  (let [open? (not (sub/chronik-open? (:log/open? db) (:narrated? (:view db))))]
-    {:db (assoc db :log/open? open?)
-     ::store-chronik open?}))
-
-(rf/reg-event-fx ::toggle-chronik toggle-chronik-fx)
+(rf/reg-event-db ::toggle-chronik
+                 (fn [db _] (assoc db :log/open? (not (sub/chronik-open? (:log/open? db))))))
 
 ;; ------------------------------------------------------------------ outbound ---
 
