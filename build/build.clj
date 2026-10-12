@@ -104,7 +104,7 @@
 
    Same JDK caveat as the uberjar (see deploy/Dockerfile): http-kit decides at
    compile time whether to use virtual threads, so this jar must be built by the
-   JDK 21 the server runs on, and is."
+   JDK 25 the server runs on, and is."
   [_]
   (b/delete {:path "target/libs"})
   (b/compile-clj {:basis      (basis)

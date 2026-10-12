@@ -1,5 +1,5 @@
 # The werwolf server: a small app jar plus a wrapper script that runs it on a
-# headless JDK 21, with every library on the classpath as its own store path.
+# headless JDK 25, with every library on the classpath as its own store path.
 #
 # Not an uberjar, deliberately. An uberjar is a fresh 38 MB store path per
 # release of which over 90% never changes: sqlite-jdbc's native libraries alone
@@ -31,7 +31,7 @@
 , mk-deps-cache
 , importNpmLock
 , nodejs_22
-, jdk21_headless
+, jdk25_headless
 , zip
 , unzip
 , version
@@ -41,7 +41,12 @@
 let
   # The build JDK is the run JDK on purpose: http-kit picks virtual threads or
   # not at COMPILE time (see deploy/Dockerfile), and `libs` compiles http-kit.
-  jdk = jdk21_headless;
+  #
+  # 25 rather than nixpkgs's default 21: from 24 on, a virtual thread blocked in
+  # `synchronized` no longer pins its carrier thread, and every room serialises
+  # its commands with `locking` while http-kit runs handlers on virtual threads.
+  # On 21 a busy room tied up a carrier per waiting request.
+  jdk = jdk25_headless;
   clj = clojure.override { inherit jdk; };
 
   lockfile = ../deps-lock.json;

@@ -76,7 +76,7 @@ clojure -M -e '(println (System/getProperty "java.version"))'  # the BUILD java
 ```
 
 On this machine those disagree: `/usr/bin/java` is 17, while `clojure` is a Nix
-wrapper carrying JDK 21. That matters because http-kit 2.8 chooses its executor
+wrapper carrying the system's JDK (nixpkgs' default is 21). That matters because http-kit 2.8 chooses its executor
 with a macro that evaluates `(Thread/ofVirtual)` at **compile** time — so the JDK
 that built the jar decides forever whether the jar wants virtual threads. Built
 on 21, run on 17, you get:
@@ -87,15 +87,16 @@ NoSuchMethodError: Executors.newVirtualThreadPerTaskExecutor()
 
 raised from inside `integrant/init`, which makes it look like a system-wiring
 problem and not a JVM one. `bb serve` and `bb dev` are unaffected — they go
-through `clojure`, so they already use 21.
+through `clojure`, so they compile and run on the same JDK.
 
-The container pins `eclipse-temurin:21-jre`, so deployments are fine.
+The container runs `eclipse-temurin:25-jre`, and the nix package builds and runs
+on JDK 25, so deployments are fine.
 
 On the Mac the uberjar no longer runs at all, whichever `java`: it carries
 sqlite-jdbc's native library for Linux x86_64 and aarch64 only, the two the image
 can be (see build/build.clj), and cannot open the database anywhere else. To run
 the packaged server here, use the nix package instead. It carries this
-platform's library and its own JDK 21:
+platform's library and its own JDK 25:
 
 ```bash
 nix build

@@ -11,11 +11,11 @@
 # on the COPY below with "no source files were specified", which is the correct
 # failure — it means the artifact you were about to ship does not exist.
 
-# 21, and not 17. http-kit 2.8's `new-worker` picks its executor with a
-# `compile-if` macro that evaluates `(Thread/ofVirtual)` at COMPILE time, so the
-# JDK that builds the uberjar decides, permanently, whether the jar wants virtual
-# threads. This project's `clojure` is a Nix wrapper carrying JDK 21, so the
-# answer is baked in as yes — and running the result on a 17 JVM dies with
+# 25, and never below the JDK that built the jar. http-kit 2.8's `new-worker`
+# picks its executor with a `compile-if` macro that evaluates `(Thread/ofVirtual)`
+# at COMPILE time, so the JDK that builds the uberjar decides, permanently,
+# whether the jar wants virtual threads. Built on 21 or later the answer is baked
+# in as yes — and running the result on a 17 JVM dies with
 # NoSuchMethodError: newVirtualThreadPerTaskExecutor, from deep inside integrant
 # where it looks like anything but a JDK mismatch. Keep this at or above the
 # version that builds the jar.
