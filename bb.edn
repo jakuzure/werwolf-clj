@@ -87,6 +87,21 @@
   {:doc  "Run the Clojure test suite (engine + sim harness)"
    :task (clojure "-M:test")}
 
+  previews:test
+  {:doc         "Run the PR preview controller's tests (previews/, babashka only)"
+   :extra-paths ["previews/src" "previews/test"]
+   :requires    ([clojure.test :as t]
+                 [werwolf.previews.plan-test]
+                 [werwolf.previews.github-test]
+                 [werwolf.previews.k8s-test]
+                 [werwolf.previews.main-test])
+   :task        (let [{:keys [fail error]}
+                      (t/run-tests (quote werwolf.previews.plan-test)
+                                   (quote werwolf.previews.github-test)
+                                   (quote werwolf.previews.k8s-test)
+                                   (quote werwolf.previews.main-test))]
+                  (when (pos? (+ fail error)) (System/exit 1)))}
+
   test:cljs
   {:doc     "Run the .cljc engine tests on ClojureScript/Node.
              Guards cross-platform claims (e.g. rng producing identical numbers)."

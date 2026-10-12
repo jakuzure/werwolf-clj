@@ -93,6 +93,23 @@
     (testing "and it expires"
       (is (> (:exp c) (:iat c))))))
 
+(deftest a-room-prefix-keeps-preview-rooms-apart
+  (testing "a PR preview shares production's LiveKit, so its rooms must not be
+            able to land in production's: ABCD in pr-42 is not ABCD in prod"
+    (let [{:keys [provider]} (livekit/provider (assoc cfg :room-prefix "pr-42-"))
+          cr (media/credentials provider {:room-id "ABCD" :player-id 2
+                                          :now-ms now})
+          c  (claims (:token cr))]
+      (is (= "pr-42-abcd" (:room cr)))
+      (is (= "pr-42-abcd" (get-in c [:video :room])))
+      (is (= "pr-42-abcd-p2" (:sub c)))))
+  (testing "and an unset or blank prefix is production's"
+    (doseq [prefix [nil ""]]
+      (let [{:keys [provider]} (livekit/provider (assoc cfg :room-prefix prefix))]
+        (is (= "werwolf-abcd"
+               (:room (media/credentials provider {:room-id "ABCD" :player-id 0
+                                                   :now-ms now}))))))))
+
 (deftest a-token-is-signed-and-not-merely-encoded
   (let [{:keys [provider]} (livekit/provider cfg)
         token (:token (media/credentials provider {:room-id "ABCD" :player-id 0

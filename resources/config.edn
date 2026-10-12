@@ -12,7 +12,10 @@
  :media   {:provider   #keyword #or [#env MEDIA_PROVIDER "noop"]
            :url        #or [#env LIVEKIT_URL ""]
            :api-key    #or [#env LIVEKIT_API_KEY ""]
-           :api-secret #or [#env LIVEKIT_API_SECRET ""]}
+           :api-secret #or [#env LIVEKIT_API_SECRET ""]
+           ;; Rooms are named <prefix><room code>. Only a PR preview changes it,
+           ;; so its rooms stay apart from production's on the shared LiveKit.
+           :room-prefix #or [#env LIVEKIT_ROOM_PREFIX "werwolf-"]}
 
  :game    {;; Server-authoritative phase durations, seconds. Which phases are
            ;; timed at all is a rule and lives in werwolf.engine.phases;
