@@ -76,15 +76,17 @@
 (rf/reg-sub ::show-all-log? (fn [db _] (boolean (:log/show-all? db))))
 
 (defn chronik-open?
-  "Whether the Chronik is unfolded. A choice the player made wins; otherwise it
-   starts closed at a narrated table, where the Spielleiter tells the story out
-   loud and a scrolling transcript of it is a second, quieter narrator competing
-   for the same screen. Without one the Chronik IS the narrator, so it opens."
-  [stored narrated?]
-  (if (boolean? stored) stored (not narrated?)))
+  "Whether the Chronik is unfolded: only when this player opened it, this visit.
 
-(rf/reg-sub ::chronik-open?
-            (fn [db _] (chronik-open? (:log/open? db) (:narrated? (:view db)))))
+   Closed by default at every table. It first stayed open where nobody narrates,
+   and the choice was remembered across games, so one curious tap kept it open
+   for good — and it is a column of transcript competing with the board for a
+   phone screen, while the stage's 'Zuletzt' line already carries the one entry
+   that matters."
+  [open?]
+  (true? open?))
+
+(rf/reg-sub ::chronik-open? (fn [db _] (chronik-open? (:log/open? db))))
 
 (rf/reg-sub ::rooms (fn [db _] (or (:rooms db) [])))
 (rf/reg-sub ::seat-pending? (fn [db _] (boolean (:seat/pending? db))))

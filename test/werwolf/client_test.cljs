@@ -573,18 +573,10 @@
   (is (= :end (sub/ambience :game-over)))
   (is (= :neutral (sub/ambience :setup))))
 
-(deftest the-chronik-folds-away-when-somebody-narrates
-  (testing "by default: shut at a narrated table, open without a narrator"
-    (is (false? (sub/chronik-open? nil true)))
-    (is (true? (sub/chronik-open? nil false))))
-  (testing "the player's own choice wins either way"
-    (is (true? (sub/chronik-open? true true)))
-    (is (false? (sub/chronik-open? false false))))
-  (testing "toggling flips what is SHOWN, which may be the default, and remembers it"
-    (let [narrated (assoc db :view {:narrated? true} :log/open? nil)
-          fx (ev/toggle-chronik-fx {:db narrated} nil)]
-      (is (true? (get-in fx [:db :log/open?])))
-      (is (true? (::ev/store-chronik fx))))))
+(deftest the-chronik-starts-folded
+  (testing "closed by default, narrated or not, until this player opens it"
+    (is (false? (sub/chronik-open? nil)))
+    (is (true? (sub/chronik-open? true)))))
 
 (deftest the-latest-news-is-what-mattered
   (let [died  {:type :player/died :player 1 :cause :werwolf}
