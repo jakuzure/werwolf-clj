@@ -169,6 +169,15 @@
    :action/gm-resume       "Resume the clock (GM)"
    :action/gm-add-time     "+60 s (GM)"
 
+   ;; ---------------------------------------------------------- removing ---
+   ;; The host takes somebody out of the lobby: a ghost seat, a typo, a host
+   ;; who was replaced while away. Two taps, like leaving.
+   :action/gm-kick    "Remove (GM)"
+   :kick/button       "Remove"
+   :kick/confirm      "Really remove?"
+   :log/kicked        (fn [n] (str n " was removed from the game"))
+   :error/kicked      "You were removed from the game"
+
    ;; ----------------------------------------------------- game master ---
    :gm/panel          "Game master"
    :gm/panel-hint     "Only you can see these. Every override goes in the chronicle."

@@ -648,8 +648,12 @@
    the role still matters, so it is kept — and an absent seat holding sockets
    would be a contradiction that the eventual close would then announce a second
    time. With none left, taking the seat back with its token is a reconnect like
-   any other."
-  [ctx room-id pid]
+   any other.
+
+   `msg-type` is what the sockets are told: `:server/left`, or `:server/kicked`
+   when the host removed the seat — the release is the same either way, but
+   only one of them is news to the player."
+  [ctx room-id pid msg-type]
   (let [sinks (get-in (room-of ctx room-id) [:sinks pid])
         voiced? (contains? (in-voice (room-of ctx room-id)) pid)]
     (swap! (:rooms ctx) update room-id
@@ -661,7 +665,7 @@
            (fn [ix] (reduce (fn [m s] (cond-> m (= [room-id pid] (get m s)) (dissoc s)))
                             ix sinks)))
     (doseq [sink sinks]
-      (deliver! ctx sink {:type :server/left :room-id room-id}))
+      (deliver! ctx sink {:type msg-type :room-id room-id}))
     ;; The commit announcing the departure went out while these sockets still
     ;; counted as in the call. Mid-game the seat stays on the board, so without
     ;; a repaint it would keep a headset nobody is behind.
@@ -688,7 +692,13 @@
             (do (commit! ctx r (:events res) (:state res))
                 (settle-host! ctx room-id)
                 (when (= :leave (:type cmd))
-                  (release-seat! ctx room-id pid))
+                  (release-seat! ctx room-id pid :server/left))
+                ;; The seat the host removed, not the host's own: its pages are
+                ;; holding a seat that no longer exists, and in the call with it.
+                ;; The commit above already left them out of the broadcast, since
+                ;; it only reaches seated players.
+                (when (= :gm/kick (:type cmd))
+                  (release-seat! ctx room-id (:target cmd) :server/kicked))
                 {:ok? true})))))))
 
 ;; -------------------------------------------------------------------- chat ---

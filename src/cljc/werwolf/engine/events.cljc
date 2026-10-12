@@ -180,6 +180,25 @@
         (assoc-in [:players player :connected?] false)
         (publish {:type :player/disconnected :player player}))))
 
+(defmethod apply-event :player/kicked
+  ;; Removed by the host, which only happens in the lobby — so, like leaving
+  ;; it, the seat goes entirely. Its number does not come back: the
+  ;; `:player/joined` that issued it is still in the log, which is what the
+  ;; room counts seats from (see room/next-player-id), and a recycled seat
+  ;; would hand the removed player's reconnect token to the next arrival.
+  ;;
+  ;; The log entry carries the NAME, unlike every other: the seat is gone by
+  ;; the time anyone reads the line, and the Chronik names players by looking
+  ;; them up in the seats. A name is no secret — it sat on everyone's screen.
+  ;;
+  ;; A seat that is not there is a no-op, as a replay must never fail.
+  [state {:keys [player]}]
+  (if-let [p (get-in state [:players player])]
+    (-> state
+        (update :players dissoc player)
+        (publish {:type :player/kicked :player player :name (:name p)}))
+    state))
+
 (defmethod apply-event :player/connection
   ;; `:at` is when the socket came or went, stamped by the server — the engine
   ;; has no clock. Only a DISCONNECT keeps it, as `:absent-since`, so the timer

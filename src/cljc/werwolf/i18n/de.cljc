@@ -170,6 +170,15 @@
    :action/gm-resume       "Zeit weiterlaufen (SL)"
    :action/gm-add-time     "+60 s (SL)"
 
+   ;; ------------------------------------------------------- entfernen ---
+   ;; Der Host nimmt jemanden aus der Lobby: ein Geisterplatz, ein Tippfehler,
+   ;; ein abgelöster Host. Zwei Tipps, wie beim Verlassen.
+   :action/gm-kick    "Entfernen (SL)"
+   :kick/button       "Entfernen"
+   :kick/confirm      "Wirklich entfernen?"
+   :log/kicked        (fn [n] (str n " wurde aus der Runde entfernt"))
+   :error/kicked      "Du wurdest aus der Runde entfernt"
+
    ;; ---------------------------------------------------- Spielleitung ---
    :gm/panel          "Spielleitung"
    :gm/panel-hint     "Nur du siehst diese Schalter. Jeder Eingriff steht in der Chronik."

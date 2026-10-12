@@ -437,6 +437,10 @@
    * in the lobby, handing the host's seat over — the Spielleitung, in a
      narrated room — to this player. Two clicks: the first one is not undoable
      by the person who made it, since it is no longer theirs to undo;
+   * in the lobby, removing this player. Two clicks as well: the first one
+     already writes a line in the Chronik and sends somebody back to the start,
+     and 'sorry, wrong card' undoes neither. Arming one of the two disarms the
+     other, so there is never more than one red button on the board;
    * in :setup, the Spielleiter's card select. Every change is silent and
      immediate, which is what makes a select the right control: arranging a deal
      is a dozen small corrections, not one decision."
@@ -448,9 +452,11 @@
         narrated? @(rf/subscribe [::sub/narrated?])
         gm      @(rf/subscribe [::sub/gm])
         transfer? (some #{id} (get targets :gm/transfer-host))
+        kick?     (some #{id} (get targets :gm/kick))
         assign?   (and (= :setup phase) (some #{id} (get targets :gm/reassign-role)))
-        confirming? (= id (:confirm-transfer gm))]
-    (when (or transfer? assign?)
+        confirming? (= id (:confirm-transfer gm))
+        confirming-kick? (= id (:confirm-kick gm))]
+    (when (or transfer? kick? assign?)
       [:div {:class "mt-2 flex flex-wrap gap-2"
              ;; A control inside a card must not count as clicking the card,
              ;; which in targeting mode would pick the seat.
@@ -462,9 +468,19 @@
           (if confirming?
             #(do (rf/dispatch [::ev/act :gm/transfer-host id])
                  (rf/dispatch [::ev/form-set :gm (dissoc gm :confirm-transfer)]))
-            #(rf/dispatch [::ev/form-set :gm (assoc gm :confirm-transfer id)]))
+            #(rf/dispatch [::ev/form-set :gm (-> gm (dissoc :confirm-kick)
+                                                 (assoc :confirm-transfer id))]))
           {:tone (if confirming? :danger :quiet)
            :testid (str "make-host-" id)}])
+       (when kick?
+         [btn (t (if confirming-kick? :kick/confirm :kick/button))
+          (if confirming-kick?
+            #(do (rf/dispatch [::ev/act :gm/kick id])
+                 (rf/dispatch [::ev/form-set :gm (dissoc gm :confirm-kick)]))
+            #(rf/dispatch [::ev/form-set :gm (-> gm (dissoc :confirm-transfer)
+                                                 (assoc :confirm-kick id))]))
+          {:tone (if confirming-kick? :danger :quiet)
+           :testid (str "kick-" id)}])
        (when assign?
          [:select {:class "px-2 py-1.5 rounded-lg bg-slate-800 border border-violet-600
                            text-sm text-slate-100 outline-none focus:border-violet-400"
