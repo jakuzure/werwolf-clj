@@ -256,9 +256,16 @@
                     ;; to be one of the lovers — the official rules let him shoot
                     ;; himself — so these three ids can legitimately collide, and
                     ;; #{} would throw on the duplicate.
+                    ;; AWAITED, not read: every seat has its own socket and the
+                    ;; server fans out to them one after another, so the
+                    ;; lover's view arriving says nothing about this one's. Read
+                    ;; at once, a slow runner sometimes still held the view
+                    ;; from before the link.
                     (let [involved (set [(:pid amor) a b])
                           other (first (remove #(involved (:pid %)) all))
-                          ov (latest-view (:client other))]
+                          ov (:view (await-msg (:client other)
+                                               #(and (= :room/view (:type %))
+                                                     (get-in % [:view :lovers-exist?]))))]
                       (is (true? (:lovers-exist? ov)))
                       (is (nil? (:lover (:me ov))))))))
               (finally (doseq [{:keys [client]} all] (close! client))))))
