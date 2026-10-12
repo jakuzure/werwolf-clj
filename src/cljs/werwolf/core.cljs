@@ -13,6 +13,7 @@
             ;; guaranteed to exist. It does NOT pull in the SDK: audio-impl is a
             ;; separate module, fetched on the first tap to join.
             [werwolf.audio]
+            [werwolf.chime :as chime]
             [werwolf.config :as config]
             [werwolf.events :as ev]
             [werwolf.subs]
@@ -29,6 +30,9 @@
 
 (defn init []
   (rf/dispatch-sync [::ev/init])
+  ;; Before anything can be tapped: the tap that creates or joins a room is the
+  ;; gesture that lets the first night's chime play at all.
+  (chime/install!)
   (ws/connect! (config/websocket-url))
   (when-not @ticker
     ;; One timer for the whole app: countdowns render from :now, so a passing

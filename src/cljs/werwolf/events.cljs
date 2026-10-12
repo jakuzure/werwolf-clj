@@ -10,6 +10,7 @@
    than it was told, which is what makes the redaction boundary real rather than
    a convention."
   (:require [re-frame.core :as rf]
+            [werwolf.chime :as chime]
             [werwolf.subs :as sub]
             [werwolf.ws :as ws]))
 
@@ -67,9 +68,12 @@
    :form        {:name "" :code "" :text ""}
    ;; Filled in by :server/media once seated. Reset on leave, so a credential for
    ;; the last room is never carried into the next one.
-   :audio       nil})
+   :audio       nil
+   ;; The phase chime. A preference of this device, not of any room — which is
+   ;; why `unseat` leaves it alone. Overwritten from storage by ::init.
+   :sound/on?   true})
 
-(rf/reg-event-db ::init (fn [_ _] initial-db))
+(rf/reg-event-db ::init (fn [_ _] (assoc initial-db :sound/on? (chime/stored-on?))))
 
 (rf/reg-event-fx
  ::connected
@@ -159,6 +163,17 @@
 
 (rf/reg-event-db ::toggle-chronik
                  (fn [db _] (assoc db :log/open? (not (sub/chronik-open? (:log/open? db))))))
+
+(defn toggle-sound-fx
+  "The bell in the stage header: chime on the turn of the phase, or not. Kept
+   per device, because the phone on the table and the one in a pocket want
+   different answers."
+  [{:keys [db]} _]
+  (let [on? (not (:sound/on? db))]
+    {:db (assoc db :sound/on? on?)
+     ::chime/store-on on?}))
+
+(rf/reg-event-fx ::toggle-sound toggle-sound-fx)
 
 ;; ------------------------------------------------------------------ outbound ---
 
@@ -596,11 +611,26 @@
   ;; no longer this page's), and the server has stopped sending it anything.
   (if (released? db msg) (unseat db) db))
 
+(defn- with-chime
+  "Add the phase chime, if this view turned the phase and the player wants to
+   hear it. `fx` already holds the db AFTER the view, `db` is the one before.
+
+   Compared against what was accepted, not what arrived: a view dropped as out
+   of order leaves `:view` as it was, and so rings nothing — an old frame must
+   not announce a turn already past."
+  [fx db]
+  (let [cue (and (:sound/on? db) (chime/cue-for (:view db) (get-in fx [:db :view])))]
+    (cond-> fx cue (assoc ::chime/play cue))))
+
 (defn server-message-fx
   "Named and public so the effects of a message, not only its db change, are
    testable — the same reason `leave-fx` is."
   [{:keys [db]} [_ msg]]
   (cond-> {:db (handle-server db msg)}
+    ;; The phase chime, when this view turned the phase — see `with-chime`.
+    (= :room/view (:type msg))
+    (with-chime db)
+
     ;; Persisting on every welcome matters: a resume hands back a REFRESHED
     ;; token, and keeping the old one would expire the session at its original
     ;; time however long the game runs.
