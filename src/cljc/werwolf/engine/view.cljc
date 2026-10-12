@@ -209,6 +209,10 @@
      ;; So the countdown can say "PAUSIERT" rather than silently freeze, which
      ;; reads as a broken client.
      :paused?     (boolean (:paused? state))
+     ;; Whether joining needs a password — never the hash itself, which stays
+     ;; in state for the room layer to check guesses against. Public, so the
+     ;; lobby can show the 🔒 and the table knows a newcomer will have to ask.
+     :locked?     (contains? state :password-hash)
      :winner      (:winner state)
      :log         (vec (:log state))
      :votes       (or (:votes state) {})

@@ -83,6 +83,8 @@
    :clock/resumed    :gm
    :clock/timer-set  :gm
    :game/narrated-set :gm
+   :room/locked      :gm
+   :room/unlocked    :gm
    ;; Bookkeeping. Real, auditable, and not what anyone opens the Chronik for.
    :phase/timed-out  :muted
    :player/ready     :muted
@@ -179,6 +181,10 @@
       :clock/timer-set     (t locale (cond (= :host-absent (:cause entry)) :log/timer-on-absent
                                            (:on? entry) :log/timer-on
                                            :else :log/timer-off))
+      ;; That the door changed, never what opens it: the entry carries nothing
+      ;; else, by construction — see apply-event :room/password-set.
+      :room/locked         (t locale :log/room-locked)
+      :room/unlocked       (t locale :log/room-unlocked)
       :night/began         (t locale :log/night-began)
       ;; Published without the ids on purpose: THAT there are lovers is public,
       ;; WHO they are is not. See apply-event :amor/linked.

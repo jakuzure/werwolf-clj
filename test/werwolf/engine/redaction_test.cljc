@@ -5,7 +5,8 @@
    property test at the bottom drives `redaction-leaks?` over hundreds of
    randomised game states; the explicit tests above it pin the specific rules so
    a failure says WHICH rule broke."
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [clojure.string :as str]
+            [clojure.test :refer [deftest is testing]]
             [werwolf.engine.core :as engine]
             [werwolf.engine.view :as view]
             [werwolf.sim.harness :as h]
@@ -190,3 +191,37 @@
         (is (nil? (get white-sees 3))))
       (testing "the village learns nothing either way"
         (is (empty? (dissoc (view/revealed-roles s 2) 2)))))))
+
+;; ------------------------------------------------------- the room password ---
+
+(defn- contains-string?
+  "Is `s` anywhere in `x`, as a value or inside one? Walks the whole structure,
+   for the same reason `foreign-roles-in-view` does: a new field that carried
+   the secret would otherwise slip past a check of the known ones."
+  [x s]
+  (cond
+    (string? x) (str/includes? x s)
+    (map? x)    (some #(contains-string? % s) (concat (keys x) (vals x)))
+    (coll? x)   (some #(contains-string? % s) x)
+    (keyword? x) (str/includes? (str x) s)
+    :else false))
+
+(deftest no-view-ever-carries-the-password-hash
+  (testing "the hash lives in state so a restart keeps the door locked, but a
+            view says only THAT the room is locked — a salted hash of a short
+            spoken word is still something to guess against offline"
+    (let [h       "pbkdf2-sha256$210000$c2FsdHNhbHRzYWx0c2FsdA==$aGFzaGhhc2hoYXNoaGFzaGhhc2hoYXNoaGFzaGhhc2g="
+          lobby   (engine/apply-event (tu/narrated-lobby 4) {:type :room/password-set :hash h})
+          playing (engine/apply-event (tu/game-with cast-of-7) {:type :room/password-set :hash h})]
+      (doseq [[label s] [["lobby" lobby] ["mid-game" playing]]
+              pid (cons nil (keys (:players s)))]
+        (let [v (view/view-for s pid)]
+          (is (true? (:locked? v)) (str label " " pid))
+          (is (not (contains-string? v h)) (str label ": the hash reached " pid))
+          (is (not (contains-string? v "pbkdf2")) (str label ": a hash fragment reached " pid))))
+      (testing "the Chronik says the door changed, and nothing about the key"
+        (is (= {:type :room/locked} (last (:log lobby))))
+        (let [cleared (engine/apply-event lobby {:type :room/password-cleared})]
+          (is (false? (:locked? (view/view-for cleared 1))))
+          (is (not (contains? cleared :password-hash)))
+          (is (= {:type :room/unlocked} (last (:log cleared)))))))))

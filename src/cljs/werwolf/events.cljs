@@ -56,6 +56,9 @@
    ;; A create or join is on its way and has not been answered. Repeat taps are
    ;; dropped meanwhile: the server would only answer them with the same seat.
    :seat/pending? false
+   ;; Whether the landing screen shows the field for a room's password. Opened
+   ;; by tapping a locked room, or by the server saying a join needs one.
+   :join/password? false
    :error       nil
    ;; Only covers the landing screen. Once seated, the server's per-player copy
    ;; wins — see ::set-locale and the ::locale subscription.
@@ -173,13 +176,26 @@
 ;; room you had just entered. The tap is dropped rather than queued, because the
 ;; only possible answer to it is the seat the first one is about to give you.
 
+(defn- typed-password
+  "A password field's content, or nil when there is nothing in it. Trimmed for
+   the same reason the server trims: the space a keyboard appends after a
+   suggestion is not part of the word. Nil rather than \"\", because the wire
+   refuses an empty password — leaving it out is how 'none' is spelled."
+  [db k]
+  (let [pw (.trim (str (get-in db [:form k] "")))]
+    (when (seq pw) pw)))
+
+(defn- with-password [msg pw]
+  (cond-> msg pw (assoc :password pw)))
+
 (defn create-room-fx [{:keys [db]} _]
   (let [nm (.trim (get-in db [:form :name] ""))]
     (cond
       (:seat/pending? db) nil
       (empty? nm)         {:db (assoc db :error :name-required)}
       :else {:db (assoc db :error nil :seat/pending? true)
-             ::ws/send {:type :client/create :name nm :locale (:locale db :de)}})))
+             ::ws/send (with-password {:type :client/create :name nm :locale (:locale db :de)}
+                         (typed-password db :room-password))})))
 
 (defn join-room-fx [{:keys [db]} _]
   (let [nm   (.trim (get-in db [:form :name] ""))
@@ -189,27 +205,57 @@
       (empty? nm)         {:db (assoc db :error :name-required)}
       (empty? code)       {:db (assoc db :error :code-required)}
       :else {:db (assoc db :error nil :seat/pending? true)
-             ::ws/send {:type :client/join :room-id code :name nm
-                        :locale (:locale db :de)}})))
+             ::ws/send (with-password {:type :client/join :room-id code :name nm
+                                       :locale (:locale db :de)}
+                         (typed-password db :join-password))})))
 
 (defn join-listed-fx
   "Join a room picked off the landing screen's list. Same guard as typing the
    code by hand — the name is still required, and saying so beats a tap that
-   appears to do nothing."
-  [{:keys [db]} [_ code]]
-  (let [nm (.trim (get-in db [:form :name] ""))]
+   appears to do nothing.
+
+   A room the list marks as locked is not joined on the first tap unless a
+   password is already typed: the list has said a password is needed, so
+   sending the join anyway would only fetch an error banner saying the same.
+   The tap opens the field instead, with the code filled in, and the join
+   button sends both."
+  [{:keys [db]} [_ code locked?]]
+  (let [nm (.trim (get-in db [:form :name] ""))
+        pw (typed-password db :join-password)]
     (cond
       (:seat/pending? db) nil
       (empty? nm)         {:db (assoc db :error :name-required)}
+      (and locked? (nil? pw))
+      {:db (-> db (assoc :error nil :join/password? true) (form-put :code code))}
       ;; form-put so the code field actually shows what you tapped, even if you
       ;; had started typing a different one by hand.
       :else {:db (-> db (assoc :error nil :seat/pending? true) (form-put :code code))
-             ::ws/send {:type :client/join :room-id code :name nm
-                        :locale (:locale db :de)}})))
+             ::ws/send (with-password {:type :client/join :room-id code :name nm
+                                       :locale (:locale db :de)}
+                         pw)})))
+
+(defn set-password-fx
+  "The host locks the room, or gives it a new password. A blank box sends
+   nothing: opening the door is its own button, and a tap on 'set' with an
+   empty field must not quietly do the opposite of what it says.
+
+   The box is emptied as the message goes, with form-put because it has focus —
+   the same reason `send-chat-fx` does it that way. Nothing confirms success but
+   the 🔒 arriving with the next view, which is the confirmation everyone else
+   at the table gets too."
+  [{:keys [db]} _]
+  (when-let [pw (typed-password db :lobby-password)]
+    {:db (form-put db :lobby-password "")
+     ::ws/send {:type :client/set-password :password pw}}))
+
+(defn clear-password-fx [_ _]
+  {::ws/send {:type :client/set-password :password nil}})
 
 (rf/reg-event-fx ::create-room create-room-fx)
 (rf/reg-event-fx ::join-room   join-room-fx)
 (rf/reg-event-fx ::join-listed join-listed-fx)
+(rf/reg-event-fx ::set-password set-password-fx)
+(rf/reg-event-fx ::clear-password clear-password-fx)
 
 (rf/reg-event-fx
  ::refresh-rooms
@@ -376,10 +422,12 @@
   [db]
   (-> db
       (merge (select-keys initial-db
-                          [:screen :me :view :view/seq :chat :error :audio]))
+                          [:screen :me :view :view/seq :chat :error :audio
+                           :join/password?]))
       ;; The confirm that got us here. Left armed, it would put 'really?' on the
-      ;; next room's leave button before anyone had touched it.
-      (update :form dissoc :leave)))
+      ;; next room's leave button before anyone had touched it. And a password
+      ;; half-typed for the last room's lock, which is nothing to the next.
+      (update :form dissoc :leave :lobby-password)))
 
 (defn leave-fx
   "Also the way out of a finished game. Landing on the landing screen with a
@@ -460,9 +508,16 @@
          :view/seq nil
          :view nil
          :me {:room-id room-id :player-id player-id :host? host?}
+         :join/password? false
          ;; Nor its half-confirmed leave. `leave-fx` clears that on the way out,
          ;; but a fatal error throws a session away without passing through it.
-         :form (dissoc (:form db) :leave)))
+         ;;
+         ;; Nor the landing screen's passwords: they have done their job, and
+         ;; app-db is exactly what a debugging tool prints to the console. The
+         ;; lobby's box is left alone — a reconnect welcomes again, and emptying
+         ;; app-db under a half-typed word would leave the DOM showing text the
+         ;; button can no longer see. `unseat` and sending it clear that one.
+         :form (dissoc (:form db) :leave :room-password :join-password)))
 
 (defmethod handle-server :room/view [db {:keys [view] n :seq}]
   ;; A view only means anything if we hold a seat, and this guard is why leaving
@@ -493,6 +548,12 @@
 (defmethod handle-server :room/chat-history [db {:keys [messages]}]
   (assoc db :chat (vec messages)))
 
+(def password-errors
+  "Refusals that mean 'this room wants a password' — the join needs one, the one
+   given was wrong, or too many were. Each opens the field, so the retry is one
+   word and one tap away."
+  #{:password-required :wrong-password :too-many-attempts})
+
 (def fatal-errors
   "Errors meaning the stored credential is worthless. Anything else is a
    rejected move: worth showing, not worth throwing the session away for."
@@ -509,7 +570,13 @@
     (assoc db :seat/pending? false)
 
     :else
+    ;; :seat/pending? is released for every refusal, these included — a retry
+    ;; with the password is a NEW request, and a lock left held would drop it as
+    ;; a double tap.
     (cond-> (assoc db :error code :seat/pending? false)
+      (password-errors code)
+      (assoc :join/password? true)
+
       ;; :view/seq goes with the rest of it — a discarded session must not leave
       ;; a sequence number behind to reject the next room's views.
       (fatal-errors code)

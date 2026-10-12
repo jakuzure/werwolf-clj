@@ -970,3 +970,136 @@
       (let [st (room/state-of ctx room-id)]
         (is (= (:pid bea) (:host st)))
         (is (= (:pid bea) (:narrator (last-view (:sink bea)))))))))
+
+;; ------------------------------------------------------------ the password ---
+
+(defn- raw-log
+  "Everything the database holds for a room, as one string — the file a backup
+   copies and somebody eventually opens by hand."
+  [ctx room-id]
+  (pr-str (store/load-events (:ds ctx) room-id)))
+
+(deftest a-room-can-be-opened-with-a-password
+  (with-ctx [ctx]
+    (let [{:keys [room-id]} (room/create! ctx {:name "Anna" :password "Vollmond"})
+          st (room/state-of ctx room-id)]
+      (is (string? (:password-hash st)))
+      (testing "and the password itself is nowhere: not in state, not on disk"
+        (is (not (str/includes? (pr-str st) "Vollmond")))
+        (is (not (str/includes? (str/lower-case (raw-log ctx room-id)) "vollmond"))))
+      (testing "the table sees that it is locked, the Chronik that it became so"
+        (is (true? (:locked? (engine/view-for st 0))))
+        (is (some #(= {:type :room/locked} %) (:log st))))
+      (testing "the list still shows it — friends have to be able to find it"
+        (is (= [{:room-id room-id :players 1 :max-players 18 :host "Anna" :locked? true}]
+               (filterv #(= room-id (:room-id %)) (room/open-rooms ctx))))))))
+
+(deftest a-blank-password-opens-an-ordinary-room
+  (with-ctx [ctx]
+    (let [{:keys [room-id]} (room/create! ctx {:name "Anna" :password "   "})]
+      (is (not (contains? (room/state-of ctx room-id) :password-hash)))
+      (is (= {:player-id 1 :room-id room-id} (room/join! ctx room-id {:name "Bob"}))))))
+
+(deftest a-locked-room-wants-the-right-password
+  (with-ctx [ctx]
+    (let [{:keys [room-id]} (room/create! ctx {:name "Anna" :password "Vollmond"})]
+      (is (= :password-required (:error (room/join! ctx room-id {:name "Bob"}))))
+      (is (= :password-required (:error (room/join! ctx room-id {:name "Bob" :password " "}))))
+      (is (= :wrong-password (:error (room/join! ctx room-id {:name "Bob" :password "Neumond"}))))
+      (testing "nobody was seated by any of that"
+        (is (= #{0} (set (keys (:players (room/state-of ctx room-id)))))))
+      (testing "the refusal says nothing back about what was tried"
+        (let [res (room/join! ctx room-id {:name "Bob" :password "Neumond"})]
+          (is (not (str/includes? (pr-str res) "Neumond")))))
+      (testing "and the right one, however a phone typed it, gets you in"
+        (is (= {:room-id room-id :player-id 1}
+               (room/join! ctx room-id {:name "Bob" :password "vollmond "})))))))
+
+(deftest guessing-is-slowed-down-per-socket
+  (with-ctx [ctx]
+    (let [{:keys [room-id]} (room/create! ctx {:name "Anna" :password "Vollmond"})
+          mallory (mk-sink)
+          bob     (mk-sink)
+          t0      1000000
+          try!    (fn [sink pw t] (room/join! ctx room-id {:name "M" :password pw
+                                                           :sink sink :now-ms t}))]
+      (dotimes [i 5]
+        (is (= :wrong-password (:error (try! mallory "falsch" (+ t0 i))))))
+      (testing "the sixth guess in a minute is not even checked"
+        (is (= :too-many-attempts (:error (try! mallory "falsch" (+ t0 10)))))
+        (is (= :too-many-attempts (:error (try! mallory "Vollmond" (+ t0 20))))
+            "not even a right one, or the limit would be an oracle"))
+      (testing "a missing password is not a guess — it is the first step of joining"
+        (is (= :password-required (:error (room/join! ctx room-id {:name "B" :sink bob :now-ms t0})))))
+      (testing "somebody else's socket is not punished for it"
+        (is (= 1 (:player-id (try! bob "Vollmond" (+ t0 30))))))
+      (testing "and a minute later the same socket may try again"
+        (is (= 2 (:player-id (try! mallory "Vollmond" (+ t0 60001)))))))))
+
+(deftest a-socket-that-closes-takes-its-count-with-it
+  (with-ctx [ctx]
+    (let [{:keys [room-id]} (room/create! ctx {:name "Anna" :password "Vollmond"})
+          s (mk-sink)]
+      (dotimes [_ 5] (room/join! ctx room-id {:name "M" :password "falsch" :sink s}))
+      (is (seq @(:attempts ctx)))
+      (room/forget-attempts! ctx s)
+      (is (empty? @(:attempts ctx)) "nothing kept for a socket that no longer exists"))))
+
+(deftest only-the-host-may-change-the-lock
+  (with-ctx [ctx]
+    (let [{:keys [room-id seats]} (table ctx 3)
+          [host guest] seats]
+      (testing "a guest cannot lock the room, or open it"
+        (is (= :not-host (:error (room/set-password! ctx room-id (:pid guest) "meins"))))
+        (is (not (contains? (room/state-of ctx room-id) :password-hash))))
+      (testing "the host can"
+        (is (:ok? (room/set-password! ctx room-id (:pid host) "Vollmond")))
+        (is (true? (:locked? (last-view (:sink guest)))) "and everyone sees the 🔒")
+        (is (not (str/includes? (pr-str (msgs (:sink guest))) "pbkdf2"))
+            "but no frame on any socket carries the hash")
+        (is (= :wrong-password (:error (room/join! ctx room-id {:name "X" :password "meins"})))))
+      (testing "change it"
+        (is (:ok? (room/set-password! ctx room-id (:pid host) "Neumond")))
+        (is (= :wrong-password (:error (room/join! ctx room-id {:name "X" :password "Vollmond"}))))
+        (is (:player-id (room/join! ctx room-id {:name "X" :password "Neumond"}))))
+      (testing "a guest cannot open it either"
+        (is (= :not-host (:error (room/set-password! ctx room-id (:pid guest) nil)))))
+      (testing "and open it again"
+        (is (:ok? (room/set-password! ctx room-id (:pid host) nil)))
+        (is (false? (:locked? (last-view (:sink guest)))))
+        (is (= :room/unlocked (:type (last (:log (room/state-of ctx room-id))))))
+        (is (:player-id (room/join! ctx room-id {:name "Y"}))))
+      (testing "opening an open room changes nothing and logs nothing"
+        (let [n (count (:log (room/state-of ctx room-id)))]
+          (is (:ok? (room/set-password! ctx room-id (:pid host) nil)))
+          (is (= n (count (:log (room/state-of ctx room-id)))))))
+      (testing "nor does the password ever reach the log on disk"
+        (let [raw (str/lower-case (raw-log ctx room-id))]
+          (is (not (str/includes? raw "vollmond")))
+          (is (not (str/includes? raw "neumond"))))))))
+
+(deftest the-lock-is-a-lobby-switch
+  (with-ctx [ctx]
+    (let [tbl (table ctx 3)]
+      (start! ctx tbl)
+      (is (= :not-allowed (:error (room/set-password! ctx (:room-id tbl) 0 "Vollmond")))
+          "nobody can join a game in progress, so a lock there would only be noise"))))
+
+(deftest a-restart-keeps-the-door-locked
+  (let [path (tmp-path)]
+    (try
+      (let [ds  (store/open {:dbtype "sqlite" :dbname path})
+            ctx (room/registry {:ds ds :send! (fn [s m] (swap! s conj m))})
+            {:keys [room-id]} (room/create! ctx {:name "Anna" :password "Vollmond"})
+            ctx2 (room/registry {:ds ds :send! (fn [s m] (swap! s conj m))})]
+        (room/rehydrate! ctx2)
+        (is (= (:password-hash (room/state-of ctx room-id))
+               (:password-hash (room/state-of ctx2 room-id))))
+        (is (= :password-required (:error (room/join! ctx2 room-id {:name "Bob"}))))
+        (is (:player-id (room/join! ctx2 room-id {:name "Bob" :password "Vollmond"})))
+        (testing "and an opened door stays open"
+          (room/set-password! ctx2 room-id 0 nil)
+          (let [ctx3 (room/registry {:ds ds :send! (fn [s m] (swap! s conj m))})]
+            (room/rehydrate! ctx3)
+            (is (not (contains? (room/state-of ctx3 room-id) :password-hash))))))
+      (finally (cleanup! path)))))

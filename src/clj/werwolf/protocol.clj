@@ -71,8 +71,9 @@
   (reply! deps sock {:type :server/rooms :rooms (room/open-rooms rooms)}))
 
 (defmethod handle :client/create
-  [{:keys [rooms] :as deps} sock {:keys [name locale]}]
-  (let [res (room/create! rooms {:name name :locale (or locale :de)})]
+  [{:keys [rooms] :as deps} sock {:keys [name locale password]}]
+  (let [res (room/create! rooms {:name name :locale (or locale :de)
+                                 :password password})]
     (if-let [code (:error res)]
       (error! deps sock code (:detail res))
       (let [{:keys [room-id player-id]} res]
@@ -80,8 +81,12 @@
         (room/attach! rooms room-id player-id sock)))))
 
 (defmethod handle :client/join
-  [{:keys [rooms] :as deps} sock {:keys [room-id name locale]}]
-  (let [res (room/join! rooms room-id {:name name :locale (or locale :de)})]
+  [{:keys [rooms] :as deps} sock {:keys [room-id name locale password]}]
+  ;; The socket goes along so wrong passwords are counted against it — see
+  ;; room/throttled?. The answer to a wrong one is a bare code, never the
+  ;; password back: `error!` only ever sends what the room layer chose to say.
+  (let [res (room/join! rooms room-id {:name name :locale (or locale :de)
+                                       :password password :sink sock})]
     (if-let [code (:error res)]
       (error! deps sock code (:detail res))
       (let [pid (:player-id res)]
@@ -148,6 +153,17 @@
       (reply! deps sock (if cr
                           (assoc cr :type :server/media :enabled? true)
                           {:type :server/media :enabled? false})))
+    (error! deps sock :not-in-room {})))
+
+(defmethod handle :client/set-password
+  ;; The host locks, re-keys or opens the room. Who is asking comes from the
+  ;; socket index, and whether they may is room/set-password!'s question — the
+  ;; message names neither. No reply on success: the new :locked? arrives with
+  ;; everybody's next view, which is the confirmation the whole table needs.
+  [{:keys [rooms] :as deps} sock {:keys [password]}]
+  (if-let [[room-id pid] (room/whereis rooms sock)]
+    (when-let [code (:error (room/set-password! rooms room-id pid password))]
+      (error! deps sock code {}))
     (error! deps sock :not-in-room {})))
 
 (defmethod handle :client/voice
@@ -225,4 +241,5 @@
 (defn on-close
   "The socket is gone. The room decides what that means for the player."
   [{:keys [rooms]} sock]
+  (room/forget-attempts! rooms sock)
   (room/detach! rooms sock))

@@ -307,6 +307,31 @@
       (publish (cond-> {:type :clock/timer-set :on? (boolean on?)}
                  cause (assoc :cause cause)))))
 
+;; ---- the door: a room password ----
+;;
+;; Server-authored, like succession: the host asks over the wire, but the hash
+;; is computed on the JVM (werwolf.password) and arrives here ready-made. The
+;; engine stores it as an opaque string and decides nothing with it — checking
+;; a guess is the room layer's job, and a .cljc reducer that could hash would be
+;; one more place a plaintext password might pass through.
+;;
+;; In state so the event log carries it and a restart keeps the door locked.
+;; NEVER published: the log is in every view, and even a salted hash of a short
+;; spoken word is a thing to guess against offline. The Chronik gets the fact
+;; that the door changed, which the table is entitled to, and nothing else.
+
+(defmethod apply-event :room/password-set
+  [state {:keys [hash]}]
+  (-> state
+      (assoc :password-hash hash)
+      (publish {:type :room/locked})))
+
+(defmethod apply-event :room/password-cleared
+  [state _]
+  (-> state
+      (dissoc :password-hash)
+      (publish {:type :room/unlocked})))
+
 (defmethod apply-event :game/started
   [state {:keys [assignments centre seed]}]
   (-> (reduce (fn [s [pid role-id]]

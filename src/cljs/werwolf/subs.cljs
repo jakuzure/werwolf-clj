@@ -90,6 +90,7 @@
 
 (rf/reg-sub ::rooms (fn [db _] (or (:rooms db) [])))
 (rf/reg-sub ::seat-pending? (fn [db _] (boolean (:seat/pending? db))))
+(rf/reg-sub ::join-password? (fn [db _] (boolean (:join/password? db))))
 
 ;; ---- voice ----
 ;;
@@ -136,6 +137,9 @@
 (rf/reg-sub ::narrator? :<- [::me-view] (fn [me _] (boolean (:narrator? me))))
 (rf/reg-sub ::timer?    :<- [::view] (fn [v _] (not (false? (:timer? v)))))
 (rf/reg-sub ::host      :<- [::view] (fn [v _] (:host v)))
+;; Whether a newcomer needs the room's password. Only ever this boolean — the
+;; server never sends the hash, let alone the word.
+(rf/reg-sub ::locked?   :<- [::view] (fn [v _] (boolean (:locked? v))))
 
 ;; Read from the VIEW, not from the welcome message. The welcome's :host? is a
 ;; snapshot from the moment you sat down, and the seat can be handed over — or

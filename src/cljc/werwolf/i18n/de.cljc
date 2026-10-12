@@ -29,6 +29,11 @@
    :landing/open-rooms "Offene Runden"
    :landing/no-rooms   "Gerade läuft keine offene Runde"
    :landing/refresh    "Neu laden"
+   ;; Das Passwort wird am Tisch vorgelesen wie der Raumcode, also ein normales
+   ;; Textfeld: wer tippt, soll sehen, was er tippt.
+   :landing/password      "Passwort (optional)"
+   :landing/join-password "Passwort der Runde"
+   :landing/locked        "Mit Passwort"
 
    ;; ------------------------------------------------------------- lobby ---
    :lobby/title       "Warteraum"
@@ -60,6 +65,13 @@
    :lobby/timer-off          "Kein Zeitlimit — der Spielleiter bestimmt das Tempo."
    :lobby/timer-switch-on    "Zeitlimit einschalten"
    :lobby/timer-switch-off   "Zeitlimit ausschalten"
+   :lobby/password           "Passwort"
+   :lobby/password-on        "Nur mit Passwort beitretbar."
+   :lobby/password-off       "Jeder mit dem Code kann beitreten."
+   :lobby/password-new       "Neues Passwort"
+   :lobby/password-set       "Passwort setzen"
+   :lobby/password-change    "Passwort ändern"
+   :lobby/password-clear     "Passwort entfernen"
    :lobby/make-narrator      "Zum Spielleiter machen"
    :lobby/make-host          "Spielleitung übergeben"
 
@@ -298,6 +310,9 @@
    :log/timer-on      "Die Uhr läuft — jede Phase hat ein Zeitlimit"
    :log/timer-off     "Die Uhr ist aus — die Spielleitung bestimmt das Tempo"
    :log/timer-on-absent "Die Uhr übernimmt — ohne Spielleitung endet jede Phase mit ihrem Zeitlimit"
+   ;; Dass sich das Schloss geändert hat, nie der Schlüssel.
+   :log/room-locked   "Die Runde ist jetzt mit einem Passwort geschützt"
+   :log/room-unlocked "Die Runde braucht kein Passwort mehr"
    :log/amor-linked   "Amor hat zwei Verliebte bestimmt"
    :log/night-began   "Die Nacht bricht an"
    :log/night-quiet-first "Die erste Nacht bleibt ruhig — niemand stirbt"
@@ -388,6 +403,9 @@
    :error/invalid-target   "Dieses Ziel ist nicht erlaubt"
    :error/already-in-room  "Du bist schon in einer Runde"
    :error/not-host         "Nur die Spielleitung darf das"
+   :error/password-required "Diese Runde hat ein Passwort — bitte eingeben"
+   :error/wrong-password    "Falsches Passwort"
+   :error/too-many-attempts "Zu viele Versuche — bitte warte eine Minute"
    :error/already-dead     "Dieser Mitspieler ist schon tot"
    :error/already-alive    "Dieser Mitspieler lebt noch"
    :error/already-paused   "Die Zeit ist schon angehalten"

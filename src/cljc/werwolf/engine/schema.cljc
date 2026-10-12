@@ -92,6 +92,10 @@
    ;; Whether the room has a clock at all. Absent means it does — again, the old
    ;; behaviour. A narrated room opens with it off.
    [:timer? {:optional true} :boolean]
+   ;; A salted PBKDF2 hash of the room's password, absent when it has none.
+   ;; Opaque to the engine — see :room/password-set — and SECRET: `view-for`
+   ;; publishes only whether it exists, as :locked?.
+   [:password-hash {:optional true} :string]
    [:lovers {:optional true} [:maybe [:set PlayerId]]]
    ;; The two cards nobody was dealt, which the Dieb chooses between on the first
    ;; night. Empty in games without one. PRIVATE to him — `view-for` publishes it
