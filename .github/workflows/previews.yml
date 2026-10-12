@@ -1,0 +1,55 @@
+# The PR previews end to end in a VM: k3s with nix-snapshotter, the
+# controller, Caddy and the preview image (nix/previews-test.nix). Also what
+# catches a nixpkgs update breaking nix images before lain does.
+#
+# Its own workflow so it can be path-filtered: a game-only change cannot break
+# any of this, and the VM takes 10-15 minutes.
+name: previews
+
+on:
+  pull_request:
+    paths: &paths
+      - "nix/**"
+      - "previews/**"
+      - "build/**"
+      - "flake.nix"
+      - "flake.lock"
+      - "deps.edn"
+      - "deps-lock.json"
+      - ".github/workflows/previews.yml"
+  push:
+    branches: [main]
+    paths: *paths
+
+permissions:
+  contents: read
+
+jobs:
+  vm-test:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - uses: DeterminateSystems/nix-installer-action@3138316df39ed29be04236d7ffc686fa525866aa # v23
+        with:
+          extra-conf: |
+            system-features = nixos-test benchmark big-parallel kvm
+      - uses: DeterminateSystems/magic-nix-cache-action@84c0677f58dcedf3b91f8223ce36a9ea5b3c84b7 # v15
+        with:
+          use-flakehub: false
+      # read-only here: the werwolf build main pushed is reused, not compiled
+      - uses: cachix/cachix-action@38b082610b782e7e93e209c35fd730d399dee866 # v17
+        with:
+          name: werwolf-clj
+          skipPush: true
+
+      - name: VM test
+        run: nix build -L .#checks.x86_64-linux.previews
+

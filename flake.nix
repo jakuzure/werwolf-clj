@@ -17,9 +17,15 @@
       url = "github:jlesquembre/clj-nix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    # nix-snapshotter's buildImage needs it, and nixpkgs does not pass it in
+    # (see nix/preview-image.nix).
+    globset = {
+      url = "github:pdtpartners/globset";
+      inputs.nixpkgs-lib.follows = "nixpkgs";
+    };
   };
 
-  outputs = { self, nixpkgs, clj-nix }:
+  outputs = { self, nixpkgs, clj-nix, globset }:
     let
       systems = [ "x86_64-linux" "aarch64-linux" "aarch64-darwin" ];
       # clj-nix ships its builders as an overlay, not as per-system outputs.
@@ -39,7 +45,21 @@
           version = "${(builtins.fromJSON (builtins.readFile ./package.json)).version}+${self.shortRev or self.dirtyShortRev or "unknown"}";
         };
         default = werwolf;
+        # The PR preview controller (previews/, nix/previews-module.nix).
+        werwolf-previews = pkgs.callPackage ./nix/previews-package.nix { };
+      } // nixpkgs.lib.optionalAttrs (system == "x86_64-linux") {
+        # What CI builds for every push-* branch and lain runs as a preview.
+        preview-image = pkgs.callPackage ./nix/preview-image.nix {
+          inherit globset;
+          werwolf = self.packages.${system}.werwolf;
+        };
       });
+
+      checks.x86_64-linux.previews = import ./nix/previews-test.nix {
+        pkgs = pkgsFor "x86_64-linux";
+        previewsModule = self.nixosModules.werwolf-previews;
+        previewImage = self.packages.x86_64-linux.preview-image;
+      };
 
       # Pulls in the package from this flake by default, so a host only has to
       # import the module and set `services.werwolf.enable`.
@@ -49,5 +69,12 @@
           lib.mkDefault self.packages.${pkgs.stdenv.hostPlatform.system}.werwolf;
       };
       nixosModules.default = self.nixosModules.werwolf;
+
+      # PR previews in the host's k3s; see nix/previews-module.nix.
+      nixosModules.werwolf-previews = { pkgs, lib, ... }: {
+        imports = [ ./nix/previews-module.nix ];
+        services.werwolf.previews.package =
+          lib.mkDefault self.packages.${pkgs.stdenv.hostPlatform.system}.werwolf-previews;
+      };
     };
 }

@@ -56,14 +56,20 @@
 
 (defn noop [] (->NoopMedia))
 
+(def default-room-prefix "werwolf-")
+
 (defn room-name
   "The media room for a game room.
 
    Prefixed rather than bare, because an SFU is not necessarily dedicated to this
    game: `ABCD` is a plausible name for somebody else's room, `werwolf-ABCD` is
-   not. Lower-cased for the same reason a URL is."
-  [room-id]
-  (str "werwolf-" (str/lower-case (str room-id))))
+   not. Lower-cased for the same reason a URL is.
+
+   The prefix is configurable for the same reason one SFU is shared: a PR
+   preview joins production's LiveKit, and its `ABCD` must not be production's."
+  ([room-id] (room-name default-room-prefix room-id))
+  ([prefix room-id]
+   (str prefix (str/lower-case (str room-id)))))
 
 (defn identity-for
   "A participant identity that is stable per seat and unique per room.
@@ -71,16 +77,19 @@
    Seat number rather than display name: names are not unique at a werwolf table
    — two Annas is a normal evening — and an SFU treats a repeated identity as the
    same participant reconnecting, so two Annas would evict each other."
-  [room-id player-id]
-  (str (room-name room-id) "-p" player-id))
+  ([room-id player-id] (identity-for default-room-prefix room-id player-id))
+  ([prefix room-id player-id]
+   (str (room-name prefix room-id) "-p" player-id)))
 
 (defn credentials
   "What a seated player needs in order to join the call, or nil if audio is off.
 
    Takes the provider rather than reaching for a global, so a test can hand in a
-   recording fake and the protocol layer needs no knowledge of LiveKit at all."
+   recording fake and the protocol layer needs no knowledge of LiveKit at all.
+   A provider may carry a `:room-prefix`; without one, rooms are production's."
   [provider {:keys [room-id player-id display-name now-ms]}]
-  (join provider {:room         (room-name room-id)
-                  :identity     (identity-for room-id player-id)
-                  :display-name display-name
-                  :now-ms       now-ms}))
+  (let [prefix (or (:room-prefix provider) default-room-prefix)]
+    (join provider {:room         (room-name prefix room-id)
+                    :identity     (identity-for prefix room-id player-id)
+                    :display-name display-name
+                    :now-ms       now-ms})))

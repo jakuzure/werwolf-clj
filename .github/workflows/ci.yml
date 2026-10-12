@@ -86,6 +86,9 @@ jobs:
       - name: ClojureScript suite
         run: nix shell nixpkgs#babashka nixpkgs#clojure nixpkgs#jdk21_headless nixpkgs#nodejs_22 -c bb test:cljs
 
+      - name: Preview controller suite
+        run: nix shell nixpkgs#babashka -c bb previews:test
+
   browser:
     runs-on: ubuntu-26.04
     timeout-minutes: 20

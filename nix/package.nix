@@ -277,7 +277,8 @@ stdenv.mkDerivation {
     runHook postInstall
   '';
 
-  passthru = { inherit frontend libs sqlite-jdbc; };
+  # jdk: the preview image (nix/preview-image.nix) must run on the same one.
+  passthru = { inherit frontend libs sqlite-jdbc jdk; };
 
   meta = {
     description = "Browser-based Werwolf game server";

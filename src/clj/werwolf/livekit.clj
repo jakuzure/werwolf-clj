@@ -56,7 +56,7 @@
               api-secret
               {:alg :hs256})))
 
-(defrecord LiveKitMedia [config]
+(defrecord LiveKitMedia [config room-prefix]
   media/MediaProvider
   (join [_ params]
     {:url   (:url config)
@@ -81,4 +81,5 @@
   (cond
     (not= :livekit provider) {:provider (media/noop) :reason :disabled}
     (not (configured? cfg))  {:provider (media/noop) :reason :incomplete-config}
-    :else                    {:provider (->LiveKitMedia cfg) :reason :ok}))
+    :else                    {:provider (->LiveKitMedia cfg (not-empty (:room-prefix cfg)))
+                              :reason   :ok}))
