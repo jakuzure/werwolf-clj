@@ -33,6 +33,7 @@
   (:require [clojure.string :as str]
             [clojure.tools.logging :as log]
             [werwolf.engine.core :as engine]
+            [werwolf.password :as password]
             [werwolf.store :as store])
   (:import (java.security SecureRandom)))
 
@@ -83,7 +84,9 @@
    :rooms        (atom {})
    ;; sink -> [room-id player-id], so a socket closing knows who it was
    ;; without the transport having to remember.
-   :index        (atom {})})
+   :index        (atom {})
+   ;; sink -> epoch-ms of its recent wrong passwords. See `throttled?`.
+   :attempts     (atom {})})
 
 (defn- rooms [ctx] @(:rooms ctx))
 (defn- room-of [ctx room-id] (get (rooms ctx) room-id))
@@ -111,9 +114,10 @@
 
    Note this trades a little privacy for not having to read a code off someone
    else's phone: anyone who can reach the server can see that a room exists and
-   join it. That is right for a private group on a private host, and would want
-   revisiting before the server is opened to the public — see the plan's
-   deferred 'public lobby browser'.
+   join it — unless its host gave it a password, in which case it is listed
+   with `:locked? true` and `join!` asks for the word. That is right for a
+   private group on a private host, and would want revisiting before the server
+   is opened to the public — see the plan's deferred 'public lobby browser'.
 
    Not an EMPTY lobby, though it can still be joined by its code: with nobody
    left there is no host to recognise it by and nobody to play with, and an
@@ -129,10 +133,14 @@
                (when (and (= :lobby (:phase s))
                           (seq (:players s))
                           (< (count (engine/participant-ids s)) (:max-players s 18)))
-                 {:room-id     (:room-id s)
-                  :players     (count (engine/participant-ids s))
-                  :max-players (:max-players s 18)
-                  :host        (get-in s [:players (:host s) :name])})))
+                 (cond-> {:room-id     (:room-id s)
+                          :players     (count (engine/participant-ids s))
+                          :max-players (:max-players s 18)
+                          :host        (get-in s [:players (:host s) :name])}
+                   ;; Still listed when locked: the password keeps strangers
+                   ;; out, and hiding the room would mostly keep friends from
+                   ;; finding it. The 🔒 tells them to ask before tapping.
+                   (:password-hash s) (assoc :locked? true)))))
        (sort-by :room-id)
        vec))
 
@@ -343,8 +351,11 @@
    somebody switches one on. That is how the game is played at a real table, and
    the host can change it in the lobby. Whoever needs the old room — the creator
    playing, the clock running — passes `:narrated? false`, here or in config."
-  [ctx {:keys [name locale min-players max-players seed narrated?]}]
-  (let [room-id (reserve-code! ctx)
+  [ctx {:keys [name locale min-players max-players seed narrated? password]}]
+  (let [;; Before the code is reserved and well before the lock: hashing is slow
+        ;; on purpose, and nothing about it needs the room.
+        pw-hash (when-not (password/blank? password) (password/hash-password password))
+        room-id (reserve-code! ctx)
         cfg (:game ctx)
         min* (max absolute-min-players
                   (or min-players (:min-players cfg) 5))
@@ -372,8 +383,12 @@
           (if (engine/error? joined)
             (do (swap! (:rooms ctx) dissoc room-id)
                 joined)
-            (do (commit! ctx r (into [genesis] (:events joined)) (:state joined))
-                {:room-id room-id :player-id 0})))))))
+            ;; Locked in the same commit that opens it, so there is no moment
+            ;; in which the room is listed and open.
+            (let [lock (when pw-hash [{:type :room/password-set :hash pw-hash}])]
+              (commit! ctx r (into [genesis] cat [(:events joined) lock])
+                       (engine/apply-all (:state joined) lock))
+              {:room-id room-id :player-id 0})))))))
 
 (defn- succession
   "If the host has walked out of the lobby, hand the powers to the lowest
@@ -397,19 +412,120 @@
     (when-let [heir-events (succession (:state r))]
       (apply-server-events! ctx r heir-events))))
 
+(def ^:private max-wrong-passwords 5)
+(def ^:private attempt-window-ms 60000)
+
+(defn- recent [stamps now]
+  (filterv #(< (- now %) attempt-window-ms) stamps))
+
+(defn- throttled?
+  "Has this socket guessed wrong too often lately to be heard at all?
+
+   Friction, not a fortress. A socket is cheap to replace, so this stops a
+   tap-happy guesser and the casual script, not a determined attacker — against
+   whom the real defence is that this server is for a group of friends. Per
+   socket rather than per room on purpose: a per-room limit would let anybody
+   lock the actual guests out by guessing badly on purpose."
+  [ctx sink now]
+  (>= (count (recent (get @(:attempts ctx) sink) now)) max-wrong-passwords))
+
+(defn- note-wrong-password!
+  "Count one wrong guess, and drop every stamp that has aged out while at it, so
+   the map holds a minute's worth of failures and never grows past that."
+  [ctx sink now]
+  (swap! (:attempts ctx)
+         (fn [m]
+           (-> (into {} (keep (fn [[k v]] (let [v' (recent v now)] (when (seq v') [k v'])))) m)
+               (update sink (fnil conj []) now)))))
+
+(defn forget-attempts!
+  "A socket closed; nothing it guessed is worth remembering."
+  [ctx sink]
+  (swap! (:attempts ctx) dissoc sink))
+
+(defn- seat!
+  "The engine's half of joining. Must run under the lock."
+  [ctx r room-id name locale]
+  (let [pid (next-player-id (:state r))
+        res (engine/execute (:state r) {:type :join :player pid
+                                        :name name :locale locale})]
+    (if (engine/error? res)
+      res
+      (do (commit! ctx r (:events res) (:state res))
+          (settle-host! ctx room-id)
+          {:room-id room-id :player-id pid}))))
+
 (defn join!
-  "Seat a new player. Returns {:room-id .. :player-id n} or {:error ..}."
-  [ctx room-id {:keys [name locale]}]
-  (with-room ctx room-id
-    (fn [r]
-      (let [pid (next-player-id (:state r))
-            res (engine/execute (:state r) {:type :join :player pid
-                                            :name name :locale locale})]
-        (if (engine/error? res)
-          res
-          (do (commit! ctx r (:events res) (:state res))
-              (settle-host! ctx room-id)
-              {:room-id room-id :player-id pid}))))))
+  "Seat a new player. Returns {:room-id .. :player-id n} or {:error ..}.
+
+   A locked room wants its password first, before anything else is said about
+   it — whether it is full or already playing is the business of people who
+   know the word. `:password-required` when none came, `:wrong-password` when
+   it did not match, and `:too-many-attempts` once `sink` has guessed wrong too
+   often in the last minute. Neither error carries a detail: nothing the client
+   sent is ever echoed back.
+
+   The guess is checked OUTSIDE the lock, against the hash as it was a moment
+   ago. A check costs tens of milliseconds by design, and holding the room's
+   lock through it would let one guesser stall every other join, command and
+   chat line at that table. If the host changed the password in between, the
+   guess is checked again against the new one under the lock — rare enough not
+   to matter, and it keeps the answer exact.
+
+   Resuming a seat never comes through here: the reconnect token proves the
+   seat, so a player who was let in once is not asked again."
+  [ctx room-id {:keys [name locale password sink now-ms]}]
+  (let [now   (or now-ms (System/currentTimeMillis))
+        h0    (:password-hash (state-of ctx room-id))
+        ok0?  (and h0 (not (throttled? ctx sink now)) (password/verify password h0))]
+    (with-room ctx room-id
+      (fn [r]
+        (let [h (:password-hash (:state r))]
+          (cond
+            (nil? h) (seat! ctx r room-id name locale)
+            ;; Before the guess is even looked at, or a socket past its limit
+            ;; could still learn which of its guesses was right.
+            (throttled? ctx sink now) {:error :too-many-attempts}
+            ;; Not counted: this is the first step of joining a locked room,
+            ;; not a guess — the client learns here that it needs to ask.
+            (password/blank? password) {:error :password-required}
+            (not (if (= h h0) ok0? (password/verify password h)))
+            (do (note-wrong-password! ctx sink now)
+                {:error :wrong-password})
+            :else (seat! ctx r room-id name locale)))))))
+
+(defn set-password!
+  "Lock the room, change its password, or open it again (a blank or nil
+   `password`). Returns {:ok? true} or {:error ..}.
+
+   The host's alone, and only in the lobby: nobody can join a game in progress,
+   so a lock there could only ever be noise in the Chronik. Asked of the room
+   layer rather than the engine because the engine must never see a plaintext
+   password — this hashes it and records the result as a server-authored event,
+   the same path succession takes.
+
+   Hashed outside the lock for the same reason `join!` checks outside it, and
+   only after a cheap look says the asker is the host, so a guest tapping the
+   button cannot make the server do the slow part at all. The look is repeated
+   under the lock, where it counts."
+  [ctx room-id pid password]
+  (let [host? #(= pid (:host %))]
+    (if-not (some-> (state-of ctx room-id) host?)
+      (if (state-of ctx room-id) {:error :not-host} {:error :no-such-room})
+      (let [h (when-not (password/blank? password) (password/hash-password password))]
+        (with-room ctx room-id
+          (fn [r]
+            (let [st (:state r)]
+              (cond
+                (not (host? st))                {:error :not-host}
+                (not= :lobby (:phase st))       {:error :not-allowed}
+                ;; Opening an open door: nothing happened, so nothing is logged.
+                (and (nil? h) (not (contains? st :password-hash))) {:ok? true}
+                :else
+                (do (apply-server-events! ctx r [(if h
+                                                   {:type :room/password-set :hash h}
+                                                   {:type :room/password-cleared})])
+                    {:ok? true})))))))))
 
 (defn set-voice!
   "Record that a socket's page joined or left the voice call, and repaint the

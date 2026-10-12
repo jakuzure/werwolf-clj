@@ -91,3 +91,27 @@
   (testing "if that stops being true, the client needs no change — it reads
             arity from the view — but this test should say so out loud"
     (is (= {:amor-link 2} phases/target-arity))))
+
+(deftest a-password-is-optional-bounded-and-never-echoed
+  (testing "create and join take one, and do not need one"
+    (doseq [msg [{:type :client/create :name "Anna"}
+                 {:type :client/create :name "Anna" :password "Vollmond"}
+                 {:type :client/join :room-id "ABCD" :name "Bob"}
+                 {:type :client/join :room-id "ABCD" :name "Bob" :password "Vollmond"}]]
+      (is (proto/valid-client-message? msg) (pr-str msg))))
+  (testing "the host sets one, or clears it with nil"
+    (is (proto/valid-client-message? {:type :client/set-password :password "Vollmond"}))
+    (is (proto/valid-client-message? {:type :client/set-password :password nil}))
+    (is (not (proto/valid-client-message? {:type :client/set-password}))
+        "saying nothing is not the same as saying 'open the door'"))
+  (testing "bounded, so a frame cannot hand the hash a megabyte to chew on"
+    (doseq [bad ["" (apply str (repeat 65 "x")) 42]]
+      (is (not (proto/valid-client-message? {:type :client/join :room-id "ABCD"
+                                             :name "Bob" :password bad})))
+      (is (not (proto/valid-client-message? {:type :client/set-password :password bad})))))
+  (testing "a rejection names the schema, never the value"
+    (let [secret (apply str "Geheim" (repeat 70 "x"))
+          why    (proto/explain-client-message {:type :client/create :name "Anna"
+                                                :password secret})]
+      (is (seq why))
+      (is (not (re-find #"Geheim" (pr-str why)))))))

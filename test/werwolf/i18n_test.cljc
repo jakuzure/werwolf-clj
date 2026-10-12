@@ -178,6 +178,8 @@
                    {:type :game/narrated-set :narrated? false}
                    {:type :clock/timer-set :on? true}
                    {:type :clock/timer-set :on? false}
+                   {:type :room/locked}
+                   {:type :room/unlocked}
                    {:type :game/started :players 5 :narrated? true}]]
       (is (not (untranslated? (i18n/log-line locale players entry)))
           (str entry " in " locale)))

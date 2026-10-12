@@ -67,7 +67,8 @@
 
 (def client-message-types
   #{:client/create :client/join :client/resume :client/command :client/chat
-    :client/ping :client/rooms :client/media :client/voice})
+    :client/ping :client/rooms :client/media :client/voice
+    :client/set-password})
 
 (def server-message-types
   ;; :server/left — your seat's sockets have been released because the player
@@ -91,6 +92,13 @@
   ;; Case-sensitive on the wire; the transport upper-cases before it gets here,
   ;; because nobody types a room code the way it was printed.
   [:re #"^[A-Z2-9]{4}$"])
+
+(def Password
+  ;; A word said aloud at the table, not an account credential — see
+  ;; werwolf.password. Bounded so a frame cannot hand the hash a megabyte to
+  ;; chew on; 64 is far more than anyone will read out. Never echoed: a
+  ;; rejection names the schema, never the value — see explain-client-message.
+  [:string {:min 1 :max 64}])
 
 (def Command
   "A player's intent. Closed, and notably WITHOUT :player.
@@ -121,14 +129,20 @@
     [:map {:closed true}
      [:type [:= :client/create]]
      [:name PlayerName]
-     [:locale {:optional true} Locale]]]
+     [:locale {:optional true} Locale]
+     ;; Lock the room from its first moment, so it never sits in the open list
+     ;; unlocked while the host finds the switch.
+     [:password {:optional true} Password]]]
 
    [:client/join
     [:map {:closed true}
      [:type [:= :client/join]]
      [:room-id RoomId]
      [:name PlayerName]
-     [:locale {:optional true} Locale]]]
+     [:locale {:optional true} Locale]
+     ;; Needed only for a locked room. A resume never needs it: the token
+     ;; already proves the seat.
+     [:password {:optional true} Password]]]
 
    ;; The reconnect path: a token names the seat, the room names the game.
    [:client/resume
@@ -175,7 +189,16 @@
    [:client/voice
     [:map {:closed true}
      [:type [:= :client/voice]]
-     [:joined? :boolean]]]])
+     [:joined? :boolean]]]
+
+   ;; The host locks the room, changes its password, or opens it again (nil).
+   ;; Not a game command: the engine never sees a plaintext password, so the
+   ;; server hashes it first and records the result itself — see
+   ;; room/set-password!. Names no room and no seat; both come from the socket.
+   [:client/set-password
+    [:map {:closed true}
+     [:type [:= :client/set-password]]
+     [:password [:maybe Password]]]]])
 
 (def ^:private client-validator (m/validator ClientMessage))
 (def ^:private client-explainer (m/explainer ClientMessage))

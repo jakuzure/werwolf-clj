@@ -634,3 +634,100 @@
         (is (= {:type :server/left :room-id code} (last (got host))))
         (testing "and a host who walks out is absent at once — his seat is offered"
           (is (true? (:host-absent? (room/state-of (:rooms deps) code)))))))))
+
+;; ------------------------------------------------------------ the password ---
+
+(defn- said-anywhere?
+  "Did any frame this socket received contain `s`, in any case?"
+  [sk s]
+  (str/includes? (str/lower-case (pr-str (got sk))) (str/lower-case s)))
+
+(deftest a-locked-room-over-the-wire
+  (with-deps [deps]
+    (let [host (seat! deps {:type :client/create :name "Anna" :password "Vollmond"})
+          {:keys [room-id]} (last-of host :server/welcome)]
+      (is (true? (:locked? (:view (last-of host :room/view)))))
+      (testing "the list says it is locked, so the client knows to ask first"
+        (let [asker (sock)]
+          (protocol/dispatch deps asker {:type :client/rooms})
+          (is (true? (:locked? (first (:rooms (last-of asker :server/rooms))))))))
+      (testing "no password, wrong password: refused, and told which"
+        (let [bob (seat! deps {:type :client/join :room-id room-id :name "Bob"})]
+          (is (= [:password-required] (codes bob)))
+          (protocol/dispatch deps bob {:type :client/join :room-id room-id :name "Bob"
+                                       :password "Neumond"})
+          (is (= [:password-required :wrong-password] (codes bob)))
+          (is (nil? (room/whereis (:rooms deps) bob)) "and not seated")
+          (testing "with no detail at all — certainly not the guess"
+            (is (every? #(not (contains? % :detail)) (errors bob)))
+            (is (not (said-anywhere? bob "Neumond"))))
+          (testing "then the right one seats them on the same socket"
+            (protocol/dispatch deps bob {:type :client/join :room-id room-id :name "Bob"
+                                         :password "vollmond"})
+            (is (= 1 (:player-id (last-of bob :server/welcome)))))))
+      (testing "nothing that went to anybody carries the password or its hash"
+        (is (not (said-anywhere? host "Vollmond")))
+        (is (not (said-anywhere? host "pbkdf2")))))))
+
+(deftest a-reconnect-token-needs-no-password
+  (testing "the token already proves the seat — asking again would lock a
+            player out of their own game every time their wifi dropped"
+    (with-deps [deps]
+      (let [host (seat! deps {:type :client/create :name "Anna" :password "Vollmond"})
+            {:keys [room-id]} (last-of host :server/welcome)
+            bob  (seat! deps {:type :client/join :room-id room-id :name "Bob"
+                              :password "Vollmond"})
+            {:keys [token]} (last-of bob :server/welcome)]
+        (protocol/on-close deps bob)
+        (let [again (seat! deps {:type :client/resume :room-id room-id :token token})]
+          (is (empty? (errors again)))
+          (is (= 1 (:player-id (last-of again :server/welcome)))))))))
+
+(deftest only-the-host-can-lock-the-door
+  (with-deps [deps]
+    (let [host (seat! deps {:type :client/create :name "Anna"})
+          {:keys [room-id]} (last-of host :server/welcome)
+          bob  (seat! deps {:type :client/join :room-id room-id :name "Bob"})
+          stranger (sock)]
+      (testing "a guest is refused, and the room stays open"
+        (protocol/dispatch deps bob {:type :client/set-password :password "meins"})
+        (is (= [:not-host] (codes bob)))
+        (is (false? (:locked? (:view (last-of bob :room/view))))))
+      (testing "an unseated socket has no room to lock"
+        (protocol/dispatch deps stranger {:type :client/set-password :password "x"})
+        (is (= [:not-in-room] (codes stranger))))
+      (testing "the host locks it; everybody's next view says so"
+        (protocol/dispatch deps host {:type :client/set-password :password "Vollmond"})
+        (is (empty? (errors host)))
+        (is (true? (:locked? (:view (last-of bob :room/view)))))
+        (is (= [:password-required]
+               (codes (seat! deps {:type :client/join :room-id room-id :name "Cem"})))))
+      (testing "and opens it again with nil"
+        (protocol/dispatch deps host {:type :client/set-password :password nil})
+        (is (false? (:locked? (:view (last-of bob :room/view)))))
+        (is (empty? (errors (seat! deps {:type :client/join :room-id room-id :name "Cem"})))))
+      (testing "the password went to no socket, the hash neither"
+        (doseq [s [host bob]]
+          (is (not (said-anywhere? s "Vollmond")))
+          (is (not (said-anywhere? s "pbkdf2"))))))))
+
+(deftest a-guesser-is-slowed-down-and-a-new-socket-starts-afresh
+  (with-deps [deps]
+    (let [host (seat! deps {:type :client/create :name "Anna" :password "Vollmond"})
+          {:keys [room-id]} (last-of host :server/welcome)
+          guess {:type :client/join :room-id room-id :name "M" :password "falsch"}
+          m (sock)]
+      (dotimes [_ 6] (protocol/dispatch deps m guess))
+      (is (= (conj (vec (repeat 5 :wrong-password)) :too-many-attempts) (codes m)))
+      (protocol/dispatch deps m (assoc guess :password "Vollmond"))
+      (is (= :too-many-attempts (last (codes m))) "even the right one, for now")
+      (testing "the count lives and dies with the socket"
+        (protocol/on-close deps m)
+        (is (empty? @(:attempts (:rooms deps))))))))
+
+(deftest a-malformed-password-is-refused-without-being-repeated
+  (with-deps [deps]
+    (let [secret (apply str "Geheim" (repeat 80 "x"))
+          s (seat! deps {:type :client/create :name "Anna" :password secret})]
+      (is (= [:malformed] (codes s)))
+      (is (not (said-anywhere? s "Geheim"))))))

@@ -108,7 +108,7 @@
             (set! (.-value @node) (or value "")))))
 
       :reagent-render
-      (fn [k placeholder & [{:keys [on-enter maxlength]}]]
+      (fn [k placeholder & [{:keys [on-enter maxlength testid]}]]
         (let [committed @(rf/subscribe [::sub/form-field k])
               gen       @(rf/subscribe [::sub/form-gen k])]
           (reset! want {:gen gen :value committed})
@@ -122,6 +122,7 @@
                    :default-value committed
                    :ref (fn [el] (reset! node el))
                    :placeholder placeholder
+                   :data-testid testid
                    :maxLength (or maxlength 24)
                    :on-change (fn [e] (rf/dispatch [::ev/form-set k (.. e -target -value)]))
                    :on-key-down #(when (and on-enter (= "Enter" (.-key %)))
@@ -194,16 +195,23 @@
      (if (empty? rooms)
        [:p {:class "text-sm text-slate-600"} (t :landing/no-rooms)]
        [:div {:class "space-y-2"}
-        (for [{:keys [room-id host players max-players]} rooms]
+        (for [{:keys [room-id host players max-players locked?]} rooms]
           ^{:key room-id}
           [:button {:class "w-full flex items-center justify-between gap-3 px-3 py-3
                             rounded-lg bg-slate-800 border border-slate-700
                             hover:border-indigo-500 hover:bg-slate-700 transition text-left
                             disabled:opacity-40 disabled:cursor-not-allowed"
                     :disabled pending?
-                    :on-click #(rf/dispatch [::ev/join-listed room-id])}
+                    :on-click #(rf/dispatch [::ev/join-listed room-id locked?])}
            [:div {:class "min-w-0"}
-            [:div {:class "font-mono text-lg tracking-[0.2em] text-indigo-300"} room-id]
+            [:div {:class "flex items-center gap-2"}
+             [:span {:class "font-mono text-lg tracking-[0.2em] text-indigo-300"} room-id]
+             ;; Listed all the same: the lock keeps strangers out, and hiding
+             ;; the room would mostly keep friends from finding it.
+             (when locked?
+               [:span {:title (t :landing/locked) :aria-label (t :landing/locked)
+                       :data-testid "room-locked"}
+                "🔒"])]
             (when host
               [:div {:class "text-xs text-slate-400 truncate"} host])]
            [:span {:class "shrink-0 text-xs text-slate-400"}
@@ -212,12 +220,18 @@
 (defn landing []
   ;; Greyed out while a create or join is unanswered. The events already drop a
   ;; second tap; this is so the first one visibly took.
-  (let [pending? @(rf/subscribe [::sub/seat-pending?])]
+  (let [pending? @(rf/subscribe [::sub/seat-pending?])
+        ask-password? @(rf/subscribe [::sub/join-password?])]
     [:div {:class "max-w-sm mx-auto mt-16 space-y-8"}
      [:div {:class "flex justify-center"} [language-switch]]
      [:h1 {:class "text-3xl font-bold text-center"} (t :app/title)]
      [:div {:class "space-y-3"}
       [field :name (t :landing/name)]
+      ;; A plain text field, not type=password. The word is read out at the
+      ;; table like the room code, so hiding it from the person typing protects
+      ;; nothing and turns a typo on a phone keyboard into a mystery.
+      [field :room-password (t :landing/password)
+       {:maxlength 64 :testid "create-password" :on-enter [::ev/create-room]}]
       [btn (t :landing/create) #(rf/dispatch [::ev/create-room]) {:disabled? pending?}]]
      [:div {:class "text-center text-slate-500 text-sm"} (t :landing/or)]
      ;; The list first, the code field under it: typing a code is now the
@@ -225,6 +239,12 @@
      [open-rooms]
      [:div {:class "space-y-3"}
       [field :code (t :landing/code) {:on-enter [::ev/join-room] :maxlength 4}]
+      ;; Only once a room has turned out to want one — tapped as locked in the
+      ;; list, or refused for the want of it — so the ordinary join stays two
+      ;; fields long.
+      (when ask-password?
+        [field :join-password (t :landing/join-password)
+         {:on-enter [::ev/join-room] :maxlength 64 :testid "join-password"}])
       [btn (t :landing/join) #(rf/dispatch [::ev/join-room])
        {:tone :ghost :disabled? pending?}]]
      ;; Which build is running: the first question when a friend reports a bug.
@@ -1111,6 +1131,8 @@
         narrated? @(rf/subscribe [::sub/narrated?])
         timer?    @(rf/subscribe [::sub/timer?])
         narrator? @(rf/subscribe [::sub/narrator?])
+        host?     @(rf/subscribe [::sub/host?])
+        locked?   @(rf/subscribe [::sub/locked?])
         row (fn [label text switch]
               [:div {:class "flex flex-wrap items-center justify-between gap-2"}
                [:div {:class "min-w-0"}
@@ -1134,7 +1156,23 @@
       (when (contains? actions :gm/toggle-timer)
         [btn (t (if timer? :lobby/timer-switch-off :lobby/timer-switch-on))
          #(rf/dispatch [::ev/act :gm/toggle-timer])
-         {:tone :quiet :testid "toggle-timer"}])]]))
+         {:tone :quiet :testid "toggle-timer"}])]
+     ;; The lock. Everybody reads whether there is one; only the host gets the
+     ;; box, and the server checks that again, since the host is the one thing
+     ;; here that is not an engine action the view could offer.
+     [row (t :lobby/password)
+      (str (when locked? "🔒 ") (t (if locked? :lobby/password-on :lobby/password-off)))
+      (when (and host? locked?)
+        [btn (t :lobby/password-clear) #(rf/dispatch [::ev/clear-password])
+         {:tone :quiet :testid "clear-password"}])]
+     (when host?
+       [:div {:class "flex gap-2"}
+        [:div {:class "flex-1 min-w-0"}
+         [field :lobby-password (t :lobby/password-new)
+          {:maxlength 64 :testid "lobby-password" :on-enter [::ev/set-password]}]]
+        [btn (t (if locked? :lobby/password-change :lobby/password-set))
+         #(rf/dispatch [::ev/set-password])
+         {:tone :quiet :testid "set-password"}]])]))
 
 (defn lobby []
   (let [view @(rf/subscribe [::sub/view])
@@ -1151,6 +1189,10 @@
       [:div {:class "text-right"}
        [:div {:class "text-xs uppercase tracking-wide text-slate-400"} (t :lobby/share)]
        [:div {:class "font-mono text-3xl tracking-[0.3em] text-indigo-300"} (:room-id me)]
+       ;; Next to the code, because the two are handed out together.
+       (when (:locked? view)
+         [:div {:class "text-xs text-slate-400" :data-testid "lobby-locked"}
+          (str "🔒 " (t :landing/locked))])
        [:div {:class "flex justify-end mt-1"} [language-switch]]]]
      ;; The count against the CEILING, with the recommendation beside it. It was
      ;; "2 / 5", the minimum in the place where a maximum goes, and was read as

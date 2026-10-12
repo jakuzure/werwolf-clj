@@ -74,3 +74,61 @@ test.describe('getting in and out of a room', () => {
       .toHaveCount(0, { timeout: 10_000 });
   });
 });
+
+test.describe('a room with a password', () => {
+  let pages = [];
+  test.afterEach(async () => { await closeAll(pages); pages = []; });
+
+  test('is listed with a lock, refuses a wrong password and admits the right one', async ({ browser }) => {
+    const anna = await (await browser.newContext()).newPage();
+    const bob = await (await browser.newContext()).newPage();
+    const cem = await (await browser.newContext()).newPage();
+    pages = [anna, bob, cem];
+
+    await landOn(anna);
+    await anna.getByPlaceholder(DE.name).fill('Anna');
+    await anna.getByTestId('create-password').fill('Vollmond');
+    await anna.getByRole('button', { name: DE.create }).click();
+    const code = await lobbyCode(anna);
+    await expect(anna.getByTestId('lobby-locked')).toBeVisible();
+
+    // Still listed — friends have to find it — but marked.
+    await landOn(bob);
+    const listed = bob.getByRole('button', { name: new RegExp(code) });
+    await expect(listed).toBeVisible({ timeout: 10_000 });
+    await expect(listed.getByTestId('room-locked')).toBeVisible();
+
+    // The tap asks for the password instead of sending a join doomed to fail.
+    await bob.getByPlaceholder(DE.name).fill('Bob');
+    await listed.click();
+    const pw = bob.getByTestId('join-password');
+    await expect(pw).toBeVisible();
+    await expect(bob.getByPlaceholder(DE.code)).toHaveValue(code);
+
+    await pw.fill('Neumond');
+    await bob.getByRole('button', { name: DE.join }).click();
+    await expect(bob.getByText('Falsches Passwort')).toBeVisible();
+
+    // The refusal freed the button, so the retry goes out. Capitalisation is
+    // forgiven: a phone keyboard decides that, not the player.
+    await pw.fill('vollmond');
+    await bob.getByRole('button', { name: DE.join }).click();
+    await expect(bob.getByRole('button', { name: DE.leave })).toBeVisible();
+    await expect(bob.getByTestId('lobby-locked')).toBeVisible();
+
+    // Typing the code by hand is told what is missing, and gets the field.
+    await landOn(cem);
+    await cem.getByPlaceholder(DE.name).fill('Cem');
+    await cem.getByPlaceholder(DE.code).fill(code);
+    await cem.getByRole('button', { name: DE.join }).click();
+    await expect(cem.getByText('Diese Runde hat ein Passwort')).toBeVisible();
+    await expect(cem.getByTestId('join-password')).toBeVisible();
+
+    // Only the host has the switch, and opening the door shows at once.
+    await expect(bob.getByTestId('clear-password')).toHaveCount(0);
+    await anna.getByTestId('clear-password').click();
+    await expect(bob.getByTestId('lobby-locked')).toHaveCount(0);
+    await cem.getByRole('button', { name: DE.join }).click();
+    await expect(cem.getByRole('button', { name: DE.leave })).toBeVisible();
+  });
+});

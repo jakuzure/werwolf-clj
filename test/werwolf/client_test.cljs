@@ -631,3 +631,85 @@
       (is (false? (:clock? (sub/host-absence (assoc base :host-absent? true
                                                     :narrated? false :timer? true))))))))
 
+
+;; ------------------------------------------------------------ the password ---
+
+(deftest a-room-can-be-opened-with-a-password
+  (let [send #(:werwolf.ws/send (ev/create-room-fx {:db %} nil))]
+    (is (not (contains? (send named) :password)) "optional: no field, no key")
+    (is (not (contains? (send (assoc-in named [:form :room-password] "  ")) :password))
+        "and a blank one is no password — the schema would refuse an empty string")
+    (is (= "Vollmond" (:password (send (assoc-in named [:form :room-password] " Vollmond ")))))
+    (is (proto/valid-client-message? (send (assoc-in named [:form :room-password] "Vollmond"))))))
+
+(deftest tapping-a-locked-room-asks-for-the-password-first
+  (testing "sending the join only to be told a password is needed would be a
+            round trip and an error banner for something the list already said"
+    (let [out (ev/join-listed-fx {:db named} [nil "ABCD" true])]
+      (is (nil? (:werwolf.ws/send out)))
+      (is (true? (get-in out [:db :join/password?])) "the field appears")
+      (is (= "ABCD" (get-in out [:db :form :code])) "with the code filled in")
+      (is (not (get-in out [:db :seat/pending?])) "and nothing is left waiting")))
+  (testing "with a password already typed, the tap joins with it"
+    (let [typed (assoc-in named [:form :join-password] "Vollmond")
+          msg (:werwolf.ws/send (ev/join-listed-fx {:db typed} [nil "ABCD" true]))]
+      (is (= {:type :client/join :room-id "ABCD" :name "Anna" :locale :de
+              :password "Vollmond"}
+             msg))
+      (is (proto/valid-client-message? msg))))
+  (testing "an open room is joined straight away, as before"
+    (is (some? (:werwolf.ws/send (ev/join-listed-fx {:db named} [nil "ABCD" false]))))))
+
+(deftest a-password-error-reveals-the-field-and-frees-the-buttons
+  (doseq [code [:password-required :wrong-password :too-many-attempts]]
+    (testing (str code)
+      (let [pending (:db (ev/join-room-fx {:db (assoc-in named [:form :code] "ABCD")} nil))
+            _ (is (:seat/pending? pending))
+            db' (apply* pending {:type :server/error :code code})]
+        (is (not (:seat/pending? db'))
+            "or the retry with the password would be dropped as a double tap")
+        (is (true? (:join/password? db')))
+        (is (= code (:error db')))
+        (is (= :landing (:screen db')) "an ordinary refusal, not a lost session")))))
+
+(deftest the-retry-carries-the-password
+  (let [refused (apply* (:db (ev/join-room-fx {:db (assoc-in named [:form :code] "abcd")} nil))
+                        {:type :server/error :code :password-required})
+        typed (assoc-in refused [:form :join-password] "Vollmond ")
+        msg (:werwolf.ws/send (ev/join-room-fx {:db typed} nil))]
+    (is (= {:type :client/join :room-id "ABCD" :name "Anna" :locale :de :password "Vollmond"}
+           msg))
+    (is (proto/valid-client-message? msg))))
+
+(deftest a-seat-forgets-every-password-it-was-given
+  (testing "app-db is what a debugging tool prints; a password that got you in
+            has no business staying there"
+    (let [typed (-> named
+                    (assoc :join/password? true)
+                    (assoc-in [:form :join-password] "Vollmond")
+                    (assoc-in [:form :room-password] "Vollmond"))
+          db' (apply* typed {:type :server/welcome :room-id "ABCD" :player-id 1
+                             :host? false :token "t"})]
+      (is (not (str/includes? (pr-str db') "Vollmond")))
+      (is (not (:join/password? db')))
+      (testing "and leaving forgets a lock half-typed in the lobby"
+        (let [left (:db (ev/leave-fx {:db (assoc-in db' [:form :lobby-password] "Neumond")} nil))]
+          (is (not (str/includes? (pr-str left) "Neumond"))))))))
+
+(deftest the-host-locks-and-opens-the-room
+  (let [typed (assoc-in seated [:form :lobby-password] " Vollmond ")
+        out (ev/set-password-fx {:db typed} nil)]
+    (is (= {:type :client/set-password :password "Vollmond"} (:werwolf.ws/send out)))
+    (is (proto/valid-client-message? (:werwolf.ws/send out)))
+    (is (= "" (get-in out [:db :form :lobby-password])) "the box is cleared after sending")
+    (testing "and a blank box sends nothing, rather than silently opening the door"
+      (is (nil? (:werwolf.ws/send (ev/set-password-fx {:db seated} nil))))))
+  (let [msg (:werwolf.ws/send (ev/clear-password-fx {:db seated} nil))]
+    (is (= {:type :client/set-password :password nil} msg))
+    (is (proto/valid-client-message? msg))))
+
+(deftest every-password-error-reads-in-both-languages
+  (doseq [locale i18n/locales
+          code [:password-required :wrong-password :too-many-attempts]]
+    (let [s (i18n/t locale (keyword "error" (name code)))]
+      (is (and (string? s) (not (str/includes? s "missing"))) (str locale code)))))
