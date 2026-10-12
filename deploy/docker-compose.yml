@@ -88,7 +88,7 @@ services:
   # about not debugging game rules and NAT traversal in one session, applied to
   # the deploy itself. Get the game up, then add voice.
   livekit:
-    image: livekit/livekit-server:v1.13.5
+    image: livekit/livekit-server:v1.13.9
     # Pinned to the version the token minting was verified against.
     command: --config /etc/livekit.yaml
     restart: unless-stopped
