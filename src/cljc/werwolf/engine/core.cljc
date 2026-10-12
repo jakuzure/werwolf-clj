@@ -75,6 +75,11 @@
   "What the clock running out means here. The server decides *when*; this
    decides *what*."
   phases/timeout-events)
+(def host-absent-events
+  "What the host going missing means here. The server decides *when* — a grace
+   period on the clock — and this decides *what*."
+  phases/host-absent-events)
+
 (def living-ids events/living-ids)
 
 (def narrator

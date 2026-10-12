@@ -75,9 +75,17 @@
             :locale (or locale :de)}]))
 
 (defmethod handle :leave
+  ;; A host who walks out of a game under way is absent at once, with none of
+  ;; the grace a dropped connection gets: a deliberate leave is not a flaky
+  ;; phone, and there is nothing to wait for. Same consequences as the clock
+  ;; noticing — see `phases/host-absent-events`. In the lobby the seat simply
+  ;; passes on (room/succession), and at :game-over nobody needs him.
   [state {:keys [player]}]
   (if (contains? (:players state) player)
-    [{:type :player/left :player player}]
+    (into [{:type :player/left :player player}]
+          (when (and (= player (:host state))
+                     (not (#{:lobby :game-over} (:phase state))))
+            (phases/host-absent-events state)))
     (err :not-in-room {:player player})))
 
 (defmethod handle :set-locale
@@ -430,6 +438,15 @@
     (not (valid-target? state player :gm/transfer-host target))
     (err :invalid-target {:target target})
     :else [{:type :host/changed :host target}]))
+
+(defmethod handle :claim-host
+  ;; Taking the seat of a host who has gone missing. Who may, and when, is
+  ;; `phases/claim-actions`; the event is the one every other change of host
+  ;; uses, marked as claimed so the Chronik can tell it from a hand-over.
+  [state {:keys [player]}]
+  (if-not (allowed? state player :claim-host)
+    (err :not-allowed {:action :claim-host})
+    [{:type :host/changed :host player :claimed? true}]))
 
 ;; ---- GM control of the clock ----
 ;;

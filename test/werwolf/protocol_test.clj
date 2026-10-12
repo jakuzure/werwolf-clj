@@ -590,3 +590,47 @@
         (is (= [:not-in-room] (codes s))))))
   (testing "the message names nobody — only its sender's own seat"
     (is (not (proto/valid-client-message? {:type :client/voice :joined? true :player 3})))))
+
+;; ------------------------------------------------------------ an absent host ---
+
+(deftest a-lobby-whose-host-vanished-can-be-claimed
+  (testing "closing the tab used to leave the lobby unstartable until he came
+            back; succession only ever ran on an explicit leave"
+    (with-deps [deps]
+      (let [host (seat! deps {:type :client/create :name "P0"})
+            code (:room-id (last-of host :server/welcome))
+            guests (mapv #(seat! deps {:type :client/join :room-id code :name (str "P" %)})
+                         (range 1 5))
+            heir (second guests)
+            gone (System/currentTimeMillis)]
+        (protocol/on-close deps host)
+        (timer/tick! (:rooms deps) (+ gone 60000))
+        (let [v (:view (last-of heir :room/view))]
+          (is (true? (:host-absent? v)))
+          (is (contains? (:actions v) :claim-host) "offered, so the client can draw it"))
+        (protocol/dispatch deps heir {:type :client/command :cmd {:type :claim-host}})
+        (is (empty? (errors heir)))
+        (let [v (:view (last-of heir :room/view))]
+          (is (= 2 (:host v)))
+          (is (false? (:host-absent? v)))
+          (is (contains? (:actions v) :start-game) "and the room can start again"))
+        (testing "a second claim is refused: nobody is missing now"
+          (let [other (first guests)]
+            (protocol/dispatch deps other {:type :client/command :cmd {:type :claim-host}})
+            (is (= [:not-allowed] (codes other)))))))))
+
+(deftest anybody-can-walk-out-of-a-game-under-way
+  (testing "leaving was lobby and game-over only; mid-game there was no way out
+            at all, and a reload only resumed the seat"
+    (with-deps [deps]
+      (let [host (seat! deps {:type :client/create :name "P0"})
+            code (:room-id (last-of host :server/welcome))
+            _ (mapv #(seat! deps {:type :client/join :room-id code :name (str "P" %)})
+                    (range 1 5))]
+        (protocol/dispatch deps host {:type :client/command :cmd {:type :start-game}})
+        (is (contains? (:actions (:view (last-of host :room/view))) :leave))
+        (protocol/dispatch deps host {:type :client/command :cmd {:type :leave}})
+        (is (empty? (errors host)))
+        (is (= {:type :server/left :room-id code} (last (got host))))
+        (testing "and a host who walks out is absent at once — his seat is offered"
+          (is (true? (:host-absent? (room/state-of (:rooms deps) code)))))))))

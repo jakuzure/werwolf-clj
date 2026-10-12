@@ -353,10 +353,16 @@
                 _ (room/rehydrate! ctx2)
                 ;; An hour of downtime.
                 later (+ (System/currentTimeMillis) (* 60 60 1000))]
-            (is (= [room-id] (timer/rearm-all! ctx2 game-cfg later)))
+            (timer/rearm-all! ctx2 game-cfg later)
             (let [st (room/state-of ctx2 room-id)]
               (is (= phase-before (:phase st)) "the phase survived the outage")
-              (is (> (:deadline st) later) "with a full fresh clock")
+              (is (nil? (:deadline st))
+                  "everybody comes back from a restart disconnected, and nobody
+                   is timed until somebody is there to be"))
+            (testing "the first player back gets a full fresh clock"
+              (at! ctx2 later)
+              (room/attach! ctx2 room-id 1 (atom []))
+              (is (= (+ later (* 1000 (:night-secs game-cfg))) (deadline ctx2 room-id)))
               (testing "and it does not immediately fire"
                 (is (empty? (timer/tick! ctx2 later)))))))
         (finally (cleanup! path))))))
@@ -422,3 +428,108 @@
   (is (= [{:type :phase/deadline :at nil}]
          (timer/clock-events game-cfg t0 {:phase :vote :timer? false :deadline (+ t0 5)}))
       "a deadline left from before the switch is cleared, not left to fire"))
+
+;; ------------------------------------------------------------- an empty room ---
+
+(defn- attach-all!
+  "A socket per seat, so the room has somebody in it to time."
+  [ctx room-id]
+  (into {} (map (fn [pid] (let [s (atom [])] (room/attach! ctx room-id pid s) [pid s])))
+        (keys (:players (room/state-of ctx room-id)))))
+
+(deftest an-empty-room-stops-its-clock
+  (testing "nobody is timed in a room nobody is in. A clock that ran on regardless
+            was found ending phase after phase of an abandoned game, at night
+            1384, months after the last player left"
+    (with-ctx [ctx]
+      (let [room-id (table ctx 5)
+            socks (attach-all! ctx room-id)]
+        (room/submit! ctx room-id 0 {:type :start-game})
+        (is (some? (deadline ctx room-id)))
+        (doseq [s (vals socks)] (room/detach! ctx s))
+        (is (nil? (deadline ctx room-id)) "the last socket out stops the clock")
+        (let [seq-before (:seq (get @(:rooms ctx) room-id))
+              later (+ (System/currentTimeMillis) (* 10 60 1000))]
+          (is (empty? (timer/tick! ctx later)))
+          (is (= seq-before (:seq (get @(:rooms ctx) room-id)))
+              "nothing at all was written: no timeout, no absence")
+          (testing "the first player back gets the phase's full time"
+            (at! ctx later)
+            (room/attach! ctx room-id 2 (atom []))
+            (is (= (+ later (* 1000 (:night-secs game-cfg))) (deadline ctx room-id)))))))))
+
+(deftest clock-events-in-an-empty-room
+  (let [gone {0 {:connected? false} 1 {:connected? false}}]
+    (is (= [{:type :phase/deadline :at nil}]
+           (timer/clock-events game-cfg t0 {:phase :vote :deadline (+ t0 5) :players gone})))
+    (is (nil? (timer/clock-events game-cfg t0 {:phase :vote :players gone})))
+    (is (nil? (timer/expiry-events (+ t0 10) {:phase :vote :deadline t0 :players gone}))
+        "and an expired deadline does not fire either")
+    (is (= [{:type :phase/deadline :at nil}]
+           (timer/restart-events game-cfg t0 {:phase :vote :deadline (+ t0 5000) :players gone}))
+        "a restart that finds nobody leaves no clock running, live or expired")
+    (testing "one seat present is enough"
+      (is (= [{:type :phase/deadline :at (+ t0 60000)}]
+             (timer/clock-events game-cfg t0 {:phase :vote
+                                              :players (assoc-in gone [1 :connected?] true)}))))))
+
+;; --------------------------------------------------------------- absence ---
+
+(defn- with-host
+  "A minimal state for `absence-events`: a host in seat 0, somebody in seat 1."
+  [host & {:as more}]
+  (merge {:phase :lobby :host 0
+          :players {0 (merge {:connected? true} host) 1 {:connected? true}}}
+         more))
+
+(deftest absence-waits-out-the-grace-period
+  (let [s (with-host {:connected? false :absent-since t0})]
+    (is (nil? (timer/absence-events game-cfg (+ t0 44999) s))
+        "a phone that blinked is not an absent host")
+    (is (= [{:type :host/absent}] (timer/absence-events game-cfg (+ t0 45000) s))
+        "45 seconds by default")
+    (testing "the grace is config"
+      (is (nil? (timer/absence-events {:host-grace-secs 120} (+ t0 60000) s)))
+      (is (some? (timer/absence-events {:host-grace-secs 120} (+ t0 120000) s))))
+    (testing "idempotent: once flagged there is nothing more to say"
+      (is (nil? (timer/absence-events game-cfg (+ t0 999999) (assoc s :host-absent? true)))))
+    (testing "a connected host is never absent"
+      (is (nil? (timer/absence-events game-cfg (+ t0 999999) (with-host {})))))
+    (testing "a host gone with no stamp — he LEFT, or the log predates the stamp —
+              gets no grace"
+      (is (some? (timer/absence-events game-cfg t0 (with-host {:connected? false})))))
+    (testing "an empty room is nobody's business: there is nobody to tell"
+      (is (nil? (timer/absence-events game-cfg (+ t0 999999)
+                                      (assoc-in s [:players 1 :connected?] false)))))))
+
+(deftest the-ticker-hands-a-silent-spielleiters-game-to-the-clock
+  (with-ctx [ctx]
+    (let [{:keys [room-id]} (room/create! ctx {:name "SL" :narrated? true})]
+      (doseq [i (range 1 6)] (room/join! ctx room-id {:name (str "P" i)}))
+      (let [socks (attach-all! ctx room-id)]
+        (room/submit! ctx room-id 0 {:type :start-game})
+        (room/submit! ctx room-id 0 {:type :begin-night})
+        (is (nil? (deadline ctx room-id)) "a narrated night, with no clock")
+        (let [gone (System/currentTimeMillis)]
+          (room/detach! ctx (socks 0))
+          (is (empty? (timer/tick! ctx (+ gone 40000))))
+          (is (not (:host-absent? (room/state-of ctx room-id))) "still within his grace")
+          (at! ctx (+ gone 50000))
+          (timer/tick! ctx (+ gone 50000))
+          (let [st (room/state-of ctx room-id)]
+            (is (true? (:host-absent? st)))
+            (is (engine/timed? st) "the clock took over")
+            (is (= (+ gone 50000 (* 1000 (:night-secs game-cfg))) (:deadline st))
+                "and is already running")
+            (is (= [:host/absent :clock/timer-set]
+                   (filterv #{:host/absent :clock/timer-set} (map :type (:log st))))))
+          (testing "once"
+            (let [n (count (:log (room/state-of ctx room-id)))]
+              (timer/tick! ctx (+ gone 51000))
+              (is (= n (count (:log (room/state-of ctx room-id)))))))
+          (testing "and his return clears the flag, but leaves the clock to him"
+            (room/attach! ctx room-id 0 (atom []))
+            (let [st (room/state-of ctx room-id)]
+              (is (not (:host-absent? st)))
+              (is (engine/timed? st))
+              (is (contains? (engine/legal-actions st 0) :gm/toggle-timer)))))))))

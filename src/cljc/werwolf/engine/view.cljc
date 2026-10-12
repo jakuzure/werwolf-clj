@@ -197,6 +197,11 @@
      ;; not playing, and must know whose seat is the Spielleitung's.
      :narrated?   (boolean (:narrated? state))
      :narrator    narrator
+     ;; The host has been gone past his grace period. Public: the whole table is
+     ;; the one left waiting, and it is what explains a clock that has come on
+     ;; by itself or a button offering his seat. WHEN he left is not published;
+     ;; his card already says he is away, and that is all anyone needs.
+     :host-absent? (boolean (:host-absent? state))
      ;; Whether this room runs a clock at all, so the lobby switch and the GM
      ;; console can say which way it is set.
      :timer?      (phases/timed? state)

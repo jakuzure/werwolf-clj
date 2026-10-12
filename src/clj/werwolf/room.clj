@@ -202,27 +202,37 @@
 ;; ---------------------------------------------------------------- commit ---
 
 (defn- commit!
-  "Persist `events`, install `state'`, and broadcast. Must run under the lock."
-  [ctx r events state']
-  (let [room-id (:room-id r)
-        from    (:seq r)
-        now     (System/currentTimeMillis)]
-    (store/append-events! (:ds ctx) room-id from events now)
-    (store/upsert-room! (:ds ctx) room-id (:phase state')
-                        (= :game-over (:phase state')) now)
-    (let [r' (-> r
-                 (assoc :state state')
-                 (update :seq + (count events)))]
-      (swap! (:rooms ctx) update room-id merge
-             (assoc (select-keys r' [:state :seq]) :last-activity now))
-      (broadcast! ctx (room-of ctx room-id))
-      ;; Last, and still under the lock: the clock gets to react to the new
-      ;; phase. Doing it here rather than folding the deadline into this same
-      ;; batch costs one extra broadcast per phase change — a few times a game —
-      ;; and in exchange room.clj needs to know nothing about timers.
-      (when-let [f (:after-commit ctx)]
-        (f ctx room-id))
-      r')))
+  "Persist `events`, install `state'`, and broadcast. Must run under the lock.
+
+   `activity?` says whether this counts as somebody doing something, which is
+   what `sweep-idle!` measures. A player's command does; what the server writes
+   on its own — the clock firing, a seat marked absent — does not. Counting the
+   clock as activity kept an abandoned timed game alive forever: every timeout
+   was a commit, every commit pushed the sweep back, and one room was found at
+   night 1384 with nobody in it since August. Sockets coming and going stamp
+   activity themselves, in attach!/detach!."
+  ([ctx r events state'] (commit! ctx r events state' true))
+  ([ctx r events state' activity?]
+   (let [room-id (:room-id r)
+         from    (:seq r)
+         now     (System/currentTimeMillis)]
+     (store/append-events! (:ds ctx) room-id from events now)
+     (store/upsert-room! (:ds ctx) room-id (:phase state')
+                         (= :game-over (:phase state')) now)
+     (let [r' (-> r
+                  (assoc :state state')
+                  (update :seq + (count events)))]
+       (swap! (:rooms ctx) update room-id merge
+              (cond-> (select-keys r' [:state :seq])
+                activity? (assoc :last-activity now)))
+       (broadcast! ctx (room-of ctx room-id))
+       ;; Last, and still under the lock: the clock gets to react to the new
+       ;; phase. Doing it here rather than folding the deadline into this same
+       ;; batch costs one extra broadcast per phase change — a few times a game —
+       ;; and in exchange room.clj needs to know nothing about timers.
+       (when-let [f (:after-commit ctx)]
+         (f ctx room-id))
+       r'))))
 
 (defn- apply-server-events!
   "Append events the SERVER authors — connection changes, host succession, the
@@ -236,7 +246,9 @@
   (if (seq events)
     (let [after (engine/apply-all (:state r) events)
           [settled auto] (engine/settle after)]
-      (commit! ctx r (into (vec events) auto) settled))
+      ;; Not activity — see commit!. Every caller that IS somebody doing
+      ;; something (a socket, a join, a command) has already stamped it.
+      (commit! ctx r (into (vec events) auto) settled false))
     r))
 
 (defn narrate!
@@ -460,8 +472,11 @@
           (if (and first-socket? (not (get-in (:state r) [:players pid :connected?])))
             ;; Reconnection is public: everyone else has been staring at an
             ;; "abwesend" marker waiting for this player.
+            ;; `:at` on both directions, for the record; the engine keeps only
+            ;; a disconnect's, to measure the absence by.
             (apply-server-events! ctx (room-of ctx room-id)
-                                  [{:type :player/connection :player pid :connected? true}])
+                                  [{:type :player/connection :player pid :connected? true
+                                    :at (System/currentTimeMillis)}])
             ;; Otherwise nothing changed for anyone else — just paint this tab.
             (send-view! ctx (room-of ctx room-id) pid))
           {:room-id room-id :player-id pid})))))
@@ -485,8 +500,11 @@
                                        (assoc :last-activity (System/currentTimeMillis))))))
           (cond
             (empty? remaining)
+            ;; Stamped, so the clock can tell a phone that blinked from a seat
+            ;; nobody is coming back to — see timer/absence-events.
             (apply-server-events! ctx (room-of ctx room-id)
-                                  [{:type :player/connection :player pid :connected? false}])
+                                  [{:type :player/connection :player pid :connected? false
+                                    :at (System/currentTimeMillis)}])
 
             ;; A closed tab that was the one in the call.
             (not= (in-voice r) (in-voice (room-of ctx room-id)))
@@ -645,9 +663,13 @@
       (when-let [{:keys [state updated-at] n :seq} (store/load-game (:ds ctx) room-id)]
         (swap! (:rooms ctx) assoc room-id
                (assoc (fresh-room room-id) :state state :seq n))
-        (let [drops (for [[pid p] (sort-by key (:players state))
+        ;; Stamped with the boot, not with whenever the old process died: time
+        ;; nobody could play through is not time, so an absence is measured
+        ;; from the moment they could have come back.
+        (let [now   (System/currentTimeMillis)
+              drops (for [[pid p] (sort-by key (:players state))
                           :when (:connected? p)]
-                      {:type :player/connection :player pid :connected? false})]
+                      {:type :player/connection :player pid :connected? false :at now})]
           (with-room ctx room-id
             (fn [r] (apply-server-events! ctx r (vec drops)))))
         ;; AFTER the drops, deliberately. `fresh-room` stamps :last-activity with

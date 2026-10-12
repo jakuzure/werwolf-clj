@@ -46,5 +46,10 @@
            ;; a locked phone drops its socket, so a table that put their phones
            ;; down looks identical to an abandoned game.
            :game-idle-ms    #long #or [#env GAME_IDLE_MS 1800000]
+           ;; How long the host's seat may stand empty before the room stops
+           ;; waiting for him: the Chronik says he is gone, his seat is offered
+           ;; where that is safe, and a narrated game hands its pace to the
+           ;; clock. Long enough for a phone to find its signal again.
+           :host-grace-secs #long #or [#env HOST_GRACE_SECS 45]
            :min-players     #long #or [#env MIN_PLAYERS 5]
            :max-players     #long #or [#env MAX_PLAYERS 18]}}

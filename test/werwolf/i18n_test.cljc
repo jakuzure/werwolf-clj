@@ -190,3 +190,22 @@
             showing the raw type is debuggable, a blank line is not"
     (is (str/includes? (i18n/log-line :de players {:type :something/new})
                        "something/new"))))
+
+(deftest an-absent-host-reads-in-the-chronik
+  (testing "the host going, coming back, his seat taken, and the clock taking
+            over each have a line — and say which they are"
+    (doseq [locale i18n/locales]
+      (let [line #(i18n/log-line locale players %)]
+        (doseq [entry [{:type :host/absent :host 0}
+                       {:type :host/returned :host 0}
+                       {:type :host/changed :host 1 :claimed? true}
+                       {:type :clock/timer-set :on? true :cause :host-absent}]]
+          (is (not (untranslated? (line entry))) (str entry " in " locale))
+          (is (= :gm (i18n/log-tone entry)) (str entry " is a table-level fact")))
+        (is (str/includes? (line {:type :host/absent :host 0}) "Anna"))
+        (is (not= (line {:type :host/changed :host 1 :claimed? true})
+                  (line {:type :host/changed :host 1}))
+            "a seat taken is not a seat handed over")
+        (is (not= (line {:type :clock/timer-set :on? true :cause :host-absent})
+                  (line {:type :clock/timer-set :on? true}))
+            "nor is a clock nobody switched on")))))

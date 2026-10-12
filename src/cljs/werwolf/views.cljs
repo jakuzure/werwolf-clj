@@ -551,8 +551,10 @@
         ;; GM powers are not player actions and have their own console below.
         ;; :advance-phase is one of them despite its plain name — `host-actions`
         ;; grants it, and its label has said "(SL)" all along.
+        ;; :claim-host has a banner of its own, saying whose seat it is.
         plain (sort (remove #(or (= "gm" (namespace %))
-                                 (#{:chat :leave :set-locale :advance-phase} %))
+                                 (#{:chat :leave :set-locale :advance-phase
+                                    :claim-host} %))
                             actions))
         narrator? @(rf/subscribe [::sub/narrator?])]
     (cond
@@ -925,6 +927,24 @@
                   :class (str "h-px w-2 sm:w-4 shrink-0 "
                               (if (= :done state) "bg-slate-500" "bg-slate-700"))}])])]))
 
+(defn- host-absent-banner
+  "The host has been gone past his grace period, said where everybody looks.
+
+   Without it the table sees only its consequences — a clock that came on by
+   itself, a button offering somebody's seat — and neither explains itself. The
+   button is drawn from `:actions` like every other: the server offers the seat
+   only where taking it reveals nothing, and only to who is still here."
+  []
+  (when-let [{:keys [name clock? claim?]} @(rf/subscribe [::sub/host-absence])]
+    [:div {:class "rounded-xl border-2 border-amber-600/70 bg-amber-950/40 px-4 py-3 space-y-2"
+           :data-testid "host-absent"}
+     [:div {:class "font-semibold text-amber-200"} (str "⚠ " (t :absence/title name))]
+     [:p {:class "text-sm text-amber-100/80"}
+      (t (if clock? :absence/clock-hint :absence/claim-hint))]
+     (when claim?
+       [btn (action-name :claim-host) #(rf/dispatch [::ev/act :claim-host])
+        {:testid "claim-host"}])]))
+
 (defn- latest-news
   "The last thing that mattered, so folding the Chronik hides nothing anyone
    needs. Rendered through the Chronik's own sentences, so it can never say it
@@ -980,7 +1000,11 @@
          ;; Off the board, so named here: everybody should know who is calling
          ;; the night.
          (when-let [n (:narrator view)]
-           [pill (t :lobby/narrator-is (get-in view [:players n :name])) :host])]]]
+           [pill (t :lobby/narrator-is (get-in view [:players n :name])) :host])
+         ;; Next to his name, so "who is calling the night" and "nobody is"
+         ;; are read in one glance.
+         (when (:host-absent? view)
+           [pill (t :game/absent) :absent])]]]
       [:div {:class "text-right shrink-0"}
        (cond
          ;; A paused clock must SAY it is paused. Simply freezing the digits, or
@@ -997,6 +1021,8 @@
       (if (= :game-over phase)
         [:span {:class "text-xl font-bold text-amber-300"} (winner-line (:winner view))]
         (t (keyword "explain" (name (or phase :setup)))))]
+
+     [host-absent-banner]
 
      (when (and (= :night phase) cursor)
        [:div {:class "inline-flex items-center gap-2 rounded-lg bg-indigo-900/70 border border-indigo-600/60
@@ -1132,6 +1158,7 @@
      [:div {:class "text-sm text-slate-400"}
       (t :lobby/count table (:max-players view 18) (:min-players view 5))]
      [table-settings]
+     [host-absent-banner]
      [player-grid]
      [:div {:class "space-y-2"}
       [:div {:class "flex flex-wrap items-center gap-3"}
@@ -1179,6 +1206,18 @@
        ;; asking 'really?' of the only way forward is friction, not safety.
        (when (contains? actions :leave)
          [btn (t :game/new-round) #(rf/dispatch [::ev/leave])])])))
+
+(defn- game-leave
+  "Walking out of a game under way. The engine offers `:leave` in every phase —
+   a seat nobody could leave once the cards were dealt kept people in games
+   they had already abandoned, and reloading only resumed it. Not at the end,
+   where the game-over panel has its own one-tap way out."
+  []
+  (let [actions @(rf/subscribe [::sub/actions])
+        phase   @(rf/subscribe [::sub/phase])]
+    (when (and (contains? actions :leave) (not= :game-over phase))
+      [:div {:class "flex flex-wrap gap-2" :data-testid "game-leave"}
+       [leave-button]])))
 
 (defn game []
   ;; On a phone this is one column, and its ORDER is a design decision rather
@@ -1230,7 +1269,10 @@
      [:div {:class "order-7 empty:hidden"} [gm-panel]]]
     [:div {:class "contents lg:block lg:col-span-2 lg:space-y-4"}
      [:div {:class "order-8 empty:hidden"} [log-panel]]
-     [:div {:class "order-9 empty:hidden"} [chat-panel]]]]])
+     [:div {:class "order-9 empty:hidden"} [chat-panel]]
+     ;; Last, and on purpose: the way out of a game under way, as far from the
+     ;; moves as the screen allows. Two taps, like the lobby's.
+     [:div {:class "order-10 empty:hidden flex justify-end"} [game-leave]]]]])
 
 ;; ---------------------------------------------------------------------- app ---
 

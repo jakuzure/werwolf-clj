@@ -181,12 +181,34 @@
         (publish {:type :player/disconnected :player player}))))
 
 (defmethod apply-event :player/connection
-  [state {:keys [player connected?]}]
-  (cond-> (assoc-in state [:players player :connected?] connected?)
-    true (publish {:type (if connected?
-                           :player/reconnected
-                           :player/disconnected)
-                   :player player})))
+  ;; `:at` is when the socket came or went, stamped by the server — the engine
+  ;; has no clock. Only a DISCONNECT keeps it, as `:absent-since`, so the timer
+  ;; can measure how long a seat has been empty. The earliest stamp wins: a
+  ;; second "gone" for a seat already gone is not a new absence. Logs written
+  ;; before the stamp existed carry no `:at` and replay exactly as they did.
+  ;;
+  ;; The host coming back ends his absence on the spot, here rather than on
+  ;; the next tick: the table has been told he is gone, and must be told he is
+  ;; back the moment he is. Whatever the absence switched on — the clock — is
+  ;; left as it is; it is his to switch off again, and the table can see it.
+  [state {:keys [player connected? at]}]
+  (let [seated?    (contains? (:players state) player)
+        host-back? (and connected? (= player (:host state)) (:host-absent? state))]
+    (cond-> (assoc-in state [:players player :connected?] connected?)
+      (and seated? connected?)
+      (update-in [:players player] dissoc :absent-since)
+
+      (and seated? (not connected?) at
+           (nil? (get-in state [:players player :absent-since])))
+      (assoc-in [:players player :absent-since] at)
+
+      true (publish {:type (if connected?
+                             :player/reconnected
+                             :player/disconnected)
+                     :player player})
+
+      host-back? (-> (dissoc :host-absent?)
+                     (publish {:type :host/returned :host player})))))
 
 (defmethod apply-event :player/renamed
   [state {:keys [player name]}]
@@ -235,10 +257,27 @@
   ;;
   ;; Public on purpose: everyone must know who holds the GM powers, and the
   ;; whole point of logging overrides is that they are auditable.
-  [state {:keys [host]}]
+  ;;
+  ;; Whoever takes the seat ends any absence: the flag describes the HOST, and
+  ;; this is a new one. If the heir is himself long gone, the ticker will say so
+  ;; again on its next pass. `:claimed?` marks a seat taken from an absent host
+  ;; rather than handed over, so the Chronik can say which it was.
+  [state {:keys [host claimed?]}]
   (-> state
       (assoc :host host)
-      (publish {:type :host/changed :host host})))
+      (dissoc :host-absent?)
+      (publish (cond-> {:type :host/changed :host host}
+                 claimed? (assoc :claimed? true)))))
+
+(defmethod apply-event :host/absent
+  ;; The host has been gone past the grace period. The fallbacks — a clock
+  ;; taking over, the night falling, a seat others may claim — are separate
+  ;; events or offers, decided in phases/host-absent-events; this only records
+  ;; the fact. Public, because the table is the one left waiting.
+  [state _]
+  (-> state
+      (assoc :host-absent? true)
+      (publish {:type :host/absent :host (:host state)})))
 
 (defmethod apply-event :game/narrated-set
   ;; The host chose, in the lobby, whether to narrate or to play. The clock
@@ -258,10 +297,15 @@
   ;; Whether the room has a clock at all. Distinct from a pause: a pause is
   ;; "hang on a moment" inside a timed game, this is "nobody is timed in this
   ;; room". `timer/clock-events` reads it and arms nothing while it is off.
-  [state {:keys [on?]}]
+  ;;
+  ;; `:cause :host-absent` when nobody flipped it: the clock taking over from a
+  ;; Spielleiter who has gone missing. Said in the Chronik, or a table with no
+  ;; clock would suddenly find one and not know why.
+  [state {:keys [on? cause]}]
   (-> state
       (assoc :timer? (boolean on?))
-      (publish {:type :clock/timer-set :on? (boolean on?)})))
+      (publish (cond-> {:type :clock/timer-set :on? (boolean on?)}
+                 cause (assoc :cause cause)))))
 
 (defmethod apply-event :game/started
   [state {:keys [assignments centre seed]}]

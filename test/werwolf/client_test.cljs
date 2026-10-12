@@ -615,3 +615,19 @@
           fx (ev/server-message-fx {:db in-call} [nil {:type :server/welcome :room-id "ABCD"
                                                        :player-id 1 :token "x"}])]
       (is (= {:type :client/voice :joined? true} (:werwolf.ws/send fx))))))
+
+(deftest the-absent-host-banner-says-only-what-the-view-says
+  (let [base {:host 0 :players {0 {:name "Anna"} 1 {:name "Bob"}}
+              :phase :night :narrated? true :actions #{:chat}}]
+    (is (nil? (sub/host-absence base)) "nothing to say while he is here")
+    (testing "a narrated game under way: the clock took over, nobody may claim"
+      (is (= {:name "Anna" :clock? true :claim? false}
+             (sub/host-absence (assoc base :host-absent? true)))))
+    (testing "a lobby: the seat is offered, and the button follows :actions"
+      (is (= {:name "Anna" :clock? false :claim? true}
+             (sub/host-absence (assoc base :host-absent? true :phase :lobby
+                                      :actions #{:chat :claim-host})))))
+    (testing "a game the host played: no clock line, even with a clock running"
+      (is (false? (:clock? (sub/host-absence (assoc base :host-absent? true
+                                                    :narrated? false :timer? true))))))))
+

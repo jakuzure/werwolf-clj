@@ -159,3 +159,20 @@
           (is (schema/valid-state? state')
               (str "invalid after " (:type ev) ": " (pr-str (schema/explain-state state'))))
           (recur state' (rest evs)))))))
+
+;; ------------------------------------------------------------ absent host ---
+
+(deftest games-whose-host-went-missing-still-complete
+  (testing "the seat is offered to everybody while he is gone, at every step of
+            a game he played and in every lobby. Offered that widely, it must
+            never hold up a night turn, never reach a narrated game under way,
+            and never stop a game from replaying"
+    (doseq [opts [{:host-absent? true} {:host-absent? true :narrated? true}]]
+      (let [results (for [i (range 30)]
+                      (h/play-game (+ 5 (mod i 14)) (+ 7 (* i 104729)) opts))
+            failures (vec (remove :ok? results))]
+        (is (empty? failures) (str opts " failures: " (describe failures)))
+        (is (some (fn [r] (some #(= :claim-host (:type %)) (:history r))) results)
+            (str opts ": somebody took the seat in at least one game"))
+        (doseq [r (take 5 results)]
+          (is (nil? (h/replay-mismatch r)) (str opts " seed " (:seed r))))))))

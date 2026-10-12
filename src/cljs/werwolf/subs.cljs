@@ -237,8 +237,29 @@
  :<- [::actions]
  (fn [actions _]
    ;; :chat is not "acting" — offering it as an action would make the UI claim
-   ;; the game is waiting for you when it is not.
-   (boolean (seq (remove #{:chat :leave :set-locale} actions)))))
+   ;; the game is waiting for you when it is not. Nor is taking an absent
+   ;; host's seat: it is offered to everybody, and nobody is waiting on it.
+   (boolean (seq (remove #{:chat :leave :set-locale :claim-host} actions)))))
+
+(defn host-absence
+  "What to tell the table about a host who has gone missing, or nil while he is
+   here: his name, whether the clock has taken over from him, and whether THIS
+   player is offered his seat.
+
+   Nothing here decides anything. That he is gone, that the clock took over and
+   who may take the seat all arrive in the view — `:host-absent?`, `:timer?` and
+   `:actions` — and this only gathers them for the banner. The clock line is
+   shown for a narrated game under way because that is where the server
+   switches it on; reading `:timer?` alone would claim a takeover in every room
+   that simply had a clock all along. Pure and public so it is testable without
+   a browser."
+  [{:keys [host-absent? host players narrated? phase actions]}]
+  (when host-absent?
+    {:name   (get-in players [host :name])
+     :clock? (boolean (and narrated? (not (#{:lobby :game-over} phase))))
+     :claim? (contains? (set actions) :claim-host)}))
+
+(rf/reg-sub ::host-absence :<- [::view] (fn [v _] (host-absence v)))
 
 ;; ---- the stage ----
 ;;

@@ -39,6 +39,8 @@
     :hexe-heal :hexe-poison :hexe-pass
     :jaeger-shoot :jaeger-pass
     :ready :nominate :nominate-pass :vote :vote-abstain :advance-phase
+    ;; Taking the seat of a host who has gone missing.
+    :claim-host
     ;; The Spielleiter's: ending the setup step, and arranging the table.
     :begin-night
     :gm/toggle-narrated :gm/toggle-timer :gm/transfer-host

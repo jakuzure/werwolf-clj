@@ -126,6 +126,7 @@
    :action/vote-abstain    "Enthalten"
    :action/begin-night     "Erste Nacht beginnen"
    :action/advance-phase   "Phase weiter (SL)"
+   :action/claim-host      "Spielleitung übernehmen"
    :action/gm-toggle-narrated "Spielleiter-Modus (SL)"
    :action/gm-toggle-timer "Zeitlimit an/aus (SL)"
    :action/gm-transfer-host "Spielleitung übergeben (SL)"
@@ -172,6 +173,15 @@
    :game/you           "du"
    :game/dead          "tot"
    :game/absent        "abwesend"
+
+   ;; ---------------------------------------------------------- absence ---
+   ;;
+   ;; Die Spielleitung ist länger weg als die Schonfrist. Zwei Auswege, je
+   ;; nachdem, was sicher ist: jemand übernimmt den Platz, oder die Uhr
+   ;; übernimmt das Tempo.
+   :absence/title      (fn [n] (str "Die Spielleitung (" n ") ist abwesend"))
+   :absence/claim-hint "Jemand am Tisch kann die Spielleitung übernehmen."
+   :absence/clock-hint "Die Uhr hat übernommen: Jede Phase endet mit ihrem Zeitlimit, bis die Spielleitung zurück ist."
    :game/your-role     "Deine Rolle"
    :game/in-love       "Du bist verliebt in"
    :game/heiltrank     "Heiltrank"
@@ -278,12 +288,16 @@
    :log/disconnected  (fn [n] (str n " ist abwesend"))
    :log/reconnected   (fn [n] (str n " ist zurück"))
    :log/host-changed  (fn [n] (str n " ist jetzt Spielleitung"))
+   :log/host-claimed  (fn [n] (str n " übernimmt die Spielleitung"))
+   :log/host-absent   (fn [n] (str "Die Spielleitung (" n ") ist abwesend"))
+   :log/host-returned (fn [n] (str n " ist zurück und leitet wieder"))
    :log/game-started  "Die erste Nacht bricht an"
    :log/game-started-setup "Die Karten sind verteilt — der Spielleiter bereitet die erste Nacht vor"
    :log/narrated-on   "Die Spielleitung spielt nicht mit und führt durchs Spiel"
    :log/narrated-off  "Die Spielleitung spielt mit"
    :log/timer-on      "Die Uhr läuft — jede Phase hat ein Zeitlimit"
    :log/timer-off     "Die Uhr ist aus — die Spielleitung bestimmt das Tempo"
+   :log/timer-on-absent "Die Uhr übernimmt — ohne Spielleitung endet jede Phase mit ihrem Zeitlimit"
    :log/amor-linked   "Amor hat zwei Verliebte bestimmt"
    :log/night-began   "Die Nacht bricht an"
    :log/night-quiet-first "Die erste Nacht bleibt ruhig — niemand stirbt"
