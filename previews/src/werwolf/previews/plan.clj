@@ -19,8 +19,13 @@
               (assoc (select-keys d [:image :sha :last-activity]) :pr number))))
         prs))
 
-(defn- newest-first [previews]
-  (sort-by (juxt :last-activity :pr) #(compare %2 %1) previews))
+(defn- by-priority
+  "People's PRs before Renovate's, then newest first. A dependency bump is
+   worth a look, but never at the cost of a preview somebody is working on:
+   Renovate opens several PRs at once, and as the newest they would otherwise
+   put every other preview to sleep."
+  [renovate previews]
+  (sort-by (juxt (comp not renovate :pr) :last-activity :pr) #(compare %2 %1) previews))
 
 (defn- slots
   "How many previews fit: what is free once the running previews are counted
@@ -49,7 +54,8 @@
   [{:keys [prs k8s memory config short-rounds]}]
   (let [{:keys [deployments secrets present]} k8s
         open      (set (map :number prs))
-        wanted    (newest-first (candidates prs deployments))
+        renovate  (into #{} (comp (filter :renovate?) (map :number)) prs)
+        wanted    (by-priority renovate (candidates prs deployments))
         running   (count (filter #(= 1 (:replicas (get deployments (:pr %)))) wanted))
         n         (slots memory config)
         short     (if (< n running) (inc short-rounds) 0)

@@ -133,3 +133,12 @@
                   :k8s {:deployments {1 (deployment 1 1 0) 2 (deployment 2 2 1)}
                         :secrets #{1 2} :present #{1 2}}})]
     (is (= {1 1 2 1} (replicas out)))))
+
+(deftest renovate-never-takes-a-slot-from-a-person
+  (testing "two slots, three PRs: Renovate's newer ones queue behind a person's"
+    (let [out (run {:prs [(pr 1 1) (pr 2 5 :renovate? true) (pr 3 6 :renovate? true)]
+                    :available (+ Gi (* 2 384 Mi) (* 10 Mi))})]
+      (is (= {1 1 2 0 3 1} (replicas out)))))
+  (testing "with room for all, Renovate's run too"
+    (let [out (run {:prs [(pr 1 1) (pr 2 5 :renovate? true)]})]
+      (is (= {1 1 2 1} (replicas out))))))

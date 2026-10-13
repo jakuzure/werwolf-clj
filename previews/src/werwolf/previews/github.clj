@@ -15,6 +15,7 @@
          pageInfo { hasNextPage }
          nodes {
            number
+           headRefName
            headRefOid
            isCrossRepository
            commits(last: 1) {
@@ -40,8 +41,9 @@
     {:image description :last-activity createdAt}))
 
 (defn parse-prs
-  "The GraphQL response as [{:number :sha :image :last-activity}], with `:image`
-   and `:last-activity` nil for a PR whose head commit has no usable preview.
+  "The GraphQL response as [{:number :sha :image :last-activity :renovate?}],
+   with `:image` and `:last-activity` nil for a PR whose head commit has no
+   usable preview.
 
    Throws on anything short of a complete answer: an empty list would read as
    every PR closed, and delete every preview."
@@ -55,10 +57,11 @@
       (throw (ex-info "more than 100 open PRs, refusing to act on a partial list" {})))
     (->> (:nodes prs)
          (remove :isCrossRepository)
-         (mapv (fn [{:keys [number headRefOid commits]}]
+         (mapv (fn [{:keys [number headRefName headRefOid commits]}]
                  (let [ctx (get-in commits [:nodes 0 :commit :status :context])]
                    (merge {:number number :sha headRefOid
-                           :image nil :last-activity nil}
+                           :image nil :last-activity nil
+                           :renovate? (str/starts-with? (str headRefName) "renovate/")}
                           (preview ctx))))))))
 
 (defn fetch-prs
