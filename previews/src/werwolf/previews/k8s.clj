@@ -82,8 +82,24 @@
 (defn- secret-env [env-name secret key]
   {:name env-name :valueFrom {:secretKeyRef {:name secret :key key}}})
 
-(defn- env [{:keys [livekit]} n]
-  (into [(secret-env "TOKEN_SECRET" (object-name n) "token-secret")]
+(def non-heap
+  "What a preview's JVM needs besides its heap, in bytes. Measured at about
+   85 MiB (metaspace, JIT code, the CDS archive, threads) under SerialGC, which
+   is what the JVM picks in a container this small; the rest is margin for
+   malloc, sqlite and what the kernel counts against the pod."
+  (* 112 1024 1024))
+
+(defn heap-mib
+  "The -Xmx for a pod limited to `pod-memory` bytes. The launcher's
+   MaxRAMPercentage=75 would leave a fixed ~85 MiB of non-heap 25% of the
+   limit, which at 200Mi is 50: the heap would grow into an OOM kill. The live
+   heap is about 25 MiB, so 32 is the floor."
+  [pod-memory]
+  (max 32 (quot (- pod-memory non-heap) (* 1024 1024))))
+
+(defn- env [{:keys [livekit pod-memory]} n]
+  (into [(secret-env "TOKEN_SECRET" (object-name n) "token-secret")
+         {:name "JDK_JAVA_OPTIONS" :value (str "-Xmx" (heap-mib pod-memory) "m")}]
         (if livekit
           [{:name "MEDIA_PROVIDER" :value "livekit"}
            {:name "LIVEKIT_URL" :value (:url livekit)}

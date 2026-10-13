@@ -187,8 +187,11 @@ in
 
     podMemory = mkOption {
       type = types.str;
-      default = "384Mi";
-      description = "Memory limit of one preview, and the size of a slot.";
+      default = "200Mi";
+      description = ''
+        Memory limit of one preview, and the size of a slot. The heap is this
+        minus 112 MiB for the JVM's own memory, which measures about 85.
+      '';
     };
 
     memoryReserve = mkOption {
