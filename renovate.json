@@ -78,9 +78,9 @@
       "groupName": "livekit"
     },
     {
-      "description": "shadow-cljs ships as a jar (deps.edn, the compiler) and an npm package (package.json, the CLI that launches it), released together under one version. The two groups above would split them into two PRs, each testing a pairing nobody runs. Last, so it wins over both.",
+      "description": "shadow-cljs ships as a jar (deps.edn, the compiler) and an npm package (package.json, the CLI that launches it), released together under one version. The two groups above would split them into two PRs, each testing a pairing nobody runs. Last, so it wins over both. The jar is matched by its Maven name, group:artifact, which is what the deps-edn manager gives as its package name; thheller/shadow-cljs is only its depName.",
       "matchPackageNames": [
-        "thheller/shadow-cljs",
+        "thheller:shadow-cljs",
         "shadow-cljs"
       ],
       "groupName": "shadow-cljs"
