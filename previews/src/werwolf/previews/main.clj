@@ -14,7 +14,7 @@
   "Settings from the environment. The NixOS module sets every one of them."
   [env]
   (let [get-env (fn [k default] (or (not-empty (get env k)) default))
-        pod-memory (get-env "POD_MEMORY" "384Mi")]
+        pod-memory (get-env "POD_MEMORY" "200Mi")]
     {:repo (get-env "PREVIEWS_REPO" "jakuzure/werwolf-clj")
      :domain (get-env "PREVIEWS_DOMAIN" nil)
      :namespace (get-env "PREVIEWS_NAMESPACE" "werwolf-previews")

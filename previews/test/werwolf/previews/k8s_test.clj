@@ -49,7 +49,8 @@
 
 (def config {:namespace "werwolf-previews"
              :domain "werwolf-chrz.duckdns.org"
-             :pod-memory-quantity "384Mi"
+             :pod-memory (* 200 1024 1024)
+             :pod-memory-quantity "200Mi"
              :livekit {:url "wss://werwolf-chrz.duckdns.org/livekit"}})
 
 (def preview {:pr 42 :image "nix:0/nix/store/x.tar" :sha "abc"
@@ -71,7 +72,9 @@
     (testing "Recreate: the PVC is ReadWriteOnce, two pods cannot share it"
       (is (= "Recreate" (get-in d [:spec :strategy :type]))))
     (is (= "nix:0/nix/store/x.tar" (:image c)))
-    (is (= {:memory "384Mi"} (get-in c [:resources :limits])))
+    (is (= {:memory "200Mi"} (get-in c [:resources :limits])))
+    (testing "the heap leaves room for the JVM's own memory under the limit"
+      (is (= "-Xmx88m" (get-in (env d) ["JDK_JAVA_OPTIONS" :value]))))
     (is (= "abc" (get-in d [:metadata :annotations :werwolf-previews/sha])))
     (testing "rooms of its own on the shared LiveKit"
       (is (= "pr-42-" (get-in (env d) ["LIVEKIT_ROOM_PREFIX" :value])))
@@ -84,3 +87,10 @@
                (filter #(= "Deployment" (:kind %))) first)]
     (is (= "noop" (get-in (env d) ["MEDIA_PROVIDER" :value])))
     (is (nil? (get (env d) "LIVEKIT_API_KEY")))))
+
+(deftest the-heap-follows-the-limit
+  (let [Mi (* 1024 1024)]
+    (is (= 88 (k8s/heap-mib (* 200 Mi))))
+    (is (= 272 (k8s/heap-mib (* 384 Mi))))
+    (testing "never below what the app lives in"
+      (is (= 32 (k8s/heap-mib (* 64 Mi)))))))
