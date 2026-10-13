@@ -69,6 +69,28 @@ jobs:
       - name: Build
         run: nix build .#werwolf -L
 
+      # Renovate's PRs get a preview too, but not from preview.yml: this job runs
+      # the updated dependencies' build and so must never hold the Cachix token.
+      # It builds the image and hands over its closure, and preview-renovate.yml,
+      # which runs nothing from it, pushes it and sets the status. Built here
+      # because only this run sees the regenerated deps-lock.json: a push made
+      # with the workflow token starts no workflow of its own.
+      - name: Build the preview image on Renovate branches
+        if: github.event_name == 'pull_request' && startsWith(github.event.pull_request.head.ref, 'renovate/')
+        run: |
+          path=$(nix build -L .#preview-image --print-out-paths)
+          nix copy --to "file://$RUNNER_TEMP/preview?compression=zstd" "$path"
+          echo "$path" > "$RUNNER_TEMP/preview/image"
+          git rev-parse HEAD > "$RUNNER_TEMP/preview/sha"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: github.event_name == 'pull_request' && startsWith(github.event.pull_request.head.ref, 'renovate/')
+        with:
+          name: preview
+          path: ${{ runner.temp }}/preview
+          retention-days: 1
+          # the NARs are zstd already
+          compression-level: 0
+
   test:
     runs-on: ubuntu-26.04
     steps:

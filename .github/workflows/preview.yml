@@ -6,7 +6,8 @@
 # against GITHUB_REF, which for pull_request runs is refs/pull/<n>/merge. On a
 # push it is refs/heads/push-…, which the rule `push-*` allows. Renovate's
 # branches (renovate/*) never match, so dependency-update code never runs with
-# the Cachix token, and forks cannot push here at all.
+# the Cachix token, and forks cannot push here at all. Renovate's previews are
+# built without the token by ci.yml and pushed by preview-renovate.yml.
 name: preview
 
 on:

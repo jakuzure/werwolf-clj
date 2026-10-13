@@ -4,10 +4,11 @@
 
 (def image "nix:0/nix/store/0123456789abcdfghijklmnpqrsvwxyz-nix-image-werwolf.tar")
 
-(defn- node [n & {:keys [cross? state description created]
+(defn- node [n & {:keys [cross? state description created branch]
                   :or {state "SUCCESS" description image
-                       created "2026-10-12T10:00:00Z"}}]
+                       created "2026-10-12T10:00:00Z" branch (str "push-" n)}}]
   {:number n
+   :headRefName branch
    :headRefOid (str "sha" n)
    :isCrossRepository (boolean cross?)
    :commits {:nodes [{:commit {:status (when state
@@ -22,7 +23,7 @@
 
 (deftest a-successful-preview-status-is-a-preview
   (is (= [{:number 42 :sha "sha42" :image image
-           :last-activity "2026-10-12T10:00:00Z"}]
+           :last-activity "2026-10-12T10:00:00Z" :renovate? false}]
          (github/parse-prs (response [(node 42)])))))
 
 (deftest an-open-pr-without-a-usable-status-has-no-image
@@ -30,7 +31,7 @@
     (doseq [n [(node 1 :state nil)
                (node 1 :state "PENDING")
                (node 1 :state "FAILURE")]]
-      (is (= [{:number 1 :sha "sha1" :image nil :last-activity nil}]
+      (is (= [{:number 1 :sha "sha1" :image nil :last-activity nil :renovate? false}]
              (github/parse-prs (response [n])))))))
 
 (deftest a-description-that-is-not-a-nix-image-is-ignored
@@ -51,3 +52,9 @@
     (is (thrown? Exception (github/parse-prs (response [(node 1)] :next-page? true))))
     (is (thrown? Exception (github/parse-prs {:data {:repository nil}})))
     (is (thrown? Exception (github/parse-prs {})))))
+
+(deftest a-renovate-branch-is-marked
+  (is (= [true false]
+         (map :renovate? (github/parse-prs
+                          (response [(node 1 :branch "renovate/clojure-dependencies")
+                                     (node 2 :branch "push-renovatefoo")]))))))

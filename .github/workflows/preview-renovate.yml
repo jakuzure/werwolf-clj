@@ -1,0 +1,100 @@
+# Renovate's half of preview.yml. A dependency update must not be built where
+# the Cachix token is, so ci.yml builds its preview image without one and
+# uploads the closure as an artifact. This runs after it, as main's own code
+# (workflow_run runs the default branch's workflow, and is why the `cachix`
+# environment lets it in), executes nothing from the artifact, and only copies
+# it into Cachix and sets the `preview` status lain's controller reads.
+#
+# Lain gives these previews a slot only after every person's PR has one, see
+# previews/src/werwolf/previews/plan.clj.
+name: preview-renovate
+
+on:
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
+    branches: ["renovate/**"]
+
+concurrency:
+  group: preview-renovate-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  push:
+    # A test failing still deserves a look at the preview, so the conclusion
+    # does not matter; a build that failed simply left no artifact.
+    if: github.event.workflow_run.event == 'pull_request'
+    runs-on: ubuntu-26.04
+    environment: cachix
+    permissions:
+      actions: read
+      contents: read
+      statuses: write
+      pull-requests: read
+    steps:
+      - name: Fetch the image ci built
+        id: fetch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          RUN_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          if ! gh run download "$RUN_ID" --repo "$GITHUB_REPOSITORY" --name preview --dir preview; then
+            echo "run $RUN_ID left no preview image, nothing to do"
+            exit 0
+          fi
+          # Written by a job that ran the updated dependencies' code: untrusted.
+          image=$(head -n1 preview/image)
+          sha=$(head -n1 preview/sha)
+          if ! [[ "$image" =~ ^/nix/store/[0-9a-z]{32}-[A-Za-z0-9+._?=-]+\.tar$ ]]; then
+            echo "not an image path: $image"; exit 1
+          fi
+          if ! [[ "$sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "not a commit: $sha"; exit 1
+          fi
+          # The commit the run was for, or the deps-lock.json commit ci put on it.
+          rel=$(gh api "repos/$GITHUB_REPOSITORY/compare/$RUN_SHA...$sha" --jq '"\(.status) \(.ahead_by)"')
+          case "$rel" in
+            "identical 0"|"ahead 1") ;;
+            *) echo "$sha is not $RUN_SHA or the commit after it ($rel)"; exit 1 ;;
+          esac
+          echo "image=$image" >> "$GITHUB_OUTPUT"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - if: steps.fetch.outputs.image
+        uses: DeterminateSystems/nix-installer-action@3138316df39ed29be04236d7ffc686fa525866aa # v23
+      - if: steps.fetch.outputs.image
+        uses: cachix/cachix-action@38b082610b782e7e93e209c35fd730d399dee866 # v17
+        with:
+          name: werwolf-clj
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+          # pushed explicitly below, before the status: lain must never see an
+          # image it cannot fetch
+          skipPush: true
+
+      - name: Push to Cachix
+        if: steps.fetch.outputs.image
+        env:
+          IMAGE: ${{ steps.fetch.outputs.image }}
+        run: |
+          nix copy --from "file://$PWD/preview" --no-check-sigs "$IMAGE"
+          cachix push werwolf-clj "$IMAGE"
+
+      - name: Set the preview status
+        if: steps.fetch.outputs.image
+        env:
+          GH_TOKEN: ${{ github.token }}
+          IMAGE: nix:0${{ steps.fetch.outputs.image }}
+          SHA: ${{ steps.fetch.outputs.sha }}
+          BRANCH: ${{ github.event.workflow_run.head_branch }}
+        run: |
+          pr=$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$BRANCH" --json number --jq '.[0].number // empty')
+          args=(-f state=success -f context=preview -f "description=$IMAGE")
+          if [ -n "$pr" ]; then
+            args+=(-f "target_url=https://pr-$pr.werwolf-chrz.duckdns.org")
+          fi
+          gh api "repos/$GITHUB_REPOSITORY/statuses/$SHA" "${args[@]}" --silent
+          echo "preview status set on $SHA${pr:+ (PR #$pr)}: $IMAGE"
