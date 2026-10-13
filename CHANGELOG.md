@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.5.0](https://github.com/jakuzure/werwolf-clj/compare/v0.4.0...v0.5.0) (2026-10-13)
+
+
+### Features
+
+* preview every PR on lain ([566ec01](https://github.com/jakuzure/werwolf-clj/commit/566ec01bf738306ffcabb24200f49afe26dd108e))
+* preview every PR on lain ([4f39663](https://github.com/jakuzure/werwolf-clj/commit/4f39663950835b9126f778488eaa499466157c2d))
+* **previews:** preview Renovate's PRs too ([3b037ab](https://github.com/jakuzure/werwolf-clj/commit/3b037abcc710638b223442573f87097202e581f5))
+* **previews:** prune preview images no container uses ([4633c7e](https://github.com/jakuzure/werwolf-clj/commit/4633c7ea1aabc7d0e1943d52aef35d0c2ab023b4))
+* **previews:** size previews at 200Mi, with the heap capped ([3686752](https://github.com/jakuzure/werwolf-clj/commit/3686752ef1135ccf7b566a202ddcfdb1a380daab))
+* **previews:** size previews at 200Mi, with the heap capped to fit ([6a067a4](https://github.com/jakuzure/werwolf-clj/commit/6a067a47dab2d4c147f53213e46f78ef9654d4cb))
+* **ui:** show the Spielleiter who still has to act, and a way past them ([b2f0420](https://github.com/jakuzure/werwolf-clj/commit/b2f04204846afca55913fcbe01631e8d8da7b6d8))
+
+
+### Bug Fixes
+
+* **previews:** keep the image config out of the mounted closure ([cbcc1ee](https://github.com/jakuzure/werwolf-clj/commit/cbcc1eedd20548a6ab96ae2380572d6ad571d943))
+* **previews:** keep the image config out of the mounted closure ([1adfcfb](https://github.com/jakuzure/werwolf-clj/commit/1adfcfbe96a75ae12edeb3b736c98d313e6854f1))
+* **renovate:** match the shadow-cljs jar by its Maven name ([3005dbe](https://github.com/jakuzure/werwolf-clj/commit/3005dbe084d017d310738d3912ab60432a5f018f))
+* **ui:** the Spielleitung powers are never your turn ([215c33f](https://github.com/jakuzure/werwolf-clj/commit/215c33ffbc97b32909648f6fadb163ac594b26d2))
+
 ## [0.4.0](https://github.com/jakuzure/werwolf-clj/compare/v0.3.0...v0.4.0) (2026-10-12)
 
 
