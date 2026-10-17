@@ -25,7 +25,7 @@
   `(let [path# (tmp-path)
          ~binding (room/registry {:ds (store/open {:dbtype "sqlite" :dbname path#})
                                   :send! (fn [s# msg#] (swap! s# conj msg#))
-                                  :game {:first-night-kill? true :narrated? false}})]
+                                  :game {:first-night-kill? true :first-day-trial? true :narrated? false}})]
      (try ~@body (finally (cleanup! path#)))))
 
 (defn- views [sink] (keep #(when (= :room/view (:type %)) (:view %)) @sink))

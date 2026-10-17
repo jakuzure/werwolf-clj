@@ -37,7 +37,7 @@
                            ;; turn to check that a timed-out pack still eats.
                            ;; And the creator plays, with a clock: a narrated room
                            ;; starts with none, and a clock is what is under test.
-                           :game {:first-night-kill? true :narrated? false}
+                           :game {:first-night-kill? true :first-day-trial? true :narrated? false}
                            :after-commit (timer/hook game-cfg
                                                      #(or @pinned (System/currentTimeMillis)))})
            ::pinned pinned)))

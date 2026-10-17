@@ -1140,7 +1140,11 @@
      [:p {:class "text-sm sm:text-base text-slate-200"}
       (if (= :game-over phase)
         [:span {:class "text-xl font-bold text-amber-300"} (winner-line (:winner view))]
-        (t (keyword "explain" (name (or phase :setup)))))]
+        ;; The first day has no trial — see phases/trial-day? — and says so,
+        ;; or the table waits for an accusation step that never comes.
+        (t (if (and (= :discussion phase) (= 1 (:night view)))
+             :explain/first-discussion
+             (keyword "explain" (name (or phase :setup))))))]
 
      [host-absent-banner]
 

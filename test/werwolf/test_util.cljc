@@ -9,10 +9,11 @@
             [werwolf.engine.phases :as phases]
             [werwolf.engine.roles :as roles]))
 
-(defn- game-with* [assignments first-night-kill? election?]
+(defn- game-with* [assignments first-night-kill? first-day-trial? election?]
   (let [n (count assignments)
         s (engine/new-game {:room-id "TEST" :host 0 :seed 1 :min-players 5
-                            :first-night-kill? first-night-kill?})
+                            :first-night-kill? first-night-kill?
+                            :first-day-trial? first-day-trial?})
         s (reduce (fn [s i]
                     (e/apply-event s {:type :player/joined
                                       :player i :name (str "P" i) :locale :de}))
@@ -39,20 +40,26 @@
    chain, the wolf tally — and under the variant it would have to walk a whole
    day to reach a night where anything happens.
 
-   Pass `{:first-night-kill? false}` to exercise the shipped rule."
+   Pass `{:first-night-kill? false}` to exercise the shipped rule.
+
+   The first day likewise defaults to the CLASSIC rule, a trial on day 1
+   (`:first-day-trial? true`): a lynch is almost always tested on the first
+   day there is. Pass `{:first-day-trial? false}` for the shipped rule."
   ([assignments] (game-with assignments {}))
-  ([assignments {:keys [first-night-kill? election?]
-                 :or   {first-night-kill? true election? false}}]
-   (game-with* assignments first-night-kill? election?)))
+  ([assignments {:keys [first-night-kill? first-day-trial? election?]
+                 :or   {first-night-kill? true first-day-trial? true election? false}}]
+   (game-with* assignments first-night-kill? first-day-trial? election?)))
 
 (defn narrated-lobby
   "A NARRATED lobby: the Spielleiter in seat 0 and `n` players in seats 1..n.
    The clock is off, as `room/create!` opens a narrated room."
   ([n] (narrated-lobby n {}))
-  ([n {:keys [max-players first-night-kill?] :or {first-night-kill? true}}]
+  ([n {:keys [max-players first-night-kill? first-day-trial?]
+        :or {first-night-kill? true first-day-trial? true}}]
    (e/replay (into [{:type :game/created :room-id "TEST" :host 0 :seed 1
                      :min-players 5 :max-players max-players
                      :first-night-kill? first-night-kill?
+                     :first-day-trial? first-day-trial?
                      :narrated? true :timer? false}]
                    (map (fn [i] {:type :player/joined :player i
                                  :name (str "P" i) :locale :de}))

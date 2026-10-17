@@ -35,6 +35,10 @@
            ;; first night, so nobody is eliminated before they have said a word.
            ;; true restores the classic Düsterwald rule.
            :first-night-kill? #boolean #or [#env FIRST_NIGHT_KILL "false"]
+           ;; Rule variant. false (default): nobody is accused on the first
+           ;; day — nobody knows anything yet, so it is talk and the election,
+           ;; and then the night. true restores the classic Düsterwald rule.
+           :first-day-trial? #boolean #or [#env FIRST_DAY_TRIAL "false"]
            ;; Whether a new room's creator narrates rather than plays. true
            ;; (default): the creator is the Spielleiter — dealt no card, sees
            ;; every card, and the room starts without a clock. The host can

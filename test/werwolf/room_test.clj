@@ -43,7 +43,7 @@
                   ;; these were written when the host was always dealt a card.
                   ;; Narrated rooms are opted into per room — see
                   ;; `create!`'s :narrated? — by the tests about them.
-                  :game {:first-night-kill? true :narrated? false}}))
+                  :game {:first-night-kill? true :first-day-trial? true :narrated? false}}))
 
 (defn- msgs [s] @s)
 (defn- views [s] (filter #(= :room/view (:type %)) (msgs s)))
