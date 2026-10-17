@@ -31,7 +31,8 @@
                     :target/optional-two-choice  Hexe: heal and/or poison, or pass
    :first-night-only?  action happens only on night 1 (Amor)
    :skips-first-night? this role has NO turn on night 1 by default. Re-enabled
-                       per room by the :first-night-kill? rule flag in state.
+                       per room by the :first-night-kill? rule flag in state:
+                       the wolves, and the Hexe, whose turn answers theirs.
    :knows-teammates?   at deal time, does this player learn who shares their team?
    :on-death      reaction pushed onto the reaction stack when this role dies
    :resources     per-game one-shot resources, consumed by events
@@ -82,6 +83,13 @@
     :resources         {:heiltrank 1 :gifttrank 1}
     ;; She may see the pending werewolf victim in order to decide on the heal.
     :sees-pending-deaths? true
+    ;; She sleeps through the first night whenever the wolves do. Her heal
+    ;; would have nobody to save, so her only move there was the poison — and
+    ;; with it, the one death of a night that is meant to have none. Woken
+    ;; with the wolves (the classic rule), she does what the Düsterwald rules
+    ;; let her on any night: see their victim, heal (herself too), poison, or
+    ;; both at once.
+    :skips-first-night? true
     :max-count         1}
 
    :jaeger

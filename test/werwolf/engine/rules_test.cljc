@@ -343,22 +343,34 @@
 (deftest the-first-night-passes-with-everyone-alive
   (let [s (tu/game-with {0 :dorfbewohner 1 :werwolf 2 :hexe 3 :seherin 4 :jaeger}
                         {:first-night-kill? false})
-        s (exec! s {:type :seherin-inspect :player 3 :target 1})
-        ;; The Hexe has nothing to heal, because nobody is dying.
-        _ (is (empty? (phases/legal-targets s 2 :hexe-heal)))
-        _ (is (not (contains? (phases/legal-actions s 2) :hexe-heal)))
-        s (exec! s {:type :hexe-pass :player 2})]
-    (is (= :discussion (:phase s)) "the day begins")
+        _ (is (not (contains? (set (phases/night-queue s)) :hexe))
+              "nor is the Hexe: with nobody dying there is nobody to heal, and
+               her poison would be the one death of a night meant to have none")
+        s (exec! s {:type :seherin-inspect :player 3 :target 1})]
+    (is (= :discussion (:phase s)) "the day begins once the Seherin has looked")
     (is (= [0 1 2 3 4] (alive s)) "with the whole village intact")
     (is (= 1 (tu/count-log s :night/quiet))
         "and the Chronik says so — otherwise a peaceful night is
          indistinguishable from a missing entry")))
 
+(deftest the-hexe-on-a-first-night-with-a-kill
+  (testing "the classic first night: she sees the wolves' victim and may heal
+            and poison in the same night, herself included"
+    (let [s (-> (tu/game-with {0 :dorfbewohner 1 :werwolf 2 :hexe 3 :seherin 4 :jaeger})
+                (exec! {:type :seherin-inspect :player 3 :target 1})
+                (exec! {:type :werewolf-vote :player 1 :target 2}))]
+      (is (= :hexe (:night-cursor s)))
+      (is (= [2] (phases/legal-targets s 2 :hexe-heal)) "she may heal herself")
+      (let [s (-> s
+                  (exec! {:type :hexe-heal :player 2 :target 2})
+                  (exec! {:type :hexe-poison :player 2 :target 1}))]
+        (is (= [0 2 3 4] (alive s)) "both potions in one night: saved, and the wolf dead")
+        (is (= :village (:winner s)))))))
+
 (deftest the-wolves-do-kill-from-the-second-night
   (let [s (tu/game-with {0 :dorfbewohner 1 :werwolf 2 :hexe 3 :seherin 4 :jaeger}
                         {:first-night-kill? false})
         s (exec! s {:type :seherin-inspect :player 3 :target 1})
-        s (exec! s {:type :hexe-pass :player 2})
         ;; Straight through day 1 with no lynch.
         s (reduce (fn [s p] (exec! s {:type :vote-abstain :player p})) s (alive s))]
     (is (= 2 (:night s)))
@@ -411,8 +423,7 @@
   (let [cast {0 :dorfbewohner 1 :dorfbewohner 2 :werwolf
               3 :dorfbewohner 4 :hexe 5 :seherin}
         day1 (fn [] (-> (tu/game-with cast {:first-night-kill? false :first-day-trial? false})
-                        (exec! {:type :seherin-inspect :player 5 :target 2})
-                        (exec! {:type :hexe-pass :player 4})))]
+                        (exec! {:type :seherin-inspect :player 5 :target 2})))]
     (testing "the shipped rule: the first day's talk ends in the night"
       (let [s (day1)]
         (is (= :discussion (:phase s)))
