@@ -115,8 +115,7 @@
 (defn count-log [state type] (count (filter #(= type (:type %)) (:log state))))
 
 (defn advance-to-vote
-  "Walk the day from :discussion to :vote using host powers."
+  "The day's ballot opens with the day itself, so there is nowhere to walk to:
+   kept so a test reads as 'and now the village votes'."
   [state]
-  (-> state
-      (exec! {:type :advance-phase :player 0})   ; discussion -> nomination
-      (exec! {:type :advance-phase :player 0}))) ; nomination -> vote
+  state)

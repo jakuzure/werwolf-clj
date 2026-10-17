@@ -479,10 +479,10 @@
   (-> state
       (assoc :phase :discussion
              :votes {}
-             :nominations #{}
-             :nomination-done #{}
              :ready #{}
              :vote-resolved? false)
+      ;; Only a log from before the day was one step ever filled these.
+      (dissoc :nominations :nomination-done)
       (publish {:type :day/began :day (:night state)})))
 
 ;; ---- night actions ----
@@ -645,8 +645,11 @@
       (publish {:type :jaeger/shot :player player :target target})
       (update :pending-deaths (fnil conj []) {:player target :cause :jaeger})))
 
-;; ---- day: nomination, voting, lynch ----
+;; ---- day: voting, lynch ----
 
+;; The accusation step is gone — the day is one open ballot now, see
+;; phases/auto-events — but a log written before that still holds these two,
+;; and a room rehydrated from one must replay rather than throw.
 (defmethod apply-event :player/nominated
   ;; Two sets, two different questions. :nominations is who stands accused (it
   ;; becomes the ballot); :nomination-done is who has had their say. One
@@ -703,10 +706,11 @@
       (publish {:type :vote/cast :voter voter :target target})))
 
 (defmethod apply-event :vote/resolved
-  [state {:keys [target tie?]}]
+  [state {:keys [target tie? no-majority?]}]
   (cond-> (-> state
               (assoc :vote-resolved? true)
-              (publish {:type :vote/resolved :target target :tie? tie?}))
+              (publish (cond-> {:type :vote/resolved :target target :tie? tie?}
+                         no-majority? (assoc :no-majority? true))))
     target (update :pending-deaths (fnil conj []) {:player target :cause :lynch})))
 
 (defmethod apply-event :game/ended

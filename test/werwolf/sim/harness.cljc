@@ -143,6 +143,17 @@
           (let [[s1 c] (rng/rand-nth seed choices)]
             [s1 {:type action :player pid (proto/choice-key action) c}])))
 
+      ;; The day's ballot is hard-coded rather than random: everybody votes for
+      ;; the lowest seat still alive that is not their own. A table voting at
+      ;; random almost never reaches the majority a condemnation needs, so
+      ;; random games ran on for hundreds of turns of wolves eating one
+      ;; villager a night. Ties, abstentions and a ballot short of a majority
+      ;; are the rules tests' business; here the day has to end in a verdict.
+      (= :vote action)
+      (if (empty? targets)
+        [seed nil]
+        [seed {:type :vote :player pid :target (apply min targets)}])
+
       ;; Everything else is "pick one legal target".
       :else
       (if (empty? targets)
@@ -156,7 +167,11 @@
   [state]
   (for [pid    (sort (keys (:players state)))
         action (sort (phases/legal-actions state pid))
-        :when  (not (excluded? action))]
+        :when  (not (excluded? action))
+        ;; See the :vote branch of `build-command`: one vote each, never an
+        ;; abstention, and never the same ballot cast twice.
+        :when  (not (and (#{:vote :vote-abstain} action)
+                         (or (= :vote-abstain action) (phases/voted-today? state pid))))]
     [pid action]))
 
 (defn step

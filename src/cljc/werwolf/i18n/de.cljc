@@ -99,8 +99,6 @@
    :phase/election    "Bürgermeisterwahl"
    :phase/day-reveal  "Morgengrauen"
    :phase/discussion  "Beratung"
-   :phase/nomination  "Anklage"
-   :phase/vote        "Abstimmung"
    :phase/day-resolve "Urteil"
    :phase/reaction    "Letzte Handlung"
    :phase/game-over   "Spielende"
@@ -150,8 +148,6 @@
    :action/elect-abstain   "Enthalten"
    :action/mayor-appoint   "Nachfolge bestimmen"
    :action/mayor-decline   "Niemanden bestimmen"
-   :action/nominate        "Anklagen"
-   :action/nominate-pass   "Niemanden anklagen"
    :action/vote            "Verurteilen"
    :action/vote-abstain    "Enthalten"
    :action/begin-night     "Erste Nacht beginnen"
@@ -281,17 +277,16 @@
    :explain/day-reveal  "Der Morgen graut. Gleich zeigt sich, was die Nacht angerichtet hat."
    :explain/election    "Wählt einen Bürgermeister. Seine Stimme zählt bei jeder Abstimmung doppelt."
    :explain/discussion  "Redet miteinander: Wem traut ihr nicht? Sag Bescheid, wenn du fertig bist."
+   :explain/trial       (fn [n] (str "Redet miteinander und stimmt ab: Wer soll verurteilt werden? "
+                                     "Verurteilt wird nur, wer mindestens " n " Stimmen bekommt. "
+                                     "Ihr könnt umstimmen, bis alle abgestimmt haben."))
    :explain/first-discussion "Lernt euch kennen. Heute wird noch niemand angeklagt — sag Bescheid, wenn du fertig bist, dann bricht die Nacht herein."
-   :explain/nomination  "Jeder darf eine Person anklagen — oder darauf verzichten."
-   :explain/vote        "Stimmt über die Angeklagten ab. Bei Gleichstand stirbt niemand."
    :explain/day-resolve "Das Urteil fällt."
    :explain/reaction    "Ein Toter hat noch eine letzte Handlung. Alle warten auf ihn."
    :step/night       "Nacht"
    :step/day-reveal  "Morgen"
    :step/election    "Wahl"
    :step/discussion  "Beratung"
-   :step/nomination  "Anklage"
-   :step/vote        "Abstimmung"
    :step/day-resolve "Urteil"
 
    ;; ------------------------------------------------------------ voice ---
@@ -319,7 +314,6 @@
    :target/hint       "Klicke unten auf einen Mitspieler"
 
    ;; ------------------------------------------------------------ badges ---
-   :badge/accused     "angeklagt"
    :badge/votes       "Stimmen"
    :badge/vote        "Stimme"
    :badge/ready       "fertig"
@@ -384,6 +378,9 @@
    :log/jaeger-shot   (fn [n t] (str n " erschießt " t))
    :log/lynched       (fn [n] (str "Das Dorf richtet " n))
    :log/tie           "Das Dorf kann sich nicht einigen — niemand stirbt"
+   :vote/yours        (fn [n] (str "Deine Stimme: " n " — du kannst noch umstimmen"))
+   :vote/yours-abstained "Du hast dich enthalten — du kannst noch umstimmen"
+   :log/no-majority   "Keine Mehrheit — das Dorf verurteilt niemanden"
    ;; Die Wahl. Öffentlich, denn der ganze Sinn des Amtes ist, dass der Tisch
    ;; weiß, wessen Stimme doppelt zählt.
    :log/mayor-elected   (fn [n] (str n " wurde zum Bürgermeister gewählt"))

@@ -428,7 +428,7 @@
       (doseq [[action k] proto/choice-key]
         (is (contains? proto/command-types action) (str action " is not a command"))
         (is (proto/valid-client-message?
-             {:type :client/command :cmd {:type action k (if (= :phase k) :vote :hexe)}})
+             {:type :client/command :cmd {:type action k (if (= :phase k) :discussion :hexe)}})
             (str action " cannot be expressed with " k))))))
 
 ;; ------------------------------------------------------------- the Chronik ---
@@ -485,7 +485,10 @@
   (testing "a tie is a real outcome the table needs to see; 'nobody voted' is not"
     (is (= :verdict (i18n/log-tone {:type :vote/resolved :target nil :tie? true})))
     (is (= :verdict (i18n/log-tone {:type :vote/resolved :target 2 :tie? false})))
-    (is (= :muted (i18n/log-tone {:type :vote/resolved :target nil :tie? false})))))
+    (is (= :muted (i18n/log-tone {:type :vote/resolved :target nil :tie? false})))
+    (is (= :verdict (i18n/log-tone {:type :vote/resolved :target nil :tie? false
+                                    :no-majority? true}))
+        "a ballot short of a majority is a verdict worth reading")))
 
 ;; The dictionaries themselves — completeness, both languages, and coverage of
 ;; every event a real game logs — are tested in werwolf.i18n-test, which is .cljc
@@ -537,7 +540,8 @@
   (testing "he has a seat and is never killed, so he looks like a living player
             who has not voted — and a narrated day would read as one ballot
             short forever"
-    (let [view {:phase :vote
+    (let [view {:phase :discussion
+                :trial? true
                 :narrator 0
                 :players {0 {:name "SL" :alive? true}
                           1 {:name "Anna" :alive? true}
@@ -557,14 +561,16 @@
              (map :step (sub/round-steps {:phase :discussion :night 1}))))
       (is (= :current (:discussion (states {:phase :reaction :night 1
                                             :log [{:type :night/ended} {:type :day/began}]})))))
+    (testing "a day with a ballot ends in the verdict, the classic first one too"
+      (is (= [:night :day-reveal :election :discussion :day-resolve]
+             (map :step (sub/round-steps {:phase :discussion :night 1 :trial? true})))))
     (testing "steps before the current one are done, after it to come"
-      (is (= {:night :done :day-reveal :done :discussion :done :nomination :current
-              :vote :todo :day-resolve :todo}
-             (states {:phase :nomination :night 3}))))
+      (is (= {:night :done :day-reveal :done :discussion :current :day-resolve :todo}
+             (states {:phase :discussion :night 3 :trial? true}))))
     (testing "a reaction lights the step it interrupted, read off the log"
-      (is (= :current (:day-reveal (states {:phase :reaction :night 2
+      (is (= :current (:day-reveal (states {:phase :reaction :night 2 :trial? true
                                             :log [{:type :night/began} {:type :night/ended}]}))))
-      (is (= :current (:day-resolve (states {:phase :reaction :night 2
+      (is (= :current (:day-resolve (states {:phase :reaction :night 2 :trial? true
                                              :log [{:type :night/ended} {:type :day/began}]}))))
       (is (:interrupted? (first (filter #(= :current (:state %))
                                         (sub/round-steps {:phase :reaction :night 2 :log []}))))))
@@ -574,7 +580,7 @@
 
 (deftest the-room-light-follows-the-phase
   (is (= :night (sub/ambience :night)))
-  (is (= :day (sub/ambience :vote)))
+  (is (= :day (sub/ambience :discussion)))
   (is (= :day (sub/ambience :reaction)))
   (is (= :end (sub/ambience :game-over)))
   (is (= :neutral (sub/ambience :setup))))
@@ -743,7 +749,7 @@
     (is (= :night (chime/cue-for (v :setup 0) (v :night 1))))
     (is (= :night (chime/cue-for (v :day-resolve 1) (v :night 2))))
     (is (= :day (chime/cue-for (v :night 1) (v :day-reveal 1))))
-    (is (= :end (chime/cue-for (v :vote 2) (v :game-over 2))))
+    (is (= :end (chime/cue-for (v :discussion 2) (v :game-over 2))))
     (is (= :end (chime/cue-for (v :night 2) (v :game-over 2)))
         "a game the wolves win at night ends; it does not also dawn"))
   (testing "the server settles a whole commit before it sends a view, so the
@@ -754,8 +760,7 @@
 
 (deftest the-chime-does-not-ring-for-the-rest-of-the-day
   (doseq [[a b] [[:day-reveal :election] [:election :discussion]
-                 [:discussion :nomination] [:nomination :vote]
-                 [:vote :day-resolve] [:vote :reaction]]]
+                 [:discussion :day-resolve] [:discussion :reaction]]]
     (is (nil? (chime/cue-for (v a) (v b))) (str a " -> " b)))
   (testing "nor for a view that changes something other than the phase"
     (is (nil? (chime/cue-for (v :night 1) (v :night 1))))
@@ -900,3 +905,13 @@
   (testing "a tap that changes nothing — a role at its limit — sends nothing"
     (is (nil? (ev/deck-step-fx {:db (assoc seated :view {:deck {:seherin 1}})}
                                [::ev/deck-step :seherin 1 1])))))
+
+(deftest a-cast-vote-is-no-longer-your-turn
+  (testing "the ballot stays open to change, so the buttons stay — but the
+            banner must stop saying the table is waiting on you"
+    (let [view {:phase :discussion :trial? true :me {:id 1} :votes {}}]
+      (is (false? (sub/voted? view)))
+      (is (true? (sub/voted? (assoc view :votes {1 2}))))
+      (is (true? (sub/voted? (assoc view :votes {1 nil}))) "an abstention too")
+      (is (false? (sub/voted? (assoc view :trial? false :votes {1 2})))
+          "the first day has no ballot to have cast"))))

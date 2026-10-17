@@ -87,7 +87,7 @@
 (deftest declining-is-always-targetless
   (testing "every 'no' action must be sendable without a target, or the UI has
             to invent one to say no"
-    (doseq [a [:hexe-pass :nominate-pass :vote-abstain :jaeger-pass :ready]]
+    (doseq [a [:hexe-pass :vote-abstain :jaeger-pass :ready]]
       (is (contains? phases/no-target-actions a))
       (is (proto/valid-client-message? (as-wire {:type a}))))))
 

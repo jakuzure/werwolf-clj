@@ -12,7 +12,7 @@
             [werwolf.timer :as timer]))
 
 (def game-cfg
-  {:election-secs 60 :discussion-secs 300 :nomination-secs 90 :vote-secs 60
+  {:election-secs 60 :discussion-secs 300
    :night-secs 45 :reaction-secs 30})
 
 (def t0 1700000000000)
@@ -119,15 +119,15 @@
 (deftest clock-events-are-computed-not-guessed
   (testing "the policy in isolation, with no room and no threads"
     (is (= [{:type :phase/deadline :at (+ t0 60000)}]
-           (timer/clock-events game-cfg t0 {:phase :vote})))
-    (is (nil? (timer/clock-events game-cfg t0 {:phase :vote :deadline 123}))
+           (timer/clock-events game-cfg t0 {:phase :election})))
+    (is (nil? (timer/clock-events game-cfg t0 {:phase :election :deadline 123}))
         "an armed clock is left alone")
     (is (= [{:type :phase/deadline :at nil}]
            (timer/clock-events game-cfg t0 {:phase :lobby :deadline 123}))
         "a stale deadline on an untimed phase is cleared")
     (is (nil? (timer/clock-events game-cfg t0 {:phase :lobby})))
     (testing "a missing duration slows the game down; it does not crash it"
-      (is (nil? (timer/clock-events {} t0 {:phase :vote}))))))
+      (is (nil? (timer/clock-events {} t0 {:phase :election}))))))
 
 ;; -------------------------------------------------------------------- firing ---
 
@@ -206,23 +206,27 @@
         (room/submit! ctx room-id 0 {:type :start-game})
         (skip-night! ctx room-id)
         (is (= :discussion (phase ctx room-id)))
-        ;; Discussion and nomination both time out, which walks us into the vote.
-        (timer/tick! ctx (inc (deadline ctx room-id)))
-        (is (= :nomination (phase ctx room-id)))
         (let [st (room/state-of ctx room-id)
               living (engine/living-ids st)
-              nominee (second living)]
-          (room/submit! ctx room-id (first living) {:type :nominate :target nominee})
-          (timer/tick! ctx (inc (deadline ctx room-id)))
-          (is (= :vote (phase ctx room-id)))
-          ;; One voter, everybody else silent.
-          (room/submit! ctx room-id (first living) {:type :vote :target nominee})
-          (timer/tick! ctx (inc (deadline ctx room-id)))
-          (let [st' (room/state-of ctx room-id)]
-            (is (not= :vote (:phase st')) "the vote closed on time")
-            (is (some #(= :vote/resolved (:type %)) (:log st')))
-            (is (false? (get-in st' [:players nominee :alive?]))
-                "a single vote against a lone nominee is a majority of the votes cast")))))))
+              accused (second living)]
+          (testing "a single vote, everybody else silent: no majority"
+            (room/submit! ctx room-id (first living) {:type :vote :target accused})
+            (timer/tick! ctx (inc (deadline ctx room-id)))
+            (let [st' (room/state-of ctx room-id)]
+              (is (not= :discussion (:phase st')) "the ballot closed on time")
+              (is (:no-majority? (last (filter #(= :vote/resolved (:type %)) (:log st')))))
+              (is (get-in st' [:players accused :alive?])
+                  "the silent count against a condemnation, as abstentions do")))
+          (testing "while the votes that WERE cast still decide, given a majority"
+            (skip-night! ctx room-id)
+            (let [st (room/state-of ctx room-id)
+                  living (set (engine/living-ids st))
+                  voters (take (inc (quot (count living) 2)) (remove #{accused} (sort living)))]
+              (is (= :discussion (:phase st)))
+              (is (living accused) "the skipped night killed nobody")
+              (doseq [v voters] (room/submit! ctx room-id v {:type :vote :target accused}))
+              (timer/tick! ctx (inc (deadline ctx room-id)))
+              (is (false? (get-in (room/state-of ctx room-id) [:players accused :alive?]))))))))))
 
 (deftest a-lone-timed-out-vote-with-nobody-voting-kills-nobody
   (with-ctx [ctx]
@@ -230,8 +234,8 @@
       (room/submit! ctx room-id 0 {:type :start-game})
       (skip-night! ctx room-id)
       (let [alive-before (set (engine/living-ids (room/state-of ctx room-id)))]
-        ;; discussion -> nomination -> vote -> resolve, entirely on the clock
-        (dotimes [_ 3] (timer/tick! ctx (inc (deadline ctx room-id))))
+        ;; the day's ballot closes on the clock, and the verdict follows at once
+        (timer/tick! ctx (inc (deadline ctx room-id)))
         (let [st (room/state-of ctx room-id)]
           (is (some #(= :vote/resolved (:type %)) (:log st)))
           (is (= alive-before (set (engine/living-ids st)))
@@ -368,12 +372,12 @@
         (finally (cleanup! path))))))
 
 (deftest restart-events-leave-a-live-deadline-alone
-  (is (nil? (timer/restart-events game-cfg t0 {:phase :vote :deadline (+ t0 5000)}))
+  (is (nil? (timer/restart-events game-cfg t0 {:phase :election :deadline (+ t0 5000)}))
       "a server that was only briefly down must not hand out extra time")
   (testing "and an expired one is measured from the instant we were handed,
             never from whenever a wall clock is next consulted"
     (is (= [{:type :phase/deadline :at (+ t0 60000)}]
-           (timer/restart-events game-cfg t0 {:phase :vote :deadline (- t0 5000)}))))
+           (timer/restart-events game-cfg t0 {:phase :election :deadline (- t0 5000)}))))
   (testing "a stale deadline on a phase with no clock is simply stopped"
     (is (= [{:type :phase/deadline :at nil}]
            (timer/restart-events game-cfg t0 {:phase :lobby :deadline (- t0 5000)})))))
@@ -395,7 +399,7 @@
         ;; Plant a room whose state cannot be reasoned about at all.
         (swap! (:rooms ctx) assoc "BAD"
                {:room-id "BAD" :seq 0 :sinks {} :chat [] :lock (Object.)
-                :state {:phase :vote :deadline 1}})
+                :state {:phase :election :deadline 1}})
         (let [fired (timer/tick! ctx (inc (deadline ctx good)))]
           (is (contains? (set fired) good) "the healthy room still fired"))))))
 
@@ -424,9 +428,9 @@
           (is (nil? (deadline ctx room-id))))))))
 
 (deftest clock-events-arms-nothing-in-an-untimed-room
-  (is (nil? (timer/clock-events game-cfg t0 {:phase :vote :timer? false})))
+  (is (nil? (timer/clock-events game-cfg t0 {:phase :election :timer? false})))
   (is (= [{:type :phase/deadline :at nil}]
-         (timer/clock-events game-cfg t0 {:phase :vote :timer? false :deadline (+ t0 5)}))
+         (timer/clock-events game-cfg t0 {:phase :election :timer? false :deadline (+ t0 5)}))
       "a deadline left from before the switch is cleared, not left to fire"))
 
 ;; ------------------------------------------------------------- an empty room ---
@@ -461,16 +465,16 @@
 (deftest clock-events-in-an-empty-room
   (let [gone {0 {:connected? false} 1 {:connected? false}}]
     (is (= [{:type :phase/deadline :at nil}]
-           (timer/clock-events game-cfg t0 {:phase :vote :deadline (+ t0 5) :players gone})))
-    (is (nil? (timer/clock-events game-cfg t0 {:phase :vote :players gone})))
-    (is (nil? (timer/expiry-events (+ t0 10) {:phase :vote :deadline t0 :players gone}))
+           (timer/clock-events game-cfg t0 {:phase :election :deadline (+ t0 5) :players gone})))
+    (is (nil? (timer/clock-events game-cfg t0 {:phase :election :players gone})))
+    (is (nil? (timer/expiry-events (+ t0 10) {:phase :election :deadline t0 :players gone}))
         "and an expired deadline does not fire either")
     (is (= [{:type :phase/deadline :at nil}]
-           (timer/restart-events game-cfg t0 {:phase :vote :deadline (+ t0 5000) :players gone}))
+           (timer/restart-events game-cfg t0 {:phase :election :deadline (+ t0 5000) :players gone}))
         "a restart that finds nobody leaves no clock running, live or expired")
     (testing "one seat present is enough"
       (is (= [{:type :phase/deadline :at (+ t0 60000)}]
-             (timer/clock-events game-cfg t0 {:phase :vote
+             (timer/clock-events game-cfg t0 {:phase :election
                                               :players (assoc-in gone [1 :connected?] true)}))))))
 
 ;; --------------------------------------------------------------- absence ---
