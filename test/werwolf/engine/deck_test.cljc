@@ -142,6 +142,10 @@
     (is (= :no-villager (first (refusal (set-deck (lobby 4) {:werwolf 4})))))
     (is (= :no-villager
            (first (refusal (set-deck (lobby 4) {:werwolf 3 :weisser-werwolf 1}))))))
+  (testing "a pack as big as everybody else: the village could never reach a
+            majority against it"
+    (is (= :too-many-werewolves (first (refusal (set-deck (lobby 4) {:werwolf 2})))))
+    (is (nil? (first (refusal (set-deck (lobby 5) {:werwolf 2}))))))
   (testing "a deck that fits is offered like any other"
     (let [s (set-deck (lobby 5) {:werwolf 1 :seherin 1})]
       (is (= [nil true nil nil] (refusal s)))))
@@ -232,3 +236,33 @@
     (is (= (set (remove #{:dorfbewohner} roles/all-ids)) (set (map :role roles-menu))))
     (is (= {:role :werwolf :max nil} (first roles-menu)) "the pack first")
     (is (= 1 (:max (first (filter #(= :seherin (:role %)) roles-menu)))))))
+
+;; ------------------------------------------------- the Spielleiter's deal ---
+
+(defn- setup-with [assignments]
+  (tu/narrated-setup-with assignments))
+
+(deftest a-deal-rearranged-into-no-game-cannot-begin
+  (let [ok {1 :werwolf 2 :seherin 3 :dorfbewohner 4 :dorfbewohner 5 :hexe}
+        s  (setup-with ok)]
+    (is (nil? (phases/deal-problem s)))
+    (is (contains? (phases/legal-actions s 0) :begin-night))
+    (testing "the Spielleiter turns the wolf into a villager"
+      (let [s (exec! s {:type :gm/reassign-role :player 0 :target 1 :role :dorfbewohner})]
+        (is (= :no-werewolf (phases/deal-problem s)))
+        (is (not (contains? (phases/legal-actions s 0) :begin-night))
+            "the night is not offered")
+        (is (= {:error :deal-unplayable :detail {:problem :no-werewolf}}
+               (second (try-exec s {:type :begin-night :player 0})))
+            "and refused with the reason")
+        (testing "which only he is told: to the table it would be a role leak"
+          (is (= :no-werewolf (get-in (view/view-for s 0) [:narrator-info :deal-problem])))
+          (is (nil? (:narrator-info (view/view-for s 2)))))
+        (testing "and putting a wolf back makes it a game again"
+          (let [s (exec! s {:type :gm/reassign-role :player 0 :target 3 :role :werwolf})]
+            (is (nil? (phases/deal-problem s)))
+            (is (= :night (:phase (exec! s {:type :begin-night :player 0}))))))))
+    (testing "every card a wolf, or a pack as big as the rest"
+      (is (= :no-villager (phases/deal-problem (setup-with {1 :werwolf 2 :werwolf 3 :werwolf}))))
+      (is (= :too-many-werewolves
+             (phases/deal-problem (setup-with {1 :werwolf 2 :werwolf 3 :seherin 4 :hexe})))))))

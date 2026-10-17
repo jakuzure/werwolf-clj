@@ -323,7 +323,10 @@
                        ;; Who the game is still waiting on. At night that names
                        ;; the holders of the role being called, which is why it
                        ;; lives here and nowhere public.
-                       :owing  (phases/owing state)})})))
+                       :owing  (phases/owing state)
+                       ;; Why his deal in :setup cannot begin. His alone: "no
+                       ;; werewolf" said to the table would be a role leak.
+                       :deal-problem (phases/deal-problem state)})})))
 
 ;; ------------------------------------------------------- leak detector ---
 

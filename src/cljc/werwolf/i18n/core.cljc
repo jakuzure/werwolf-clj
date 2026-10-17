@@ -150,6 +150,7 @@
     :too-many-roles (t locale :deck/problem-too-many-roles specials players)
     :no-werewolf    (t locale :deck/problem-no-werewolf)
     :no-villager    (t locale :deck/problem-no-villager)
+    :too-many-werewolves (t locale :deck/problem-too-many-werewolves)
     nil))
 
 ;; ---------------------------------------------------------------- log lines ---

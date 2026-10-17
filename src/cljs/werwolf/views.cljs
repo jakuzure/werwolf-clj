@@ -388,7 +388,8 @@
         reaction @(rf/subscribe [::sub/awaiting-reaction])
         waiting  @(rf/subscribe [::sub/waiting-for])
         me       @(rf/subscribe [::sub/me-view])
-        narrator? @(rf/subscribe [::sub/narrator?])]
+        narrator? @(rf/subscribe [::sub/narrator?])
+        deal-problem (:deal-problem @(rf/subscribe [::sub/narrator-info]))]
     (when-not (#{:lobby :game-over} phase)
       (let [[tone headline detail]
             (cond
@@ -400,7 +401,13 @@
               narrator?
               ["border-violet-500 bg-violet-950/50 text-violet-100"
                (t :turn/narrating)
-               (when (= :setup phase) (t :setup/hint))]
+               (when (= :setup phase)
+                 ;; Instead of the hint, not under it: the button the hint
+                 ;; points at is not there until the deal is fixed.
+                 (if deal-problem
+                   [:span {:class "text-amber-300 font-semibold" :data-testid "deal-problem"}
+                    (str "⚠ " (t :setup/problem (i18n/deck-problem-text (lc) deal-problem nil nil)))]
+                   (t :setup/hint)))]
 
               reaction
               ["border-rose-500 bg-rose-950/60 text-rose-100"

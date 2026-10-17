@@ -379,12 +379,12 @@
   (and (= :werewolf (team-of id))
        (= :target/collective (:night-action (role id)))))
 
-(defn deck-problem
-  "Why a custom deck cannot be dealt to a table of n, or nil when it can.
+(defn cards-problem
+  "Why these cards, one per player, are not a game, or nil when they are.
 
-     :too-many-roles  more specials than seats
-     :no-werewolf     nobody hunts the village
-     :no-villager     nobody but the wolves — the game is over before it starts
+     :no-werewolf          nobody hunts the village
+     :no-villager          nobody but the wolves — the game is over before it starts
+     :too-many-werewolves  the wolf team is as big as everyone else together
 
    :no-werewolf asks for a card that HUNTS, not merely one on the werewolf team.
    The Weißer Werwolf alone is on that team and kills only wolves; with no pack
@@ -392,16 +392,34 @@
    village cannot lose. That is not a game anybody chose, it is a deck missing
    its wolves.
 
+   :too-many-werewolves because a condemnation needs a majority of the living:
+   a pack as big as the rest of the table votes down every ballot it is not
+   on, and eats one more villager every night. The village has lost on the
+   deal. Automatic decks never come close — a quarter of the table at most.
+
+   Asked of the lobby's deck and of the Spielleiter's hand-made deal alike, so
+   the two cannot disagree about what a game is."
+  [cards]
+  (let [wolves (count (filter #(= :werewolf (team-of %)) cards))]
+    (cond
+      (not (some hunts? cards))           :no-werewolf
+      (= wolves (count cards))            :no-villager
+      (>= (* 2 wolves) (count cards))     :too-many-werewolves)))
+
+(defn deck-problem
+  "Why a custom deck cannot be dealt to a table of n, or nil when it can:
+   :too-many-roles when it holds more specials than seats, otherwise what
+   `cards-problem` says of the deal it makes.
+
    An automatic deck (nil) is never a problem: `compose-roles` is built to fit
    any table from `absolute-min-players` up, and that floor is checked
    separately by the start rule."
   [deck n]
   (when deck
     (let [cards (compose-custom deck n)]
-      (cond
-        (> (count cards) n)                          :too-many-roles
-        (not (some hunts? cards))                    :no-werewolf
-        (every? #(= :werewolf (team-of %)) cards)    :no-villager))))
+      (if (> (count cards) n)
+        :too-many-roles
+        (cards-problem cards)))))
 
 (defn compose-deck
   "The full deal: `{:deck [n roles] :centre [roles]}`.
