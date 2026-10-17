@@ -90,11 +90,13 @@
       ;; player row is now the one the Weißer Werwolf wins, which keeps a pinned
       ;; case exercising the solo victory end to end.
       ;; And again for the day as one open ballot, which also moves every row.
-      12 8675309 182 63  :weisser-werwolf
-      9  4242    220 65  :werewolf
-      18 777     311 118 :werewolf
-      5  31337   59  18  :village
-      14 90210   189 80  :village)))
+      ;; And for the Hexe sleeping through a kill-free first night: every
+      ;; table that deals her moved.
+      12 8675309 179 62  :weisser-werwolf
+      9  4242    151 47  :village
+      18 777     308 117 :werewolf
+      5  31337   56  17  :village
+      14 90210   269 103 :werewolf)))
 
 (deftest state-matches-its-schema-at-every-step
   (testing "the closed GameState schema holds through a whole game, so state

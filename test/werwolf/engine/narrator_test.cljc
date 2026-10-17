@@ -274,9 +274,8 @@
         (is (zero? (tu/count-log s :phase/timed-out)))))
     (testing "the election"
       (let [s (tu/narrated-game-with cast-of-5 {:first-night-kill? false :election? true})
-            ;; Nobody acts on a peaceful first night with a passive Hexe.
-            s (exec! s {:type :seherin-inspect :player 4 :target 2})
-            s (exec! s {:type :hexe-pass :player 3})]
+            ;; On a peaceful first night only the Seherin wakes.
+            s (exec! s {:type :seherin-inspect :player 4 :target 2})]
         (is (= :election (:phase s)))
         (let [s (exec! s {:type :elect :player 1 :target 4})
               s (exec! s {:type :advance-phase :player 0})]
