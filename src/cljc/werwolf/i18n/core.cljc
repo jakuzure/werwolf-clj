@@ -71,6 +71,7 @@
    :night/quiet      :verdict
    :game/ended       :verdict
    :game/abandoned   :verdict
+   :game/reset       :night
    :night/began      :night
    :game/started     :night
    :night/ended      :day
@@ -268,6 +269,7 @@
                                        :weisser-werwolf :log/win-weisser
                                        :log/win-village))
       :game/abandoned      (t locale :log/game-abandoned)
+      :game/reset          (t locale :log/game-reset)
       ;; A newer server may log something this client has never heard of. Show
       ;; the raw type rather than a blank line: visible is debuggable.
       (str type))))

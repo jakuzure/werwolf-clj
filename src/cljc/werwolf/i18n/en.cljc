@@ -127,6 +127,7 @@
 
    ;; ----------------------------------------------------------- actions ---
    :action/start-game      "Start the game"
+   :action/play-again      "Play again with this table"
    :action/leave           "Leave"
    :action/set-locale      "Language"
    :action/chat            "Say"
@@ -240,6 +241,7 @@
    :game/paused         "Clock paused"
    :game/new-round      "Back — new game"
    :game/over-hint      "Every role is revealed now."
+   :game/play-again-wait "The host can start another round with all of you."
    :game/dead-hint      "You are dead — you are only watching now."
 
    ;; ------------------------------------------------------------- turn ---
@@ -402,6 +404,7 @@
    :log/win-lovers    "The lovers win"
    :log/win-weisser   "The Weißer Werwolf wins alone"
    :log/game-abandoned "Nobody came back — the game is closed"
+   :log/game-reset     "Another round — the cards are shuffled again"
 
    :log/group-ready        (fn [names] (str names " are done"))
    :log/group-passed       (fn [names] (str names " accuse nobody"))

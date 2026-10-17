@@ -190,7 +190,7 @@
     (assoc state :phase :game-over :winner nil)
     (e/apply-event state ev)))
 
-(defn- step [acc ev]
+(defn- step-in-game [acc ev]
   (let [before (:state acc)
         after  (fold before ev)
         acc    (assoc acc :state after)
@@ -216,6 +216,13 @@
     (if (= :werewolf/chose (:type ev))
       (if (current acc) (give-wolves-their-victim acc before ev) acc)
       (add-entries acc (facts before ev)))))
+
+(defn- step [acc ev]
+  (if (= :game/reset (:type ev))
+    ;; The same room, a new game: the story so far was the last game's, and
+    ;; the recap tells only the one that ends the log.
+    {:state (fold (:state acc) ev) :rounds [] :dealt nil :deaths {}}
+    (step-in-game acc ev)))
 
 (defn- cast-list
   "Who was who: every player of the game in seat order, with the card they ended

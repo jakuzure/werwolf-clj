@@ -611,7 +611,10 @@
   [state pid]
   (let [phase (:phase state)]
     (cond
-      (or (not= pid (:host state)) (= :game-over phase)) #{}
+      (not= pid (:host state)) #{}
+
+      ;; Nothing left to run but the next game: the same table, dealt again.
+      (= :game-over phase) #{:play-again}
 
       ;; Arranging the table, not running a game: who narrates, whether there
       ;; is a clock, and who holds this seat. Handing the seat over belongs here
@@ -835,6 +838,8 @@
     :begin-night :gm/toggle-narrated :gm/toggle-timer
     ;; Names nobody: the seat it takes is the host's.
     :claim-host
+    ;; The whole table again, whoever is sitting at it.
+    :play-again
     ;; The deck travels as a map of its own, not as a seat or a word: the whole
     ;; deck in every command, validated against the registry by the handler.
     :gm/set-deck :gm/auto-deck})

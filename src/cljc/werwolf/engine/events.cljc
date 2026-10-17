@@ -705,6 +705,31 @@
       (assoc :phase :game-over :winner winner :deadline nil)
       (publish {:type :game/ended :winner winner})))
 
+;; The same table, again: back to the lobby the game was started from, with
+;; everybody still in their seat. What belongs to the ROOM survives — the
+;; seats, who hosts and who narrates, the clock, the door, the Spielleiter's
+;; deck — and everything the last game wrote is gone, cards and lovers and the
+;; Bürgermeister included.
+;;
+;; Built from `:game/created` rather than by dissoc-ing the game's keys one by
+;; one: a list of what to forget would forget to forget the next key somebody
+;; adds. The seed carries over, already advanced by the last deal, so the next
+;; deal is a new one. The Chronik starts over with the game.
+(defmethod apply-event :game/reset
+  [state _]
+  (let [fresh (apply-event nil (assoc (select-keys state [:room-id :host :seed :min-players
+                                                          :max-players :first-night-kill?])
+                                      :type :game/created))]
+    (-> fresh
+        (merge (select-keys state [:narrated? :timer? :password-hash :deck :host-absent?]))
+        (assoc :players
+               (into {}
+                     (map (fn [[pid p]]
+                            [pid (-> (select-keys p [:id :name :locale :connected? :absent-since])
+                                     (assoc :role nil :alive? true))]))
+                     (:players state)))
+        (publish {:type :game/reset}))))
+
 ;; Server-authored: nobody came back, and the server closed the room. An end
 ;; without a winner, logged rather than only flagged in the rooms table, so a
 ;; replay for a recap ends where the game really did instead of hanging in
