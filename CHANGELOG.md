@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.6.0](https://github.com/jakuzure/werwolf-clj/compare/v0.5.0...v0.6.0) (2026-10-17)
+
+
+### Features
+
+* explain the game and its roles on the start page ([05dec7c](https://github.com/jakuzure/werwolf-clj/commit/05dec7ca8d74697205f799e8d4181b12a59f744f))
+* let the host deal the same table again after a game ([6a6b214](https://github.com/jakuzure/werwolf-clj/commit/6a6b2144fde50ac4bc5a3f89d6836fb1e16bc2d9))
+* make the day one open ballot that needs a majority ([299df26](https://github.com/jakuzure/werwolf-clj/commit/299df264fdd47d444ceed985f360c6c397e47896))
+* the first round as in Düsterwald, without a guess on day 1 ([e64e97f](https://github.com/jakuzure/werwolf-clj/commit/e64e97f2abba99d1f2b0ee74bc677969920484c6))
+
+
+### Bug Fixes
+
+* refuse to begin the night on a deal that is no game ([30136c9](https://github.com/jakuzure/werwolf-clj/commit/30136c97f200b1f3e88fb4dd424e3c11c9202122))
+* the Hexe sleeps through a first night without a kill ([780284b](https://github.com/jakuzure/werwolf-clj/commit/780284b1a0227ea557c9b768f6d470a6190fd673))
+* **ui:** keep the Spielleiter on the board once the game has begun ([b3e17c4](https://github.com/jakuzure/werwolf-clj/commit/b3e17c44015adc1fdb3a141e2dd4a658bcaeede2))
+* **ui:** show a player's initial, not their seat number ([286f1c6](https://github.com/jakuzure/werwolf-clj/commit/286f1c6ccdb7101bb44b004e3988030c45dcdd09))
+* **ui:** switch the language on the landing page without an error ([c3821fc](https://github.com/jakuzure/werwolf-clj/commit/c3821fc7133568311c81c657b8cabed897f50a73))
+
 ## [0.5.0](https://github.com/jakuzure/werwolf-clj/compare/v0.4.0...v0.5.0) (2026-10-13)
 
 
