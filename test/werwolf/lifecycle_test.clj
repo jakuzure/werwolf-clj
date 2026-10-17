@@ -21,7 +21,7 @@
 (def ^:private hour (* 60 60 1000))
 
 (def ^:private game-cfg
-  {:narrated? false :first-night-kill? true
+  {:narrated? false :first-night-kill? true :first-day-trial? true
    :discussion-secs 300 :nomination-secs 90 :vote-secs 60 :night-secs 45
    :election-secs 60 :reaction-secs 30})
 

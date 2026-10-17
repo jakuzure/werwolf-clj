@@ -371,6 +371,7 @@
                   (or min-players (:min-players cfg) 5))
         max* (max min* (or max-players (:max-players cfg) 18))
         first-kill? (boolean (:first-night-kill? cfg))
+        first-trial? (boolean (:first-day-trial? cfg))
         narrated?* (boolean (if (some? narrated?) narrated? (get cfg :narrated? true)))]
     (with-room ctx room-id
       (fn [r]
@@ -383,6 +384,7 @@
                        :min-players min*
                        :max-players max*
                        :first-night-kill? first-kill?
+                       :first-day-trial? first-trial?
                        :narrated?   narrated?*
                        ;; The clock follows the mode, as it does when the host
                        ;; flips it later — see :game/narrated-set.

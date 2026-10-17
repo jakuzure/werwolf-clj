@@ -32,7 +32,7 @@
 
 (def ^:private genesis
   (into [{:type :game/created :room-id "RCAP" :host 0 :seed 1 :min-players 5
-          :first-night-kill? true :narrated? true :timer? false}
+          :first-night-kill? true :first-day-trial? true :narrated? true :timer? false}
          {:type :room/password-set :hash hash-marker}]
         (map (fn [i] {:type :player/joined :player i :name (str "P" i) :locale :de}))
         (range 10)))

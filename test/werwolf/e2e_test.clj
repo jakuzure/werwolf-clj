@@ -46,6 +46,8 @@
                                 ;; Classic first night, so Amor and the wolves
                                 ;; are both awake in the same night.
                                 :first-night-kill? true
+                                ;; And the classic first day: its vote is scripted below.
+                                :first-day-trial? true
                                 ;; The creator plays: the scripted game below
                                 ;; deals a card to every socket it opens.
                                 :narrated? false}}))]

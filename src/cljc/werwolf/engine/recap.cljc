@@ -140,6 +140,7 @@
       :mayor/vacated   [{:type :mayor/vacated :by (:by ev)}]
       :player/nominated [{:type :player/nominated :by (:by ev) :target target}]
       :day/no-accusation [{:type :day/no-accusation}]
+      :day/no-trial      [{:type :day/no-trial}]
       :vote/resolved [{:type :vote/resolved :target target :tie? (boolean (:tie? ev))
                        :votes (or (:votes before) {})}]
 

@@ -115,7 +115,7 @@
    :role/dieb         "Dieb"
    :role/amor         "Amor"
 
-   :role-desc/werwolf      "Each night from the second on, you and the pack take a victim."
+   :role-desc/werwolf      "Each night, you and the pack take a victim."
    :role-desc/dorfbewohner "You have no night action — only your voice by day."
    :role-desc/seherin      "The seer. Each night you may learn one player's role."
    :role-desc/hexe         "The witch. One healing potion, one poison, once each per game."
@@ -277,6 +277,7 @@
    :explain/day-reveal  "Dawn breaks. You are about to learn what the night has done."
    :explain/election    "Elect a mayor. Their vote counts twice in every ballot."
    :explain/discussion  "Talk it over: who do you not trust? Say when you are done."
+   :explain/first-discussion "Get to know each other. Nobody is accused today — say when you are done, and the night falls."
    :explain/nomination  "Everyone may accuse one person — or pass."
    :explain/vote        "Vote on the accused. On a tie nobody dies."
    :explain/day-resolve "The verdict falls."
@@ -359,6 +360,7 @@
    :log/ready         (fn [n] (str n " is done"))
    :log/nominate-passed (fn [n] (str n " accuses nobody"))
    :log/no-accusation "The village accuses nobody — nobody dies today"
+   :log/no-trial      "Nobody is accused on the first day"
    :log/jaeger-held-fire (fn [n] (str n " lowers the rifle"))
    :log/vote-cast     (fn [v t] (str v " → " t))
    :log/vote-abstained (fn [v] (str v " abstains"))

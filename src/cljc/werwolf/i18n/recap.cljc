@@ -66,6 +66,7 @@
       :mayor/vacated   ["🎖" :plain (log entry)]
       :player/nominated ["👉" :plain (i18n/t locale :recap/nominated (nm (:by entry)) (nm target))]
       :day/no-accusation ["⚖" :verdict (log entry)]
+      :day/no-trial      ["⚖" :verdict (log entry)]
       :vote/resolved   ["⚖" :verdict (log entry)]
       :game/abandoned  ["🚪" :verdict (i18n/t locale :recap/abandoned)]
       :gm/reassigned

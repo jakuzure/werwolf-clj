@@ -26,14 +26,15 @@
    defaulted here, so there is exactly one place that decides what a missing
    value means: `apply-event :game/created`."
   [{:keys [room-id host seed min-players max-players first-night-kill?
-           narrated? timer?]}]
+           first-day-trial? narrated? timer?]}]
   (events/apply-event nil (cond-> {:type        :game/created
                                    :room-id     room-id
                                    :host        host
                                    :seed        (or seed 0)
                                    :min-players (or min-players 5)
                                    :max-players max-players
-                                   :first-night-kill? first-night-kill?}
+                                   :first-night-kill? first-night-kill?
+                                   :first-day-trial? first-day-trial?}
                             (some? narrated?) (assoc :narrated? narrated?)
                             (some? timer?)    (assoc :timer? timer?))))
 

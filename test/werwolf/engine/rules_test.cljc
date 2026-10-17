@@ -407,6 +407,38 @@
         s (exec! s {:type :hexe-pass :player 4})]
     s))
 
+(deftest nobody-is-accused-on-the-first-day
+  (let [cast {0 :dorfbewohner 1 :dorfbewohner 2 :werwolf
+              3 :dorfbewohner 4 :hexe 5 :seherin}
+        day1 (fn [] (-> (tu/game-with cast {:first-night-kill? false :first-day-trial? false})
+                        (exec! {:type :seherin-inspect :player 5 :target 2})
+                        (exec! {:type :hexe-pass :player 4})))]
+    (testing "the shipped rule: the first day's talk ends in the night"
+      (let [s (day1)]
+        (is (= :discussion (:phase s)))
+        (is (false? (phases/trial-day? s)))
+        (let [s (reduce #(exec! %1 {:type :ready :player %2}) s (range 6))]
+          (is (= :night (:phase s)))
+          (is (= 2 (:night s)))
+          (is (= 1 (tu/count-log s :day/no-trial)) "and the Chronik says why"))))
+    (testing "the clock running out does the same"
+      (let [s (day1)]
+        (is (= [:day/no-trial :night/began]
+               (mapv :type (rest (phases/timeout-events s)))))))
+    (testing "and so does the host moving the day along"
+      (is (= [:day/no-trial :night/began]
+             (mapv :type (phases/advance-events (day1))))))
+    (testing "from the second day the village accuses again"
+      (let [s (-> (day1)
+                  (as-> s (reduce #(exec! %1 {:type :ready :player %2}) s (range 6)))
+                  (exec! {:type :seherin-inspect :player 5 :target 0})
+                  (exec! {:type :werewolf-vote :player 2 :target 3})
+                  (exec! {:type :hexe-pass :player 4}))]
+        (is (= :discussion (:phase s)))
+        (is (= 2 (:night s)))
+        (let [s (reduce #(exec! %1 {:type :ready :player %2}) s [0 1 2 4 5])]
+          (is (= :nomination (:phase s))))))))
+
 (deftest discussion-ends-when-everyone-says-they-are-done
   (testing "otherwise the table talks itself out in forty seconds and then
             watches a five-minute clock"
@@ -505,7 +537,8 @@
 
 (deftest an-expired-day-phase-simply-advances
   (are [phase next*] (= next*
-                        (:phase (second (phases/timeout-events {:phase phase}))))
+                        ;; Day 2: the first has no trial to advance into.
+                        (:phase (second (phases/timeout-events {:phase phase :night 2}))))
     :discussion :nomination
     :nomination :vote
     :vote       :day-resolve))

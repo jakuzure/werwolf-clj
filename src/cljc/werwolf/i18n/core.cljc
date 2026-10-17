@@ -68,6 +68,7 @@
    :jaeger/shot      :death
    :vote/resolved    :verdict
    :day/no-accusation :verdict
+   :day/no-trial     :verdict
    :night/quiet      :verdict
    :game/ended       :verdict
    :game/abandoned   :verdict
@@ -242,6 +243,7 @@
       :player/ready        (t locale :log/ready (nm player))
       :nominate/passed     (t locale :log/nominate-passed (nm player))
       :day/no-accusation   (t locale :log/no-accusation)
+      :day/no-trial        (t locale :log/no-trial)
       :jaeger/held-fire    (t locale :log/jaeger-held-fire (nm player))
       :vote/cast           (if target
                              (t locale :log/vote-cast (nm voter) (nm target))

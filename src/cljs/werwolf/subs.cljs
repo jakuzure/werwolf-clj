@@ -307,10 +307,14 @@
                    phase)
     (let [steps (cond-> [:night :day-reveal]
                   (= 1 night) (conj :election)
-                  true (into [:discussion :nomination :vote :day-resolve]))
+                  true (conj :discussion)
+                  ;; No trial on the first day: the talk is its last step.
+                  (not= 1 night) (into [:nomination :vote :day-resolve]))
           current (if (= :reaction phase)
                     (case (some #{:night/ended :day/began} (map :type (rseq (vec log))))
-                      :day/began :day-resolve
+                      ;; The first day has no verdict to break into; its talk
+                      ;; is the step a reaction then interrupts.
+                      :day/began (if (= 1 night) :discussion :day-resolve)
                       :day-reveal)
                     phase)
           at (.indexOf steps current)]
