@@ -14,6 +14,27 @@
             [werwolf.engine.view :as view]
             [werwolf.proto :as proto]))
 
+(def volume
+  "How many of its random games the breadth tests play, as a share of the full
+   run. SIM_VOLUME overrides it on either platform: SIM_VOLUME=1 on Node plays
+   everything, SIM_VOLUME=4 on the JVM plays four times as many.
+
+   The full run on the JVM and a quarter of it on Node. The random games are
+   most of both suites' time, and they find rule bugs, which are the same bugs
+   on either platform — what Node is there for is that a seed plays the SAME
+   game there, and the pinned fingerprints check exactly that. Node runs the
+   same games several times slower, and repeating all of them bought nothing
+   but ten minutes of CI."
+  (or (some-> #?(:clj (System/getenv "SIM_VOLUME")
+                 :cljs (some-> js/process .-env .-SIM_VOLUME))
+              parse-double)
+      #?(:clj 1 :cljs 0.25)))
+
+(defn games
+  "`n` games scaled by `volume`, never fewer than one per table size."
+  [n]
+  (max 14 (int (* n volume))))
+
 (def ^:const max-turns
   "A real game of 18 finishes well inside this. Hitting it means a livelock."
   2000)
