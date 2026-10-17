@@ -375,14 +375,21 @@
    {:db (assoc db :deck/draft nil)
     ::ws/send {:type :client/command :cmd {:type :gm/auto-deck}}}))
 
-(rf/reg-event-fx
- ::set-locale
- ;; Both: locally so the landing screen switches before there is a seat to
- ;; record it against, and as a command so the server holds it as per-player
- ;; state that survives a reload. The server's copy wins once seated.
- (fn [{:keys [db]} [_ locale]]
-   {:db (assoc db :locale locale)
-    ::ws/send {:type :client/command :cmd {:type :set-locale :locale locale}}}))
+(defn set-locale-fx
+  "Both: locally so the landing screen switches before there is a seat to
+   record it against, and as a command so the server holds it as per-player
+   state that survives a reload. The server's copy wins once seated.
+
+   The command only while seated, like `voice-report`. On the landing page the
+   socket has no seat, the server answered :not-in-room, and switching the
+   language greeted the player with \"You are not in this game\". Nothing is
+   lost by not sending it: create and join carry the local choice along."
+  [{:keys [db]} [_ locale]]
+  (cond-> {:db (assoc db :locale locale)}
+    (:me db) (assoc ::ws/send {:type :client/command
+                               :cmd {:type :set-locale :locale locale}})))
+
+(rf/reg-event-fx ::set-locale set-locale-fx)
 
 (defn send-chat-fx
   "Named and public so the clearing behaviour is testable without a browser —
