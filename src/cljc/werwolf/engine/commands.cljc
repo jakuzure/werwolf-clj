@@ -17,6 +17,8 @@
 
 (defn- err [code detail] {:error code :detail detail})
 
+(declare error?)
+
 (defn- allowed? [state pid action]
   (contains? (phases/legal-actions state pid) action))
 
@@ -120,6 +122,18 @@
        (if (e/narrator state)
          {:type :phase/changed :phase :setup :deadline nil}
          {:type :night/began :night 1})])))
+
+(defmethod handle :play-again
+  ;; The host's one-tap rematch: the same table, dealt again. Through the
+  ;; lobby's own start rule rather than around it, so a table that no longer
+  ;; makes a game — the deck no longer fits, somebody kicked out of it — ends
+  ;; up in the lobby, where the host can see why and fix it.
+  [state {:keys [player]}]
+  (if-not (allowed? state player :play-again)
+    (err :not-allowed {:action :play-again})
+    (let [reset [{:type :game/reset}]
+          start (handle (e/apply-all state reset) {:type :start-game :player player})]
+      (if (error? start) reset (into reset start)))))
 
 (defmethod handle :begin-night
   ;; The end of :setup. Its own command rather than :advance-phase, because it

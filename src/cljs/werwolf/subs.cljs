@@ -246,8 +246,9 @@
   "Offered, but never what the game is waiting for. Chat, language and the way
    out are always there. :claim-host is offered to everybody while the host is
    away, and nobody waits on it. :advance-phase is a Spielleitung power despite
-   its plain name — `host-actions` grants it, and its label says \"(SL)\"."
-  #{:chat :leave :set-locale :advance-phase :claim-host})
+   its plain name — `host-actions` grants it, and its label says \"(SL)\".
+   :play-again has a button of its own on the game-over panel."
+  #{:chat :leave :set-locale :advance-phase :claim-host :play-again})
 
 (defn player-moves
   "The actions that are this player's own moves in the game, sorted: what the

@@ -1547,11 +1547,19 @@
        ;; Every role is public now — view-for reveals them all once the game is
        ;; decided — so the table can finally read who everyone was.
        [:p {:class "text-sm text-amber-100/80"} (t :game/over-hint)]
+       ;; The host's rematch: everyone stays seated and the cards are dealt
+       ;; again. The others are told it is coming, so leaving is not the only
+       ;; thing the screen seems to offer them.
+       (if (contains? actions :play-again)
+         [btn (t :action/play-again) #(rf/dispatch [::ev/act :play-again])
+          {:testid "play-again"}]
+         [:p {:class "text-sm text-amber-100/80"} (t :game/play-again-wait)])
        ;; One tap, unlike the lobby's `leave-button`. Nothing is in progress
        ;; to lose any more, and this is the move the screen exists to offer —
        ;; asking 'really?' of the only way forward is friction, not safety.
        (when (contains? actions :leave)
-         [btn (t :game/new-round) #(rf/dispatch [::ev/leave])])
+         [btn (t :game/new-round) #(rf/dispatch [::ev/leave])
+          {:tone (if (contains? actions :play-again) :quiet :primary)}])
        ;; Below the way out rather than above it: the story is for reading at
        ;; leisure, the button for the people who already want the next round.
        [recap-panel]])))

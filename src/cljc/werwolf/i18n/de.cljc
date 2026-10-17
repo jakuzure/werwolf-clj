@@ -128,6 +128,7 @@
 
    ;; ----------------------------------------------------------- actions ---
    :action/start-game      "Spiel starten"
+   :action/play-again      "Nochmal mit dieser Runde"
    :action/leave           "Verlassen"
    :action/set-locale      "Sprache"
    :action/chat            "Sagen"
@@ -245,6 +246,7 @@
    :game/paused         "Zeit angehalten"
    :game/new-round      "Zurück — neue Runde"
    :game/over-hint      "Alle Rollen sind jetzt aufgedeckt."
+   :game/play-again-wait "Die Spielleitung kann gleich noch eine Runde mit euch allen starten."
    :game/dead-hint      "Du bist tot — du schaust nur noch zu."
 
    ;; ------------------------------------------------------------- turn ---
@@ -407,6 +409,7 @@
    :log/win-lovers    "Die Verliebten haben gewonnen"
    :log/win-weisser   "Der Weiße Werwolf hat allein gewonnen"
    :log/game-abandoned "Niemand ist zurückgekommen — die Runde ist beendet"
+   :log/game-reset     "Noch eine Runde — die Karten werden neu gemischt"
 
    ;; Plural roll-ups for the Chronik. Separate entries because the verb agrees
    ;; with the subject, which a count spliced into the singular form cannot do.
