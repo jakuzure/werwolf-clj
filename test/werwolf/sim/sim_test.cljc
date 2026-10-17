@@ -16,18 +16,24 @@
   (pr-str (mapv #(select-keys % [:reason :seed :players :turns :phase :cmd :violations])
                 failures)))
 
+(def ^:private standard-run
+  "The breadth run, played once and read by every test about it. Three tests
+   used to play it each — the same deterministic seeds, so the same games —
+   which was most of the suite's time and tested nothing twice."
+  (delay (h/play-many (h/games 120))))
+
 (deftest games-complete-without-violating-invariants
-  (let [{:keys [failures summary]} (h/play-many 120)]
+  (let [{:keys [failures summary]} @standard-run]
     (is (empty? failures) (str "failures: " (describe failures)))
     (testing "and the games are actually being played, not short-circuited"
-      (is (= 120 (:games summary)))
+      (is (= (h/games 120) (:games summary)))
       (is (> (:avg-turns summary) 20)
           "a real game takes many turns; a tiny average means games are aborting")
       (is (pos? (:avg-events summary))))))
 
 (deftest both-factions-can-win
   (testing "a balance sanity check — if one side never wins, a rule is broken"
-    (let [{:keys [summary]} (h/play-many 60)
+    (let [{:keys [summary]} @standard-run
           winners (:winners summary)]
       (is (pos? (get winners :village 0)) "the village must sometimes win")
       (is (pos? (get winners :werewolf 0)) "the werewolves must sometimes win"))))
@@ -126,10 +132,10 @@
             victory: a table of nothing but wolves is not a werewolf win while he
             is among them. If that delay were wrong the games would either hang or
             he would never win at all, so the summary is the evidence."
-    (let [{:keys [summary]} (h/play-many 120)
+    (let [{:keys [summary]} @standard-run
           winners (:winners summary)]
       (is (pos? (get winners :weisser-werwolf 0))
-          (str "he never won in 120 games: " (pr-str winners)))
+          (str "he never won in " (:games summary) " games: " (pr-str winners)))
       (testing "and he has not taken the game over either"
         (is (pos? (get winners :village 0)))
         (is (pos? (get winners :werewolf 0)))))))
@@ -143,9 +149,9 @@
             no way out shows up here as a deadlock — and every narrator
             invariant (no card, no move, never a target) is checked after every
             event, on top of the usual ones"
-    (let [{:keys [failures summary]} (h/play-many 60 {:narrated? true})]
+    (let [{:keys [failures summary]} (h/play-many (h/games 60) {:narrated? true})]
       (is (empty? failures) (str "failures: " (describe failures)))
-      (is (= 60 (:games summary)))
+      (is (= (h/games 60) (:games summary)))
       (is (> (:avg-turns summary) 10) "games are being played, not aborted")
       (testing "and both sides still win — the narrator moving things along
                 must not hand the game to either of them"
@@ -173,7 +179,7 @@
             never hold up a night turn, never reach a narrated game under way,
             and never stop a game from replaying"
     (doseq [opts [{:host-absent? true} {:host-absent? true :narrated? true}]]
-      (let [results (for [i (range 30)]
+      (let [results (for [i (range (h/games 30))]
                       (h/play-game (+ 5 (mod i 14)) (+ 7 (* i 104729)) opts))
             failures (vec (remove :ok? results))]
         (is (empty? failures) (str opts " failures: " (describe failures)))
@@ -193,9 +199,9 @@
             as a deadlock"
     (doseq [opts [{:random-deck? true}
                   {:random-deck? true :narrated? true}]]
-      (let [{:keys [failures summary]} (h/play-many 60 opts)]
+      (let [{:keys [failures summary]} (h/play-many (h/games 60) opts)]
         (is (empty? failures) (str (pr-str opts) " failures: " (describe failures)))
-        (is (= 60 (:games summary)))
+        (is (= (h/games 60) (:games summary)))
         (is (> (:avg-turns summary) 10) "games are being played, not aborted")))))
 
 (deftest the-random-decks-are-varied-and-valid

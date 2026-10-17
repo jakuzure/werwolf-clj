@@ -105,11 +105,24 @@ jobs:
       - name: JVM suite
         run: nix shell nixpkgs#babashka nixpkgs#clojure nixpkgs#jdk21_headless -c bb test
 
-      - name: ClojureScript suite
-        run: nix shell nixpkgs#babashka nixpkgs#clojure nixpkgs#jdk21_headless nixpkgs#nodejs_22 -c bb test:cljs
-
       - name: Preview controller suite
         run: nix shell nixpkgs#babashka -c bb previews:test
+
+  # A job of its own so it runs beside the JVM suite rather than after it. It
+  # plays a quarter of the simulation's random games (see harness/volume):
+  # Node is here to prove a seed plays the same game on both platforms, which
+  # the pinned fingerprints check, and the JVM already plays them all.
+  test-cljs:
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: DeterminateSystems/nix-installer-action@3138316df39ed29be04236d7ffc686fa525866aa # v23
+      - uses: DeterminateSystems/magic-nix-cache-action@84c0677f58dcedf3b91f8223ce36a9ea5b3c84b7 # v15
+        with:
+          use-flakehub: false
+
+      - name: ClojureScript suite
+        run: nix shell nixpkgs#babashka nixpkgs#clojure nixpkgs#jdk21_headless nixpkgs#nodejs_22 -c bb test:cljs
 
   browser:
     runs-on: ubuntu-26.04

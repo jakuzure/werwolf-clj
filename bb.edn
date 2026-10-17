@@ -84,7 +84,9 @@
 
   ;; ---------- quality ----------
   test
-  {:doc  "Run the Clojure test suite (engine + sim harness)"
+  {:doc  "Run the Clojure test suite (engine + sim harness).
+          SIM_VOLUME=4 bb test plays four times the random games, for a
+          thorough run; see werwolf.sim.harness/volume."
    :task (clojure "-M:test")}
 
   previews:test
@@ -104,7 +106,8 @@
 
   test:cljs
   {:doc     "Run the .cljc engine tests on ClojureScript/Node.
-             Guards cross-platform claims (e.g. rng producing identical numbers)."
+             Guards cross-platform claims (e.g. rng producing identical numbers).
+             Plays a quarter of the JVM's random games; SIM_VOLUME=1 for all."
    :depends [npm-install]
    :task    (do (shell "npx shadow-cljs compile test-node")
                 (shell "node target/node-tests.js"))}
