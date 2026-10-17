@@ -91,6 +91,8 @@
    :deck/problem-too-many-roles (fn [roles n] (str "Zu viele Rollen (" roles ") für " n " Spieler"))
    :deck/problem-no-werewolf    "Mindestens ein Werwolf muss mitspielen"
    :deck/problem-no-villager    "Mindestens eine Karte muss zum Dorf gehören"
+   :deck/problem-too-many-werewolves "Die Werwölfe müssen weniger sein als alle anderen zusammen"
+   :setup/problem               (fn [why] (str "So kann die Nacht nicht beginnen: " why))
 
    ;; ------------------------------------------------------------ phases ---
    :phase/lobby       "Warteraum"
@@ -504,6 +506,7 @@
    :error/too-many-of-role "So viele Karten dieser Rolle gibt es nicht"
    :error/deck-too-large   "So viele Karten passen an keinen Tisch"
    :error/deck-unplayable  "Mit diesen Rollen kann das Spiel nicht beginnen"
+   :error/deal-unplayable  "Mit dieser Verteilung kann die Nacht nicht beginnen"
    :error/distinct-targets-required "Bitte zwei verschiedene Mitspieler"
    :error/unsupported-locale "Diese Sprache gibt es nicht"
    :error/unknown-command  "Unbekannter Befehl"

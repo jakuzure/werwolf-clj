@@ -141,9 +141,16 @@
   ;; deal becomes final, and the button saying so should not look like the one
   ;; that hurries a discussion along.
   [state {:keys [player]}]
-  (if-not (allowed? state player :begin-night)
+  (cond
+    ;; Named before the generic refusal, like the lobby's deck: the
+    ;; Spielleiter is told what is wrong with his deal, not "not allowed".
+    (and (= player (:host state)) (phases/deal-problem state))
+    (err :deal-unplayable {:problem (phases/deal-problem state)})
+
+    (not (allowed? state player :begin-night))
     (err :not-allowed {:action :begin-night})
-    [{:type :night/began :night 1}]))
+
+    :else [{:type :night/began :night 1}]))
 
 ;; ---- night actions ----
 

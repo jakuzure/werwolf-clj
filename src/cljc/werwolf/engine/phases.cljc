@@ -660,6 +660,16 @@
   [state]
   (roles/deck-problem (:deck state) (count (e/participant-ids state))))
 
+(defn deal-problem
+  "Why the Spielleiter's deal cannot be played as it stands, or nil. Only in
+   :setup, where he rearranges the cards by hand: the night does not fall on a
+   table of nothing but villagers — the game would be decided before anybody
+   woke. The same reasons as the lobby's deck; see `roles/cards-problem`."
+  [state]
+  (when (= :setup (:phase state))
+    (roles/cards-problem (keep #(get-in state [:players % :role])
+                               (e/participant-ids state)))))
+
 (defn host-actions
   "GM powers, which belong to the room's host and are NOT lost on death.
 
@@ -700,8 +710,10 @@
       ;; The deal is on the table and not yet final. Deliberately NOT the
       ;; in-game overrides: there is nobody to kill or revive and no phase to
       ;; jump to before the first night has fallen.
+      ;; The night falls only on a deal that is a game; see `deal-problem`.
       (= :setup phase)
-      #{:begin-night :gm/reassign-role :gm/toggle-timer}
+      (cond-> #{:gm/reassign-role :gm/toggle-timer}
+        (nil? (deal-problem state)) (conj :begin-night))
 
       :else
       (cond-> #{:gm/force-kill :gm/revive :gm/set-phase :gm/reassign-role
