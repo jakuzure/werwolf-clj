@@ -35,12 +35,13 @@
    Player 0 is the host. Returns settled state, so :night-cursor is live.
 
    Defaults to the CLASSIC first night (`:first-night-kill? true`), i.e. the
-   wolves do have a turn. The product default is the opposite, but almost every
-   test in this suite is about night mechanics — the Hexe's heal, the Jäger's
-   chain, the wolf tally — and under the variant it would have to walk a whole
-   day to reach a night where anything happens.
+   wolves do have a turn — which is also what the server deals new rooms, as
+   FIRST_NIGHT_KILL defaults to true. Almost every test in this suite is about
+   night mechanics — the Hexe's heal, the Jäger's chain, the wolf tally — and
+   under the variant it would have to walk a whole day to reach a night where
+   anything happens.
 
-   Pass `{:first-night-kill? false}` to exercise the shipped rule.
+   Pass `{:first-night-kill? false}` to exercise the peaceful first night.
 
    The first day likewise defaults to the CLASSIC rule, a trial on day 1
    (`:first-day-trial? true`): a lynch is almost always tested on the first

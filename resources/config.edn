@@ -29,10 +29,13 @@
            ;; Generous: the Jäger has just been told he is dead and the whole
            ;; table is waiting on him.
            :reaction-secs   #long #or [#env REACTION_SECS 30]
-           ;; Rule variant. false (default): the werewolves have no turn on the
-           ;; first night, so nobody is eliminated before they have said a word.
-           ;; true restores the classic Düsterwald rule.
-           :first-night-kill? #boolean #or [#env FIRST_NIGHT_KILL "false"]
+           ;; Rule variant. true (default): the Düsterwald rule, the werewolves
+           ;; choose a victim on the first night too, so the first day — which
+           ;; has no trial — has something to talk about. false gives a
+           ;; peaceful first night: the wolves (and the Hexe, who answers them)
+           ;; sleep through it, and nobody is eliminated before they have said
+           ;; a word.
+           :first-night-kill? #boolean #or [#env FIRST_NIGHT_KILL "true"]
            ;; Rule variant. false (default): nobody is accused on the first
            ;; day — nobody knows anything yet, so it is talk and the election,
            ;; and then the night. true restores the classic Düsterwald rule.

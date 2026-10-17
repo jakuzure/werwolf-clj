@@ -99,7 +99,7 @@ in
     settings = mkOption {
       type = types.attrsOf types.str;
       default = { };
-      example = { DISCUSSION_SECS = "240"; FIRST_NIGHT_KILL = "true"; };
+      example = { DISCUSSION_SECS = "240"; FIRST_NIGHT_KILL = "false"; };
       description = ''
         Extra environment for the app: the optional knobs documented in
         deploy/.env.example. Nothing secret, since these land in the nix store.

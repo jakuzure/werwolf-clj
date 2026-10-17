@@ -114,7 +114,7 @@
    :role/dieb         "Dieb"
    :role/amor         "Amor"
 
-   :role-desc/werwolf      "Du reißt mit den anderen Wölfen jede Nacht ein Opfer — ab der zweiten."
+   :role-desc/werwolf      "Du reißt mit den anderen Wölfen jede Nacht ein Opfer."
    :role-desc/dorfbewohner "Du hast keine Nachtaktion — nur deine Stimme am Tag."
    :role-desc/seherin      "Jede Nacht darfst du die Rolle eines Mitspielers sehen."
    :role-desc/hexe         "Einmal im Spiel heilen, einmal vergiften."

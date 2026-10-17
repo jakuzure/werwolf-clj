@@ -113,7 +113,7 @@
    :role/dieb         "Dieb"
    :role/amor         "Amor"
 
-   :role-desc/werwolf      "Each night from the second on, you and the pack take a victim."
+   :role-desc/werwolf      "Each night, you and the pack take a victim."
    :role-desc/dorfbewohner "You have no night action — only your voice by day."
    :role-desc/seherin      "The seer. Each night you may learn one player's role."
    :role-desc/hexe         "The witch. One healing potion, one poison, once each per game."
