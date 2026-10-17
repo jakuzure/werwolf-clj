@@ -157,6 +157,31 @@
         votes  (get-in state [:night-actions :werewolf-votes] {})]
     (and (seq wolves) (every? #(contains? votes %) wolves))))
 
+;; ------------------------------------------------------- the first day ---
+
+(defn trial-day?
+  "Does today end in an accusation and a vote? Every day but the first.
+
+   On the first day nobody knows anything yet: the night was the cards being
+   looked at, and whoever the village accused would be a guess — usually the
+   quietest player, or the one who arrived last. So the first day is for
+   talking and the Bürgermeister's election, and the night falls when the
+   table is done. `:first-day-trial?`, stamped in at creation like
+   `:first-night-kill?`, restores the classic rule."
+  [state]
+  (or (:first-day-trial? state) (> (:night state 0) 1)))
+
+(declare next-phase)
+
+(defn- leave-day-phase
+  "The events that end a day phase: the next one, or, at the end of the first
+   day's talk, the night."
+  [state phase]
+  (if (and (= :discussion phase) (not (trial-day? state)))
+    [{:type :day/no-trial}
+     {:type :night/began :night (inc (:night state 0))}]
+    [{:type :phase/changed :phase (next-phase phase) :deadline nil}]))
+
 ;; ------------------------------------------------------- vote counting ---
 
 (defn tally
@@ -398,7 +423,7 @@
         ;; seconds and then watches a five-minute clock.
         :discussion
         (when (ready-done? state)
-          [{:type :phase/changed :phase :nomination :deadline nil}])
+          (leave-day-phase state :discussion))
 
         ;; The other two end themselves the moment nobody is still being waited
         ;; for. Sitting out a 90-second timer that everyone has already finished
@@ -506,7 +531,7 @@
 
               ;; The day marches on regardless. Uncast votes are abstentions,
               ;; which is what `tally` already does with them.
-              [{:type :phase/changed :phase (next-phase phase) :deadline nil}])))))
+              (leave-day-phase state phase))))))
 
 (defn timed?
   "Does this room have a clock at all? Absent means yes — every room did before
@@ -536,7 +561,7 @@
   (let [phase (:phase state)]
     (cond
       (contains? next-phase phase)
-      [{:type :phase/changed :phase (next-phase phase) :deadline nil}]
+      (leave-day-phase state phase)
 
       (and (not (timed? state)) (contains? clock-ended phase))
       (some-> (seq (rest (timeout-events state))) vec))))

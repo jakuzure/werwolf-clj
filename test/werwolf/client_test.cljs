@@ -552,6 +552,11 @@
     (testing "the election is on the first day only"
       (is (contains? (states {:phase :discussion :night 1}) :election))
       (is (not (contains? (states {:phase :discussion :night 2}) :election))))
+    (testing "the first day has no trial, so its talk is the last step"
+      (is (= [:night :day-reveal :election :discussion]
+             (map :step (sub/round-steps {:phase :discussion :night 1}))))
+      (is (= :current (:discussion (states {:phase :reaction :night 1
+                                            :log [{:type :night/ended} {:type :day/began}]})))))
     (testing "steps before the current one are done, after it to come"
       (is (= {:night :done :day-reveal :done :discussion :done :nomination :current
               :vote :todo :day-resolve :todo}

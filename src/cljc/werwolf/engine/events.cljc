@@ -128,7 +128,7 @@
 
 (defmethod apply-event :game/created
   [_ {:keys [room-id host seed min-players max-players first-night-kill?
-             narrated? timer?]}]
+             first-day-trial? narrated? timer?]}]
   (cond-> {:room-id        room-id
            :phase          :lobby
            :night          0
@@ -145,6 +145,9 @@
            ;; it was: false (the default) means the werewolves have no turn on
            ;; night 1.
            :first-night-kill? (boolean first-night-kill?)
+           ;; The same for the day: false (the default) means nobody is accused
+           ;; on day 1. See phases/trial-day?.
+           :first-day-trial? (boolean first-day-trial?)
            :lovers         nil
            :reactions      []
            :pending-deaths []
@@ -678,6 +681,13 @@
   [state _]
   (publish state {:type :day/no-accusation :day (:night state)}))
 
+(defmethod apply-event :day/no-trial
+  ;; Log-only, like :day/no-accusation: the first day ends without a vote by
+  ;; rule, and the table should read that it was the rule and not a day where
+  ;; nobody dared — see phases/trial-day?.
+  [state _]
+  (publish state {:type :day/no-trial :day (:night state)}))
+
 (defmethod apply-event :jaeger/held-fire
   [state {:keys [player]}]
   (publish state {:type :jaeger/held-fire :player player}))
@@ -718,7 +728,8 @@
 (defmethod apply-event :game/reset
   [state _]
   (let [fresh (apply-event nil (assoc (select-keys state [:room-id :host :seed :min-players
-                                                          :max-players :first-night-kill?])
+                                                          :max-players :first-night-kill?
+                                                          :first-day-trial?])
                                       :type :game/created))]
     (-> fresh
         (merge (select-keys state [:narrated? :timer? :password-hash :deck :host-absent?]))

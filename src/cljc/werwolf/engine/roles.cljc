@@ -42,15 +42,16 @@
     :night-order       200
     :night-action      :target/collective
     :knows-teammates?  true
-    ;; No kill on the first night. A player eliminated before they have said a
-    ;; single word has not played a game, they have watched one — and on night 1
-    ;; the wolves would be choosing at random anyway, so the kill costs the
-    ;; village a player and teaches nobody anything.
+    ;; The Düsterwald rule is a kill on the first night, and that is what a
+    ;; room gets unless FIRST_NIGHT_KILL=false: the server stamps
+    ;; :first-night-kill? into every new room. Without the stamp — the engine's
+    ;; own default, and every log from before it existed — the wolves sleep
+    ;; through night 1: a player eliminated before they have said a single
+    ;; word has not played a game, they have watched one.
     ;;
     ;; They still recognise each other: teammates are known from the deal
     ;; (:knows-teammates?), not from meeting at night, so skipping the turn
-    ;; loses only their night-1 whisper. Set FIRST_NIGHT_KILL=true for the
-    ;; classic rule.
+    ;; loses only their night-1 whisper.
     :skips-first-night? true
     :max-count         nil}
 

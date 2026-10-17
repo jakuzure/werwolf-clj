@@ -83,16 +83,17 @@
       ;; players up: the 5 and 9 rows are untouched, and every row at 12+ moved.
       ;; The same shape as the Beschützer — a role reaches the tables it is dealt
       ;; to, and no others.
-      ;; The fourteen-player row is now won by the Weißer Werwolf, which is worth
-      ;; keeping as a pinned case: it is the only fingerprint that exercises the
-      ;; solo victory end to end.
       ;; Re-pinned once more for the Dieb, who is dealt from ten players up: the 5
       ;; and 9 rows are untouched again, and every row at 10+ moved.
-      12 8675309 418 219 :village
-      9  4242    111 44  :werewolf
-      18 777     356 188 :werewolf
-      5  31337   97  36  :werewolf
-      14 90210   377 208 :werewolf)))
+      ;; And for the first day without a trial, which moves every row, like the
+      ;; election did: it is a phase, so it reaches every table. The twelve-
+      ;; player row is now the one the Weißer Werwolf wins, which keeps a pinned
+      ;; case exercising the solo victory end to end.
+      12 8675309 194 88  :weisser-werwolf
+      9  4242    173 65  :werewolf
+      18 777     568 358 :village
+      5  31337   78  25  :werewolf
+      14 90210   313 143 :village)))
 
 (deftest state-matches-its-schema-at-every-step
   (testing "the closed GameState schema holds through a whole game, so state

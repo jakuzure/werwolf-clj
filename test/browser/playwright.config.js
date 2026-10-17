@@ -85,6 +85,9 @@ module.exports = defineConfig({
       // Classic rule, so night one actually has a werewolf turn. Otherwise every
       // test about the night has to walk through a whole day first.
       FIRST_NIGHT_KILL: 'true',
+      // And the classic first day, with a trial, so a test about the lynch
+      // does not have to sit through a day and a night to reach one.
+      FIRST_DAY_TRIAL: 'true',
       // Long enough that a phase never expires while a test is mid-assertion.
       DISCUSSION_SECS: '3600',
       NOMINATION_SECS: '3600',

@@ -116,7 +116,7 @@
    :role/dieb         "Dieb"
    :role/amor         "Amor"
 
-   :role-desc/werwolf      "Du reißt mit den anderen Wölfen jede Nacht ein Opfer — ab der zweiten."
+   :role-desc/werwolf      "Du reißt mit den anderen Wölfen jede Nacht ein Opfer."
    :role-desc/dorfbewohner "Du hast keine Nachtaktion — nur deine Stimme am Tag."
    :role-desc/seherin      "Jede Nacht darfst du die Rolle eines Mitspielers sehen."
    :role-desc/hexe         "Einmal im Spiel heilen, einmal vergiften."
@@ -281,6 +281,7 @@
    :explain/day-reveal  "Der Morgen graut. Gleich zeigt sich, was die Nacht angerichtet hat."
    :explain/election    "Wählt einen Bürgermeister. Seine Stimme zählt bei jeder Abstimmung doppelt."
    :explain/discussion  "Redet miteinander: Wem traut ihr nicht? Sag Bescheid, wenn du fertig bist."
+   :explain/first-discussion "Lernt euch kennen. Heute wird noch niemand angeklagt — sag Bescheid, wenn du fertig bist, dann bricht die Nacht herein."
    :explain/nomination  "Jeder darf eine Person anklagen — oder darauf verzichten."
    :explain/vote        "Stimmt über die Angeklagten ab. Bei Gleichstand stirbt niemand."
    :explain/day-resolve "Das Urteil fällt."
@@ -364,6 +365,7 @@
    :log/ready         (fn [n] (str n " ist fertig"))
    :log/nominate-passed (fn [n] (str n " klagt niemanden an"))
    :log/no-accusation "Das Dorf klagt niemanden an — heute stirbt keiner"
+   :log/no-trial      "Am ersten Tag wird noch niemand angeklagt"
    :log/jaeger-held-fire (fn [n] (str n " senkt das Gewehr"))
    :log/vote-cast     (fn [v t] (str v " → " t))
    :log/vote-abstained (fn [v] (str v " enthält sich"))
