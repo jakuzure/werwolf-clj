@@ -568,9 +568,9 @@
         selectable? (and targets (contains? targets id) (not (some #{id} picks)))
         picked? (boolean (some #{id} picks))
         me? (= id (:id me))
-        ;; The Spielleiter's seat. Only the lobby draws it among the others —
-        ;; see `player-grid` — and there it reads as what it is, not as one
-        ;; more player who happens to be alive.
+        ;; The Spielleiter's seat. Drawn first and dashed — see `player-grid` —
+        ;; so it reads as what it is, not as one more player who happens to be
+        ;; alive.
         sl? (= id (:narrator view))
         role (get known id)
         n-votes (vote-count votes id)
@@ -585,6 +585,7 @@
                          picked?      "border-amber-400 bg-amber-500/20 "
                          selectable?  "border-amber-400 bg-slate-800 cursor-pointer hover:bg-slate-700 "
                          (not alive?) "border-slate-800 bg-slate-900/70 opacity-60 "
+                         sl?          "border-dashed border-violet-700 bg-violet-950/30 "
                          me?          "border-indigo-500 bg-slate-800 "
                          :else        "border-slate-700 bg-slate-800/50 ")
                        (when (and targets (not selectable?) (not picked?)) "opacity-40 "))
@@ -637,17 +638,18 @@
        [card-controls id]]]]))
 
 (defn- player-grid
-  "The table. Once the game has begun that means the people PLAYING it: the
-   Spielleiter has a seat but no card, no vote and no life to lose, and a card
-   of his among theirs would read as one more suspect. He is named in the
-   phase header instead. In the lobby he stays on the board, because that is
-   where the host hands the seat over."
+  "The table, the Spielleiter included. He has a seat but no card, no vote and
+   no life to lose, so his card comes first and is marked as his, rather than
+   sitting among the others as one more suspect.
+
+   He used to leave the board once the cards were dealt. But he is still in the
+   voice call, still talking, and his speaking ring lives on this card: without
+   it the table heard a voice with no seat to put it to."
   []
   (let [view @(rf/subscribe [::sub/view])
-        lobby? (= :lobby (:phase view))]
+        narrator (:narrator view)]
     [:div {:class "grid sm:grid-cols-2 gap-2"}
-     (for [[id p] (sort-by key (:players view))
-           :when (or lobby? (not= id (:narrator view)))]
+     (for [[id p] (sort-by (fn [[id]] [(if (= id narrator) 0 1) id]) (:players view))]
        ^{:key id} [player-card (assoc p :id id)])]))
 
 ;; ------------------------------------------------------------------ actions ---
