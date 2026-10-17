@@ -590,6 +590,17 @@
     (testing "nothing to report is nil, not an empty line"
       (is (nil? (sub/latest-news [{:type :game/started} noise]))))))
 
+(deftest switching-the-language-off-seat-stays-local
+  (testing "on the landing page there is no seat: the server would answer
+            :not-in-room, so nothing is sent"
+    (let [out (ev/set-locale-fx {:db db} [::ev/set-locale :en])]
+      (is (= :en (:locale (:db out))))
+      (is (nil? (:werwolf.ws/send out)))))
+  (testing "seated, the server keeps it as the player's own"
+    (let [seated (assoc db :me {:room-id "ABCD" :player-id 1})]
+      (is (= {:type :client/command :cmd {:type :set-locale :locale :en}}
+             (:werwolf.ws/send (ev/set-locale-fx {:db seated} [::ev/set-locale :en])))))))
+
 (deftest the-table-hears-when-you-join-the-call
   (let [seated (assoc db :me {:room-id "ABCD" :player-id 1} :audio {:state :joining})]
     (testing "joining is reported while seated"
