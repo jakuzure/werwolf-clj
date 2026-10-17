@@ -545,6 +545,16 @@
             ^{:key (str r)}
             [:option {:value (name r)} (str (i18n/icon-of r) " " (role-name r))])])])))
 
+(defn- initial
+  "The first letter of a name, for the round badge on a player's card. The
+   first code point rather than the first char, so a name starting with an
+   emoji shows the emoji and not half of it."
+  [pname]
+  (let [s (str/trim (str pname))]
+    (if (seq s)
+      (str/upper-case (.. js/Array (from s) (at 0)))
+      "?")))
+
 (defn- player-card
   "One seat, rendered large enough to actually read at a glance."
   [{:keys [id alive? connected?] pname :name}]
@@ -579,19 +589,21 @@
                          :else        "border-slate-700 bg-slate-800/50 ")
                        (when (and targets (not selectable?) (not picked?)) "opacity-40 "))
            ;; The second and last test hook. A browser test picking a target has
-           ;; to click a specific seat, and the seat NUMBER is not uniquely
-           ;; identifiable on screen — vote tallies and the clock are numbers too.
-           ;; Reveals nothing: seat ids are public and already on every card.
+           ;; to click a specific seat, and nothing on the card identifies one
+           ;; uniquely — two players may share a name.
+           ;; Reveals nothing: seat ids are public and already in every view.
            :data-testid (str "seat-" id)
            :on-click (when selectable? #(pick! id))}
      [:div {:class "flex items-start gap-2"}
-      ;; Seat number: the one label that never changes and never lies. It also
-      ;; carries the speaking ring, because it is the one element on the card
-      ;; whose position never moves as pills wrap.
-      [:div {:class (str "shrink-0 w-8 h-8 rounded-lg grid place-items-center font-bold "
+      ;; The player's initial. It carries the speaking ring, because it is the
+      ;; one element on the card whose position never moves as pills wrap.
+      ;; Not the seat number, which it used to be: 0, 1, 2 is the server's
+      ;; bookkeeping, and on the table it read like a ranking or a turn order.
+      [:div {:class (str "shrink-0 w-8 h-8 rounded-full grid place-items-center font-bold "
                          (if alive? "bg-slate-700 text-slate-100" "bg-slate-800 text-slate-500")
-                         (when talking? " ring-2 ring-emerald-400 "))}
-       id]
+                         (when talking? " ring-2 ring-emerald-400 "))
+             :aria-hidden true}
+       (initial pname)]
       [:div {:class "min-w-0 flex-1"}
        [:div {:class (str "font-semibold truncate "
                           (when-not alive? "line-through text-slate-500"))}

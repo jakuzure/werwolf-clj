@@ -129,7 +129,7 @@ test.describe('a real game', () => {
     await seerPage.getByRole('button', { name: 'Rolle aufdecken', exact: false }).click();
     // Arming shows the pick-a-player bar; then any other seat will do.
     const target = (seer + 1) % pages.length;
-    await seerPage.getByText(`${target}`, { exact: true }).first().click();
+    await seerPage.getByTestId(`seat-${target}`).click();
 
     await expect
       .poll(() => foreignRoles(frames[seer], myIdFrom(frames[seer])).length,
