@@ -6,9 +6,10 @@
 // is the coupling we want — a test that bypassed the affordances would keep
 // passing after the buttons stopped appearing.
 //
-// Action names are matched with anchored regexes because several labels are
-// prefixes of others ("Anklagen …" against "Niemanden anklagen"), and because
-// actions that need a target carry a trailing ellipsis — see `action-bar`.
+// Action names are matched with anchored regexes because some labels are
+// prefixes of others ("Nachfolge bestimmen …" against "Niemanden bestimmen"),
+// and because actions that need a target carry a trailing ellipsis — see
+// `action-bar`.
 
 const { expect } = require('@playwright/test');
 
@@ -19,9 +20,6 @@ const ACT = {
   guard:        /^Schützen/,
   hexePass:     /^Keinen Trank benutzen/,
   electAbstain: /^Enthalten/,
-  ready:        /^Ich bin fertig/,
-  nominate:     /^Anklagen/,
-  nominatePass: /^Niemanden anklagen/,
   vote:         /^Verurteilen/,
   voteAbstain:  /^Enthalten/,
   shoot:        /^Schuss abgeben/,
@@ -118,9 +116,13 @@ async function playNight(roles, { eat, inspect, guard }) {
 /**
  * Dawn through the end of the vote.
  *
- * `lynch` is the seat the village condemns, or null for a day that kills nobody.
- * The condemned player cannot accuse himself — `legal-targets` for :nominate
- * excludes yourself — so he accuses somebody else and then abstains.
+ * The day is one open ballot: the table talks and votes at once, and the last
+ * vote closes it. `lynch` is the seat the village condemns, or null for a day
+ * that kills nobody. Everybody else votes against him, which is a majority at
+ * any table; he cannot vote for himself, so he abstains.
+ *
+ * Each page votes ONCE. The buttons stay after a vote, so a sweep with
+ * `everyone` afterwards would change votes rather than cast missing ones.
  */
 async function playDay(pages, { lynch, roles, election = false }) {
   // ONLY the first day holds an election, so waiting for one on later days burns
@@ -128,31 +130,17 @@ async function playDay(pages, { lynch, roles, election = false }) {
   // pushed the three-night game past its limit. Abstaining elects nobody, keeping
   // the double vote out of tests that are not about it.
   if (election) await everyone(pages, ACT.electAbstain);
-  await everyone(pages, ACT.ready);
 
   if (lynch == null) {
-    await everyone(pages, ACT.nominatePass);
     await everyone(pages, ACT.voteAbstain);
     return;
   }
-
-  await awaitOffered(pages, ACT.nominate);
-  // The condemned accuses SOMEBODY ELSE AT THE TABLE. Not "seat 0 unless that is
-  // him": in a narrated room seat 0 is the Spielleiter, who is nobody's target
-  // and has no card on the board to click.
-  const other = roles.find((r) => r.seat !== lynch).seat;
-  for (const r of roles) {
-    const at = r.seat === lynch ? other : lynch;
-    await tryAct(r.page, ACT.nominate, at);
-  }
-  await everyone(pages, ACT.nominatePass);
 
   await awaitOffered(pages, ACT.vote);
   for (const r of roles) {
     if (r.seat === lynch) await tryAct(r.page, ACT.voteAbstain);
     else await tryAct(r.page, ACT.vote, lynch);
   }
-  await everyone(pages, ACT.voteAbstain);
 }
 
 module.exports = { ACT, tryAct, actAs, everyone, playNight, playDay };

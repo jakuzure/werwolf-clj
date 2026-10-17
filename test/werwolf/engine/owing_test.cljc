@@ -32,10 +32,17 @@
       (is (not (contains? (set (phases/owing s')) 2))))))
 
 (deftest by-day-everybody-who-has-not-answered
-  (let [s (-> (tu/narrated-game-with table)
-              (assoc :phase :discussion :ready #{} :night-cursor nil))]
-    (is (= (engine/living-ids s) (phases/owing s)))
-    (is (not (contains? (set (phases/owing (update s :ready conj 4))) 4)))))
+  (testing "on a day with a ballot, everybody who has not voted"
+    (let [s (-> (tu/narrated-game-with table)
+                (assoc :phase :discussion :votes {} :night-cursor nil))]
+      (is (= (engine/living-ids s) (phases/owing s)))
+      (is (not (contains? (set (phases/owing (assoc-in s [:votes 4] nil))) 4))
+          "an abstention is an answer")))
+  (testing "on the first day, without one, everybody who is not done talking"
+    (let [s (-> (tu/narrated-game-with table {:first-day-trial? false})
+                (assoc :phase :discussion :ready #{} :night-cursor nil))]
+      (is (= (engine/living-ids s) (phases/owing s)))
+      (is (not (contains? (set (phases/owing (update s :ready conj 4))) 4))))))
 
 (deftest nobody-is-owed-where-nothing-is-asked
   (is (empty? (phases/owing (tu/narrated-lobby 5))))

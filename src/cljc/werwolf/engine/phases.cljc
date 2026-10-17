@@ -76,11 +76,25 @@
 
 ;; ------------------------------------------------- night turn ordering ---
 
+(declare pack)
+
+(defn- holders
+  "Who acts on `role-id`'s turn. The wolves' turn belongs to the whole PACK —
+   the Weißer Werwolf hunts with them — so it comes round while any of them
+   lives. Keyed on the role, a Weißer Werwolf left alone with the village was
+   never woken to eat again: the night passed without a kill, and with the vote
+   needing a majority, two players left could never condemn each other either.
+   The game ran on forever."
+  [state role-id]
+  (if (= :werwolf role-id)
+    (pack state)
+    (e/living-with-role state role-id)))
+
 (defn- role-can-act? [state role-id]
   (let [{:keys [first-night-only? skips-first-night? acts-on-even-nights?]}
         (roles/role role-id)
         first-night? (= 1 (:night state))]
-    (and (seq (e/living-with-role state role-id))
+    (and (seq (holders state role-id))
          (or (not first-night-only?) first-night?)
          ;; Every second night, from the second. Named in the registry rather
          ;; than here, so this reads as a property of a role and not as a rule
@@ -119,17 +133,6 @@
   (let [living (e/living-ids state)
         ready (:ready state #{})]
     (and (seq living) (every? ready living))))
-
-(defn- nominations-done?
-  "Has every living player either named someone or explicitly declined?
-
-   Requires an explicit decline rather than treating silence as one: a table
-   where two people have not clicked yet is not a finished nomination, and
-   guessing otherwise would rush the fastest players' choice through."
-  [state]
-  (let [living (e/living-ids state)
-        done (:nomination-done state #{})]
-    (and (seq living) (every? done living))))
 
 (defn- votes-done?
   "Every living player has cast a vote or a recorded abstention."
@@ -211,6 +214,35 @@
            {:target (first top) :tie? false}
            {:target nil :tie? true}))))))
 
+(defn- vote-weight [mayor voter] (if (= voter mayor) 2 1))
+
+(defn votes-needed
+  "How many votes condemn somebody today: a strict majority of every vote the
+   living hold, the Bürgermeister's counting twice. Abstaining, or not voting
+   at all, therefore counts AGAINST a condemnation — which is the point.
+
+   The old rule was the most votes among the accused, so three votes out of
+   eleven could hang a player while eight people abstained or looked away. A
+   village that kills one of its own should at least mean it."
+  [state]
+  (let [mayor (:mayor state)
+        total (reduce + 0 (map #(vote-weight mayor %) (e/living-ids state)))]
+    (inc (quot total 2))))
+
+(defn verdict
+  "Who the village condemns: `tally`'s leader, if they reach `votes-needed`.
+   {:target id-or-nil :tie? bool :no-majority? bool}."
+  [state]
+  (let [votes (:votes state {})
+        mayor (:mayor state)
+        {:keys [target tie?]} (tally votes mayor)
+        got (reduce + 0 (keep (fn [[voter t]] (when (and t (= t target))
+                                                 (vote-weight mayor voter)))
+                               votes))]
+    (if (and target (< got (votes-needed state)))
+      {:target nil :tie? false :no-majority? true}
+      {:target target :tie? tie? :no-majority? false})))
+
 (defn wolf-tally
   "Werewolves must converge on one victim. Unlike the village lynch, a tie here
    cannot pass — the night must produce a decision — so ties break to the lowest
@@ -267,6 +299,13 @@
       ;; nobody has to take.
       (= :claim-host action)))
 
+(defn voted-today?
+  "Has pid cast (or abstained) today's ballot, during the open vote?"
+  [state pid]
+  (and (= :discussion (:phase state))
+       (trial-day? state)
+       (contains? (:votes state {}) pid)))
+
 (defn owing
   "The participants the game is still waiting on: everybody who holds at least
    one real move right now, by the same test the night uses to decide a role is
@@ -278,7 +317,11 @@
   [state]
   (into []
         (filter (fn [pid]
-                  (some #(not (not-really-acting? %)) (legal-actions state pid))))
+                  (and (some #(not (not-really-acting? %)) (legal-actions state pid))
+                       ;; The day's ballot stays open to change, so the buttons
+                       ;; are still offered after a vote — but whoever has cast
+                       ;; one is not what the table is waiting for.
+                       (not (voted-today? state pid)))))
         (e/participant-ids state)))
 
 (defn- nobody-can-act?
@@ -293,13 +336,11 @@
    ordinary wolves had voted — the Weißer Werwolf was still owed a vote, was
    still being offered one, and the night closed with no kill at all."
   [state role-id]
-  (let [holders (if (= :werwolf role-id)
-                  (pack state)
-                  (e/living-with-role state role-id))]
-    (or (empty? holders)
+  (let [hs (holders state role-id)]
+    (or (empty? hs)
         (every? (fn [pid]
                   (empty? (remove not-really-acting? (legal-actions state pid))))
-                holders))))
+                hs))))
 
 (defn- night-auto [state]
   (let [q (night-queue state)]
@@ -418,36 +459,37 @@
             [{:type :election/resolved :mayor target :tie? tie?}
              {:type :day/began}]))
 
-        ;; Discussion has nothing to resolve, so it ends when everybody says
-        ;; they are finished. Without this the table talks itself out in forty
-        ;; seconds and then watches a five-minute clock.
+        ;; One step for the whole day: the table talks and votes at once, and
+        ;; the step ends the moment nobody is still being waited for. Sitting
+        ;; out a five-minute clock that everyone has already finished with is
+        ;; the single most tedious thing a digital adaptation can do.
+        ;;
+        ;; It used to be three — talk, accuse, vote among the accused — each
+        ;; waiting on every player's click. Online, where the ballot is on
+        ;; screen and every vote shows on the accused's card as it is cast,
+        ;; the accusation step only added a round of waiting: the running
+        ;; tally does what naming the accused did. The first day has no ballot
+        ;; at all (see trial-day?) and ends when everybody says they are done.
         :discussion
-        (when (ready-done? state)
-          (leave-day-phase state :discussion))
+        (if (trial-day? state)
+          (when (votes-done? state)
+            [{:type :phase/changed :phase :day-resolve :deadline nil}])
+          (when (ready-done? state)
+            (leave-day-phase state :discussion)))
 
-        ;; The other two end themselves the moment nobody is still being waited
-        ;; for. Sitting out a 90-second timer that everyone has already finished
-        ;; with is the single most tedious thing a digital adaptation can do.
-        :nomination
-        (when (nominations-done? state)
-          (if (seq (filter (set (e/living-ids state)) (:nominations state)))
-            [{:type :phase/changed :phase :vote :deadline nil}]
-            ;; Nobody was accused, so there is nothing to vote on. The village
-            ;; is allowed to condemn no one — `tally` already lets a tie kill
-            ;; nobody, so a day with no lynch is not a new kind of outcome.
-            [{:type :day/no-accusation}
-             {:type :phase/changed :phase :day-resolve :deadline nil}]))
-
-        :vote
-        (when (votes-done? state)
-          [{:type :phase/changed :phase :day-resolve :deadline nil}])
+        ;; A game rehydrated from before the day was one step, caught between
+        ;; its old accusation and its old ballot. Back into the open vote, with
+        ;; whatever ballots were already cast.
+        (:nomination :vote)
+        [{:type :phase/changed :phase :discussion :deadline nil}]
 
         :day-resolve
         (if (:vote-resolved? state)
           ;; Lynch death has been applied by now (branch above), so night can begin.
           [{:type :night/began :night (inc (:night state))}]
-          (let [{:keys [target tie?]} (tally (:votes state) (:mayor state))]
-            [{:type :vote/resolved :target target :tie? tie?}]))
+          (let [{:keys [target tie? no-majority?]} (verdict state)]
+            [(cond-> {:type :vote/resolved :target target :tie? tie?}
+               no-majority? (assoc :no-majority? true))]))
 
         nil))))
 
@@ -469,9 +511,7 @@
 (def next-phase
   "The host/timer-driven progression through the day. Lives here rather than in
    commands.cljc so legal-actions can consult it without a circular dependency."
-  {:discussion :nomination
-   :nomination :vote
-   :vote       :day-resolve})
+  {:discussion :day-resolve})
 
 ;; ------------------------------------------------------------ the clock ---
 
@@ -486,8 +526,6 @@
   {:election   :election-secs
    :night      :night-secs
    :discussion :discussion-secs
-   :nomination :nomination-secs
-   :vote       :vote-secs
    :reaction   :reaction-secs})
 
 (defn timeout-events
@@ -796,24 +834,19 @@
       (cond-> #{:chat}
         (not (contains? (:election-votes state {}) pid)) (conj :elect :elect-abstain))
 
-      (= :discussion phase)
-      (cond-> #{:chat}
-        (not (contains? (:ready state #{}) pid)) (conj :ready))
-
-      ;; One accusation each, and declining is one of the two answers. Having
-      ;; had your say removes both buttons, which is also what makes the phase
-      ;; able to end itself.
-      (= :nomination phase)
-      (if (contains? (:nomination-done state #{}) pid)
-        #{:chat}
-        #{:chat :nominate :nominate-pass})
-
+      ;; The open ballot. Both buttons stay after a vote: the table is still
+      ;; talking, and a vote nobody may change would make the first to vote
+      ;; the least persuadable. It closes when the last player has voted.
+      ;;
       ;; Abstaining is a real answer, not the absence of one. Without a button
       ;; for it the only way to condemn nobody is to say nothing, which is
       ;; indistinguishable from having lost your connection.
-      (= :vote phase)
+      (and (= :discussion phase) (trial-day? state))
+      #{:chat :vote :vote-abstain}
+
+      (= :discussion phase)
       (cond-> #{:chat}
-        (not (contains? (:votes state) pid)) (conj :vote :vote-abstain))
+        (not (contains? (:ready state #{}) pid)) (conj :ready))
 
       :else #{:chat})))
 
@@ -854,7 +887,7 @@
     :gm/pause :gm/resume :gm/add-time
     ;; The ways to decline. Each is a deliberate 'no', which is why they are
     ;; commands at all rather than the absence of one.
-    :hexe-pass :nominate-pass :vote-abstain :jaeger-pass
+    :hexe-pass :vote-abstain :jaeger-pass
     :elect-abstain :mayor-decline :weisser-pass
     ;; Keeping his own card is a decision, not the absence of one.
     :dieb-keep
@@ -932,13 +965,8 @@
       ;; Anyone living but himself: he is dead, and naming a corpse would leave
       ;; the office empty in a way that reads as a bug rather than a choice.
       :mayor-appoint   others
-      :nominate        others
-      ;; MUST be sorted: :nominations is a set, and set iteration order differs
-      ;; between Clojure and ClojureScript. Returning it unsorted made the
-      ;; target list platform-dependent, which in turn made replay
-      ;; platform-dependent — the same seed played out differently on Node.
-      :vote            (let [noms (sort (filter (set living) (:nominations state)))]
-                         (vec (if (seq noms) noms others)))
+      ;; Anybody living but himself.
+      :vote            others
 
       ;; GM overrides need targets too, or the host's UI has nothing to offer.
       :gm/force-kill   (vec living)

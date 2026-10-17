@@ -97,8 +97,6 @@
    :phase/election    "Mayoral election"
    :phase/day-reveal  "Dawn"
    :phase/discussion  "Discussion"
-   :phase/nomination  "Accusations"
-   :phase/vote        "Vote"
    :phase/day-resolve "Verdict"
    :phase/reaction    "Last act"
    :phase/game-over   "Game over"
@@ -149,8 +147,6 @@
    :action/elect-abstain   "Abstain"
    :action/mayor-appoint   "Name a successor"
    :action/mayor-decline   "Name nobody"
-   :action/nominate        "Accuse"
-   :action/nominate-pass   "Accuse nobody"
    :action/vote            "Condemn"
    :action/vote-abstain    "Abstain"
    :action/begin-night     "Begin the first night"
@@ -277,17 +273,16 @@
    :explain/day-reveal  "Dawn breaks. You are about to learn what the night has done."
    :explain/election    "Elect a mayor. Their vote counts twice in every ballot."
    :explain/discussion  "Talk it over: who do you not trust? Say when you are done."
+   :explain/trial       (fn [n] (str "Talk it over and vote: who should be condemned? "
+                                     "Only someone with at least " n " votes is. "
+                                     "You can change your vote until everyone has voted."))
    :explain/first-discussion "Get to know each other. Nobody is accused today — say when you are done, and the night falls."
-   :explain/nomination  "Everyone may accuse one person — or pass."
-   :explain/vote        "Vote on the accused. On a tie nobody dies."
    :explain/day-resolve "The verdict falls."
    :explain/reaction    "Someone who just died has one last move. Everyone waits for them."
    :step/night       "Night"
    :step/day-reveal  "Dawn"
    :step/election    "Election"
    :step/discussion  "Debate"
-   :step/nomination  "Accuse"
-   :step/vote        "Vote"
    :step/day-resolve "Verdict"
 
    ;; ------------------------------------------------------------ voice ---
@@ -315,7 +310,6 @@
    :target/hint       "Click a player below"
 
    ;; ------------------------------------------------------------ badges ---
-   :badge/accused     "accused"
    :badge/votes       "votes"
    :badge/vote        "vote"
    :badge/ready       "done"
@@ -379,6 +373,9 @@
    :log/jaeger-shot   (fn [n t] (str n " shoots " t))
    :log/lynched       (fn [n] (str "The village condemns " n))
    :log/tie           "The village cannot agree — nobody dies"
+   :vote/yours        (fn [n] (str "Your vote: " n " — you can still change it"))
+   :vote/yours-abstained "You abstained — you can still change your vote"
+   :log/no-majority   "No majority — the village condemns nobody"
    ;; The election. Public, because the entire point of the office is that the
    ;; table knows whose vote counts twice.
    :log/mayor-elected   (fn [n] (str n " was elected Bürgermeister"))

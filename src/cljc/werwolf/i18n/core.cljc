@@ -110,8 +110,8 @@
   "Tone for one entry. A function rather than a lookup, because prominence
    sometimes depends on the payload: a tie is worth reading, while 'the vote
    resolved and nothing happened' merely repeats the line above it."
-  [{:keys [type target tie?]}]
-  (if (and (= :vote/resolved type) (nil? target) (not tie?))
+  [{:keys [type target tie? no-majority?]}]
+  (if (and (= :vote/resolved type) (nil? target) (not tie?) (not no-majority?))
     :muted
     (get tone-by-type type :plain)))
 
@@ -252,9 +252,10 @@
       :player/revived      (t locale :log/revived (nm player))
       :role/revealed       (t locale :log/role-revealed (nm player) (role-name locale role))
       :jaeger/shot         (t locale :log/jaeger-shot (nm player) (nm target))
-      :vote/resolved       (if target
-                             (t locale :log/lynched (nm target))
-                             (t locale :log/tie))
+      :vote/resolved       (cond
+                             target                  (t locale :log/lynched (nm target))
+                             (:no-majority? entry)   (t locale :log/no-majority)
+                             :else                   (t locale :log/tie))
       :player/nominated    (t locale :log/nominated (nm target))
       :phase/timed-out     (t locale :log/timed-out (phase-name locale phase))
       :gm/forced           (gm-line locale players entry)

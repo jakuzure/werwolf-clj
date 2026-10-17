@@ -250,7 +250,10 @@
      :winner      (:winner state)
      :log         (vec (:log state))
      :votes       (or (:votes state) {})
-     :nominations (or (:nominations state) #{})
+     ;; Whether today ends in a vote, and what a condemnation takes. Rules, so
+     ;; the engine says them and the client does not count for itself.
+     :trial?      (phases/trial-day? state)
+     :votes-needed (phases/votes-needed state)
      ;; Public, and necessarily so: the whole point of the office is that the
      ;; table knows whose vote counts twice. Election ballots in progress are
      ;; NOT published — see :election-votes, which is deliberately absent.
@@ -259,7 +262,6 @@
      ;; specific people is most of what makes a timed phase bearable — and safe:
      ;; these are player ids, and no role can be inferred from having decided.
      :ready           (or (:ready state) #{})
-     :nomination-done (or (:nomination-done state) #{})
      :min-players (:min-players state)
      ;; Published so the lobby can show the real ceiling. Showing only the
      ;; minimum, as "2 / 5", read as a five-player cap.
