@@ -23,6 +23,7 @@
             [re-frame.core :as rf]
             [reagent.core :as r]
             [werwolf.build-info :as build-info]
+            [werwolf.engine.roles :as roles]
             [werwolf.events :as ev]
             [werwolf.i18n.core :as i18n]
             [werwolf.i18n.recap :as recap]
@@ -232,6 +233,54 @@
            [:span {:class "shrink-0 text-xs text-slate-400"}
             (str players " / " max-players)]])])]))
 
+(def ^:private guide-teams
+  "The roles as a newcomer meets them: the pack, then the village. From the
+   registry, so a new role turns up here without anybody remembering to add
+   it, in the order the lobby's menu lists them."
+  (let [ids (conj roles/special-ids roles/villager)]
+    [[:werewolf (filterv #(= :werewolf (roles/team-of %)) ids)]
+     [:village  (filterv #(= :village (roles/team-of %)) ids)]]))
+
+(defn- how-to-play
+  "For somebody who has never played: what the game is, how a round goes, who
+   wins, and every card. Folded away, so the two fields the regulars came for
+   stay at the top; the page's job is still getting people into a room."
+  []
+  [:details {:class "rounded-xl border border-slate-700 bg-slate-900/60 group"
+             :data-testid "how-to-play"}
+   [:summary {:class "cursor-pointer select-none px-4 py-3 font-semibold text-slate-200
+                      list-none flex items-center justify-between"}
+    [:span (str "📖 " (t :guide/title))]
+    [:span {:class "text-slate-500 transition group-open:rotate-90" :aria-hidden true} "›"]]
+   [:div {:class "px-4 pb-4 space-y-4 text-sm text-slate-300 leading-relaxed"}
+    [:p (t :guide/intro)]
+    (for [[k icon] [[:night "🌙"] [:day "☀️"] [:win "🏆"]]]
+      ^{:key k}
+      [:div
+       [:h3 {:class "font-semibold text-slate-100"} (str icon " " (t (keyword "guide" (str (name k) "-title"))))]
+       [:p (t (keyword "guide" (name k)))]])
+    [:div {:class "space-y-3"}
+     [:h3 {:class "font-semibold text-slate-100"} (str "🃏 " (t :guide/roles-title))]
+     (for [[team ids] guide-teams]
+       ^{:key (str team)}
+       [:div {:class "space-y-2"}
+        [:div {:class "text-xs uppercase tracking-wide text-slate-500"}
+         (t (keyword "guide" (str "team-" (name team))))]
+        [:ul {:class "space-y-2"}
+         (for [r ids]
+           ^{:key (str r)}
+           [:li {:class "flex gap-2"}
+            [:span {:class "text-lg leading-none shrink-0" :aria-hidden true} (i18n/icon-of r)]
+            [:div
+             [:span {:class "font-semibold text-slate-100"} (role-name r)]
+             [:div {:class "text-slate-400"} (role-desc r)]]])]])
+     [:div {:class "flex gap-2"}
+      [:span {:class "text-lg leading-none shrink-0" :aria-hidden true} "🎖"]
+      [:div
+       [:span {:class "font-semibold text-slate-100"} (t :guide/mayor-title)]
+       [:div {:class "text-slate-400"} (t :guide/mayor)]]]]
+    [:p {:class "text-slate-400"} (t :guide/table)]]])
+
 (defn landing []
   ;; Greyed out while a create or join is unanswered. The events already drop a
   ;; second tap; this is so the first one visibly took.
@@ -262,6 +311,7 @@
          {:on-enter [::ev/join-room] :maxlength 64 :testid "join-password"}])
       [btn (t :landing/join) #(rf/dispatch [::ev/join-room])
        {:tone :ghost :disabled? pending?}]]
+     [how-to-play]
      ;; Which build is running: the first question when a friend reports a bug.
      [:div {:class "text-center text-xs text-slate-600" :data-testid "app-version"}
       (str "v" build-info/version " · " build-info/commit)]]))
