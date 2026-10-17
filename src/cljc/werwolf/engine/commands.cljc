@@ -293,24 +293,11 @@
 
 ;; ---- day ----
 
-(defmethod handle :nominate
-  [state {:keys [player target]}]
-  (cond
-    (not (allowed? state player :nominate)) (err :not-allowed {:action :nominate})
-    (not (valid-target? state player :nominate target)) (err :invalid-target {:target target})
-    :else [{:type :player/nominated :by player :target target}]))
-
 (defmethod handle :ready
   [state {:keys [player]}]
   (if-not (allowed? state player :ready)
     (err :not-allowed {:action :ready})
     [{:type :player/ready :player player}]))
-
-(defmethod handle :nominate-pass
-  [state {:keys [player]}]
-  (if-not (allowed? state player :nominate-pass)
-    (err :not-allowed {:action :nominate-pass})
-    [{:type :nominate/passed :player player}]))
 
 (defmethod handle :vote
   [state {:keys [player target]}]
@@ -320,6 +307,9 @@
     ;; :vote-abstain is the honest way to say it — see that handler.
     (and (some? target)
          (not (valid-target? state player :vote target))) (err :invalid-target {:target target})
+    ;; The ballot stays open to change; the same vote again changes nothing
+    ;; and is not worth a line in the Chronik.
+    (and (contains? (:votes state) player) (= target (get-in state [:votes player]))) []
     :else [{:type :vote/cast :voter player :target target}]))
 
 (defmethod handle :vote-abstain
@@ -328,9 +318,10 @@
   ;; the affordances it is given and invents none — an abstain button the UI
   ;; synthesised itself would be the client deciding a rule.
   [state {:keys [player]}]
-  (if-not (allowed? state player :vote-abstain)
-    (err :not-allowed {:action :vote-abstain})
-    [{:type :vote/cast :voter player :target nil}]))
+  (cond
+    (not (allowed? state player :vote-abstain)) (err :not-allowed {:action :vote-abstain})
+    (and (contains? (:votes state) player) (nil? (get-in state [:votes player]))) []
+    :else [{:type :vote/cast :voter player :target nil}]))
 
 (defmethod handle :advance-phase
   ;; What it does is `phases/advance-events`' business: the next day phase, or,

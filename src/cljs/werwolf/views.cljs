@@ -137,7 +137,6 @@
                         :you     "bg-indigo-600 text-white "
                         :host    "bg-violet-800 text-violet-100 "
                         :role    "bg-emerald-900 text-emerald-200 "
-                        :accused "bg-orange-900 text-orange-200 "
                         :votes   "bg-slate-600 text-slate-100 "
                         :lover   "bg-pink-900 text-pink-200 "
                         :mayor   "bg-amber-700 text-amber-50 "
@@ -624,17 +623,15 @@
         ;; His own lover, or — for the Spielleiter, whose notes name both — either.
         (when (or (= id (:lover me)) (some #{id} (:lovers narrator-info)))
           [pill (t :badge/lover) :lover])
-        (when (contains? (set (:nominations view)) id) [pill (t :badge/accused) :accused])
         (when (pos? n-votes)
           [pill (str n-votes " " (t (if (= 1 n-votes) :badge/vote :badge/votes))) :votes])
         ;; Each "done" mark only in the phase it answers. The sets outlive their
         ;; phase in the view, so a card at the end of a day read "Fertig · Hat
         ;; gewählt · Hat gewählt" — three stale ticks saying nothing about now.
-        (case (:phase view)
-          :discussion (when (contains? (set (:ready view)) id) [pill (t :badge/ready) :ready])
-          :nomination (when (contains? (set (:nomination-done view)) id) [pill (t :badge/decided) :ready])
-          :vote       (when (contains? (set (keys (:votes view))) id) [pill (t :badge/decided) :ready])
-          nil)]
+        (when (= :discussion (:phase view))
+          (if (:trial? view)
+            (when (contains? (:votes view) id) [pill (t :badge/decided) :ready])
+            (when (contains? (set (:ready view)) id) [pill (t :badge/ready) :ready])))]
        [card-controls id]]]]))
 
 (defn- player-grid
@@ -657,7 +654,7 @@
 (def ^:private declines
   "The 'no' answers. Grouped apart from the rest so saying no is never hidden
    among the things that kill somebody."
-  #{:ready :hexe-pass :nominate-pass :vote-abstain :jaeger-pass
+  #{:ready :hexe-pass :vote-abstain :jaeger-pass
     :elect-abstain :mayor-decline})
 
 (defn- action-bar []
@@ -668,7 +665,9 @@
         ;; GM powers have their own console below and :claim-host a banner of
         ;; its own; see `sub/player-moves`, which the turn banner reads too.
         plain (sub/player-moves actions)
-        narrator? @(rf/subscribe [::sub/narrator?])]
+        narrator? @(rf/subscribe [::sub/narrator?])
+        voted?  @(rf/subscribe [::sub/voted?])
+        view    @(rf/subscribe [::sub/view])]
     (cond
       ;; The Spielleiter's work is in his console; "nothing to do" under it
       ;; would be false.
@@ -684,11 +683,21 @@
       ;; Framed and titled, because this is what "Du bist dran" points at: a row
       ;; of ordinary buttons under the role card was easy to read past.
       :else
-      [:div {:class "rounded-xl border-2 border-emerald-500 bg-emerald-950/40 p-3 space-y-2
-                     ring-4 ring-emerald-500/20"
+      [:div {:class (if voted?
+                      ;; Cast, and still open to change: the buttons stay, but
+                      ;; this is no longer what the table is waiting for.
+                      "rounded-xl border-2 border-slate-600 bg-slate-800/40 p-3 space-y-2"
+                      "rounded-xl border-2 border-emerald-500 bg-emerald-950/40 p-3 space-y-2
+                       ring-4 ring-emerald-500/20")
              :data-testid "my-task"}
-       [:div {:class "text-xs font-bold uppercase tracking-wide text-emerald-300"}
-        (str "👉 " (t :turn/task))]
+       [:div {:class (str "text-xs font-bold uppercase tracking-wide "
+                          (if voted? "text-slate-300" "text-emerald-300"))}
+        (if voted?
+          (let [target (get-in view [:votes (get-in view [:me :id])])]
+            (str "🗳 " (if target
+                         (t :vote/yours (get-in view [:players target :name]))
+                         (t :vote/yours-abstained))))
+          (str "👉 " (t :turn/task)))]
        [:div {:class "flex flex-wrap gap-2"}
        (for [a plain]
          ^{:key (str a)}
@@ -1005,7 +1014,7 @@
 
 (def ^:private phase-icon
   {:setup "🃏" :night "🌙" :day-reveal "🌅" :election "🎖" :discussion "💬"
-   :nomination "👉" :vote "🗳" :day-resolve "⚖" :reaction "⚡" :game-over "🏆"})
+   :day-resolve "⚖" :reaction "⚡" :game-over "🏆"})
 
 (defn- stage-classes
   "The stage takes the room's light, a shade stronger. Literal class strings,
@@ -1142,9 +1151,11 @@
         [:span {:class "text-xl font-bold text-amber-300"} (winner-line (:winner view))]
         ;; The first day has no trial — see phases/trial-day? — and says so,
         ;; or the table waits for an accusation step that never comes.
-        (t (if (and (= :discussion phase) (= 1 (:night view)))
-             :explain/first-discussion
-             (keyword "explain" (name (or phase :setup))))))]
+        (cond
+          (and (= :discussion phase) (:trial? view))
+          (t :explain/trial (:votes-needed view))
+          (= :discussion phase) (t :explain/first-discussion)
+          :else (t (keyword "explain" (name (or phase :setup))))))]
 
      [host-absent-banner]
 

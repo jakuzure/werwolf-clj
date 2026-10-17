@@ -21,8 +21,6 @@
            ;; timed at all is a rule and lives in werwolf.engine.phases;
            ;; only their length is deployment policy.
            :discussion-secs #long #or [#env DISCUSSION_SECS 300]
-           :nomination-secs #long #or [#env NOMINATION_SECS 90]
-           :vote-secs       #long #or [#env VOTE_SECS 60]
            :night-secs      #long #or [#env NIGHT_SECS 45]
            ;; The Bürgermeister election, day one only. Short: it is half a
            ;; formality and half the first read on the room, and a long clock

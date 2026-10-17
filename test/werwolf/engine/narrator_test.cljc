@@ -119,12 +119,12 @@
                   (exec! {:type :werewolf-vote :player 2 :target 5})
                   (exec! {:type :hexe-pass :player 3}))
             _ (is (= :discussion (:phase s)))
-            s (reduce #(exec! %1 {:type :ready :player %2}) s (engine/living-ids s))]
-        (is (= :nomination (:phase s))
-            "every PLAYER said they were done, and that was enough")
-        (is (not (contains? (phases/legal-actions s 0) :nominate)))
-        (doseq [pid (engine/living-ids s)]
-          (is (not (some #{0} (phases/legal-targets s pid :nominate)))))))))
+            _ (is (not (contains? (phases/legal-actions s 0) :vote)))
+            _ (doseq [pid (engine/living-ids s)]
+                (is (not (some #{0} (phases/legal-targets s pid :vote)))))
+            s (reduce #(exec! %1 {:type :vote-abstain :player %2}) s (engine/living-ids s))]
+        (is (not= :discussion (:phase s))
+            "every PLAYER voted, and that was enough")))))
 
 (deftest the-gm-cannot-kill-or-recast-the-narrator
   (let [s (tu/narrated-game-with cast-of-5)]

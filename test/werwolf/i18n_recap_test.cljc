@@ -44,6 +44,7 @@
              {:type :day/no-accusation}
              {:type :vote/resolved :target 1 :tie? false :votes {1 nil 2 1}}
              {:type :vote/resolved :target nil :tie? true :votes {1 2 2 1}}
+             {:type :vote/resolved :target nil :tie? false :no-majority? true :votes {1 2 2 nil}}
              {:type :gm/reassigned :target 7 :from :beschuetzer :to :dorfbewohner}
              {:type :gm/forced :action :skip-role :skipped :seherin}
              {:type :gm/forced :action :set-phase :phase :vote}
@@ -70,8 +71,9 @@
     (is (= "The werewolves choose Name3 — but the Beschützer stands guard" (:text (nth rows 6))))
     (is (= "The werewolves agree on no victim" (:text (nth rows 7))))
     (is (= "The game master swaps Name7's card: Beschützer → Dorfbewohner"
-           (:text (nth rows 25))))
-    (is (= "The game master skips the Seherin" (:text (nth rows 26))))))
+           (:text (nth rows 26))))
+    (is (= "The game master skips the Seherin" (:text (nth rows 27))))
+    (is (= "No majority — the village condemns nobody" (:text (nth rows 25))))))
 
 (deftest an-abandoned-game-ends-without-a-winner
   (let [row (last (recap/round-lines :de players every-kind-of-entry))]

@@ -89,11 +89,12 @@
       ;; election did: it is a phase, so it reaches every table. The twelve-
       ;; player row is now the one the Weißer Werwolf wins, which keeps a pinned
       ;; case exercising the solo victory end to end.
-      12 8675309 194 88  :weisser-werwolf
-      9  4242    173 65  :werewolf
-      18 777     568 358 :village
-      5  31337   78  25  :werewolf
-      14 90210   313 143 :village)))
+      ;; And again for the day as one open ballot, which also moves every row.
+      12 8675309 182 63  :weisser-werwolf
+      9  4242    220 65  :werewolf
+      18 777     311 118 :werewolf
+      5  31337   59  18  :village
+      14 90210   189 80  :village)))
 
 (deftest state-matches-its-schema-at-every-step
   (testing "the closed GameState schema holds through a whole game, so state

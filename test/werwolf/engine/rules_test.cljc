@@ -211,9 +211,10 @@
       (is (false? (get-in s [:players 0 :alive?])) "the host is dead")
       (is (contains? (phases/legal-actions s 0) :advance-phase)
           "and can still drive the game")
-      ;; And the day actually progresses.
+      ;; And the day actually progresses: the ballot closes, nobody is
+      ;; condemned, and the next night falls.
       (let [s (exec! s {:type :advance-phase :player 0})]
-        (is (= :nomination (:phase s)))))))
+        (is (= 2 (:night s)))))))
 
 (deftest gm-overrides-are-logged-with-their-actor
   (let [s (tu/game-with {0 :dorfbewohner 1 :werwolf 2 :dorfbewohner 3 :dorfbewohner 4 :dorfbewohner})
@@ -359,8 +360,7 @@
         s (exec! s {:type :seherin-inspect :player 3 :target 1})
         s (exec! s {:type :hexe-pass :player 2})
         ;; Straight through day 1 with no lynch.
-        s (reduce (fn [s p] (exec! s {:type :ready :player p})) s (alive s))
-        s (reduce (fn [s p] (exec! s {:type :nominate-pass :player p})) s (alive s))]
+        s (reduce (fn [s p] (exec! s {:type :vote-abstain :player p})) s (alive s))]
     (is (= 2 (:night s)))
     (is (contains? (set (phases/night-queue s)) :werwolf)
         "night two is business as usual")
@@ -436,52 +436,71 @@
                   (exec! {:type :hexe-pass :player 4}))]
         (is (= :discussion (:phase s)))
         (is (= 2 (:night s)))
-        (let [s (reduce #(exec! %1 {:type :ready :player %2}) s [0 1 2 4 5])]
-          (is (= :nomination (:phase s))))))))
+        (is (contains? (phases/legal-actions s 0) :vote))
+        (is (not (contains? (phases/legal-actions s 0) :ready))
+            "the talk ends with the ballot, not with a button")))))
 
-(deftest discussion-ends-when-everyone-says-they-are-done
+(deftest the-first-days-talk-ends-when-everyone-says-they-are-done
   (testing "otherwise the table talks itself out in forty seconds and then
             watches a five-minute clock"
-    (let [s (at-day)]
+    (let [s (-> (tu/game-with {0 :dorfbewohner 1 :dorfbewohner 2 :werwolf
+                               3 :dorfbewohner 4 :hexe 5 :seherin}
+                              {:first-day-trial? false})
+                (exec! {:type :seherin-inspect :player 5 :target 2})
+                (exec! {:type :werewolf-vote :player 2 :target 3})
+                (exec! {:type :hexe-heal :player 4 :target 3})
+                (exec! {:type :hexe-pass :player 4}))]
       (is (= :discussion (:phase s)))
       (let [s (reduce (fn [s pid] (exec! s {:type :ready :player pid})) s (range 5))]
         (is (= :discussion (:phase s)) "one player has not spoken yet")
         (is (not (contains? (phases/legal-actions s 0) :ready))
             "and a player who is ready is not asked twice")
         (let [s (exec! s {:type :ready :player 5})]
-          (is (= :nomination (:phase s)) "the last one closes it"))))))
+          (is (= :night (:phase s)) "the last one closes it"))))))
 
-(deftest one-accusation-each-and-declining-is-an-answer
-  (let [s (reduce (fn [s pid] (exec! s {:type :ready :player pid})) (at-day) (range 6))]
-    (is (= :nomination (:phase s)))
-    (let [s (exec! s {:type :nominate :player 0 :target 2})]
-      (is (not (contains? (phases/legal-actions s 0) :nominate))
-          "having named someone, you have had your say")
-      (is (contains? (phases/legal-actions s 1) :nominate-pass))
-      (let [s (reduce (fn [s pid] (exec! s {:type :nominate-pass :player pid}))
-                      s (range 1 6))]
-        (is (= :vote (:phase s)) "the phase closes itself once nobody is waited for")
-        (is (= [2] (phases/legal-targets s 0 :vote))
-            "and the ballot holds exactly the accused")))))
+(deftest the-day-is-one-open-ballot
+  (let [s (at-day)]
+    (is (= :discussion (:phase s)))
+    (is (= #{:chat :vote :vote-abstain} (disj (phases/legal-actions s 1) :set-locale :leave))
+        "talking and voting at once: there is no accusation step")
+    (is (= [0 2 3 4 5] (phases/legal-targets s 1 :vote)) "anybody living but himself")
+    (let [s (exec! s {:type :vote :player 1 :target 2})]
+      (testing "a vote may be changed while the ballot is open"
+        (is (contains? (phases/legal-actions s 1) :vote))
+        (let [s (exec! s {:type :vote :player 1 :target 3})]
+          (is (= 3 (get-in s [:votes 1])))))
+      (testing "the same vote again changes nothing and logs nothing"
+        (is (= s (exec! s {:type :vote :player 1 :target 2}))))
+      (testing "but whoever has voted is no longer waited for"
+        (is (not (contains? (set (phases/owing s)) 1)))
+        (is (contains? (set (phases/owing s)) 0))))
+    (testing "the ballot closes itself with the last vote"
+      (let [s (reduce (fn [s pid] (exec! s {:type :vote :player pid :target (if (= 2 pid) 0 2)}))
+                      s (range 6))]
+        (is (false? (get-in s [:players 2 :alive?])) "five of six is a majority")))))
 
-(deftest a-village-that-accuses-nobody-lynches-nobody
-  (testing "the whole point of being able to decline"
-    (let [s (reduce (fn [s pid] (exec! s {:type :ready :player pid})) (at-day) (range 6))
+(deftest a-condemnation-needs-a-majority-of-the-living
+  (testing "the most votes is not enough: abstaining counts against"
+    (let [s (at-day)
           before (alive s)
-          s (reduce (fn [s pid] (exec! s {:type :nominate-pass :player pid})) s (range 6))]
-      (is (= before (alive s)) "nobody died")
-      (is (= 1 (tu/count-log s :day/no-accusation))
-          "and the day says so — a day with no accusation must not look like a
-           day that has not happened")
-      (is (= :night (:phase s)) "the game moves straight to the next night")
-      (is (= 2 (:night s))))))
+          s (reduce (fn [s pid] (exec! s (if (#{0 1 3} pid)
+                                           {:type :vote :player pid :target 2}
+                                           {:type :vote-abstain :player pid})))
+                    s (range 6))]
+      (is (= 4 (phases/votes-needed (at-day))) "six living: four votes")
+      (is (= before (alive s)) "three of six condemns nobody")
+      (is (true? (:no-majority? (first (filter #(= :vote/resolved (:type %)) (:log s)))))
+          "and the Chronik says why")
+      (is (= :night (:phase s)))))
+  (testing "four of six does"
+    (let [s (reduce (fn [s pid] (exec! s (if (#{0 1 3 5} pid)
+                                           {:type :vote :player pid :target 2}
+                                           {:type :vote-abstain :player pid})))
+                    (at-day) (range 6))]
+      (is (false? (get-in s [:players 2 :alive?]))))))
 
 (deftest abstaining-is-a-vote-that-counts-for-nobody
-  (let [s (reduce (fn [s pid] (exec! s {:type :ready :player pid})) (at-day) (range 6))
-        s (exec! s {:type :nominate :player 0 :target 2})
-        s (exec! s {:type :nominate :player 1 :target 3})
-        s (reduce (fn [s pid] (exec! s {:type :nominate-pass :player pid})) s (range 2 6))
-        _ (is (= :vote (:phase s)))
+  (let [s (at-day)
         before (alive s)
         ;; One vote each way, everyone else abstains: a tie, so nobody hangs.
         s (exec! s {:type :vote :player 0 :target 2})
@@ -496,9 +515,7 @@
       (is (nil? (get (:votes s) 2))))))
 
 (deftest everyone-abstaining-kills-nobody-and-still-ends-the-day
-  (let [s (reduce (fn [s pid] (exec! s {:type :ready :player pid})) (at-day) (range 6))
-        s (exec! s {:type :nominate :player 0 :target 2})
-        s (reduce (fn [s pid] (exec! s {:type :nominate-pass :player pid})) s (range 1 6))
+  (let [s (at-day)
         before (alive s)
         s (reduce (fn [s pid] (exec! s {:type :vote-abstain :player pid})) s (range 6))]
     (is (= before (alive s)))
@@ -520,7 +537,7 @@
 (deftest which-phases-have-a-clock-is-a-rule-not-a-config-value
   (testing "config decides how long a phase lasts; the engine decides whether it
             is timed at all"
-    (is (= #{:election :night :discussion :nomination :vote :reaction}
+    (is (= #{:election :night :discussion :reaction}
            (set (keys phases/timed-phases))))
     (doseq [p [:lobby :day-reveal :day-resolve :game-over]]
       (is (nil? (phases/timeout-events {:phase p}))
@@ -528,7 +545,7 @@
 
 (deftest a-timeout-is-always-a-public-fact
   (testing "a player has to be able to see why the vote closed"
-    (doseq [p [:night :discussion :nomination :vote :reaction]]
+    (doseq [p [:night :discussion :reaction]]
       (is (= :phase/timed-out
              (:type (first (phases/timeout-events {:phase p
                                                    :night-cursor :seherin
@@ -539,9 +556,7 @@
   (are [phase next*] (= next*
                         ;; Day 2: the first has no trial to advance into.
                         (:phase (second (phases/timeout-events {:phase phase :night 2}))))
-    :discussion :nomination
-    :nomination :vote
-    :vote       :day-resolve))
+    :discussion :day-resolve))
 
 (deftest an-expired-night-turn-ends-that-role-and-nothing-else
   (let [s (tu/game-with {0 :dorfbewohner 1 :werwolf 2 :hexe 3 :seherin 4 :jaeger})]
@@ -694,7 +709,7 @@
     (let [s (tu/game-with gm-cast)]
       (is (contains? (phases/legal-actions s 0) :gm/set-phase))
       (is (empty? (phases/legal-targets s 0 :gm/set-phase)))
-      (is (= [:discussion :nomination :vote] (phases/legal-choices s :gm/set-phase)))
+      (is (= [:discussion] (phases/legal-choices s :gm/set-phase)))
       (testing "skip-role offers exactly the role being called, and nothing
                 when no role is"
         (is (= [:seherin] (phases/legal-choices s :gm/skip-role)))
@@ -848,13 +863,16 @@
                 (exec! {:type :elect-abstain :player 3}))
           _ (is (= 0 (:mayor s)))
           s (tu/advance-to-vote s)
-          ;; One each way. Without the double vote this is a tie and nobody dies.
+          ;; Four living hold five votes, so it takes three. Two players
+          ;; against player 1 would fall short; with the mayor among them it
+          ;; is three.
           s (exec! s {:type :vote :player 0 :target 1})
           s (exec! s {:type :vote :player 1 :target 0})
-          s (exec! s {:type :vote-abstain :player 2})
+          s (exec! s {:type :vote :player 2 :target 1})
           s (exec! s {:type :vote-abstain :player 3})]
+      (is (= 3 (phases/votes-needed s)))
       (is (false? (get-in s [:players 1 :alive?]))
-          "the mayor's two votes outweigh the single vote against him"))))
+          "the mayor's two votes carry the majority"))))
 
 (deftest a-tie-without-a-mayor-still-kills-nobody
   (testing "the control for the test above — same votes, no office"

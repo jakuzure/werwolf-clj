@@ -130,7 +130,6 @@
 ;; engine — see room/in-voice.
 (rf/reg-sub ::in-voice :<- [::view] (fn [v _] (set (:voice v))))
 (rf/reg-sub ::votes    :<- [::view] (fn [v _] (or (:votes v) {})))
-(rf/reg-sub ::nominations :<- [::view] (fn [v _] (or (:nominations v) #{})))
 (rf/reg-sub ::known-roles :<- [::view] (fn [v _] (or (:known-roles v) {})))
 
 ;; The Spielleiter's seat, or nil when the host plays. The server decides it —
@@ -215,12 +214,11 @@
    him made every narrated day look one ballot short forever. Which seat is his
    arrives in the view; nothing here decides it. Pure and public so that is
    testable without a browser."
-  [{:keys [phase players ready nomination-done votes narrator]}]
+  [{:keys [phase players ready votes narrator trial?]}]
   (let [living (keep (fn [[id p]] (when (and (:alive? p) (not= id narrator)) id)) players)
         done (case phase
-               :discussion (set ready)
-               :nomination (set nomination-done)
-               :vote (set (keys votes))
+               ;; A day with a ballot waits for votes, the first day for talk.
+               :discussion (if trial? (set (keys votes)) (set ready))
                nil)]
     (when done
       (->> living
@@ -262,10 +260,19 @@
   [actions]
   (sort (remove #(or (= "gm" (namespace %)) (not-a-move %)) actions)))
 
+(defn voted?
+  "Has this player cast today's ballot? It stays open to change, so the vote
+   buttons are still offered — but the game is no longer waiting on them."
+  [{:keys [phase trial? votes me]}]
+  (boolean (and (= :discussion phase) trial? me (contains? votes (:id me)))))
+
+(rf/reg-sub ::voted? :<- [::view] (fn [v _] (voted? v)))
+
 (rf/reg-sub
  ::can-act?
  :<- [::actions]
- (fn [actions _] (boolean (seq (player-moves actions)))))
+ :<- [::voted?]
+ (fn [[actions voted?] _] (and (not voted?) (boolean (seq (player-moves actions))))))
 
 (defn host-absence
   "What to tell the table about a host who has gone missing, or nil while he is
@@ -301,20 +308,19 @@
    lights up the step it broke into: the dawn if it came out of the night, the
    verdict if it came out of the day. The view does not say which, but the log
    does — whichever of night-ended or day-began came last."
-  [{:keys [phase night log]}]
-  (when (contains? #{:night :day-reveal :election :discussion :nomination :vote
-                     :day-resolve :reaction}
+  [{:keys [phase night log trial?]}]
+  (when (contains? #{:night :day-reveal :election :discussion :day-resolve :reaction}
                    phase)
     (let [steps (cond-> [:night :day-reveal]
                   (= 1 night) (conj :election)
                   true (conj :discussion)
                   ;; No trial on the first day: the talk is its last step.
-                  (not= 1 night) (into [:nomination :vote :day-resolve]))
+                  trial? (conj :day-resolve))
           current (if (= :reaction phase)
                     (case (some #{:night/ended :day/began} (map :type (rseq (vec log))))
                       ;; The first day has no verdict to break into; its talk
                       ;; is the step a reaction then interrupts.
-                      :day/began (if (= 1 night) :discussion :day-resolve)
+                      :day/began (if trial? :day-resolve :discussion)
                       :day-reveal)
                     phase)
           at (.indexOf steps current)]
@@ -333,7 +339,7 @@
   [phase]
   (case phase
     (:night) :night
-    (:day-reveal :election :discussion :nomination :vote :day-resolve :reaction) :day
+    (:day-reveal :election :discussion :day-resolve :reaction) :day
     :game-over :end
     :neutral))
 

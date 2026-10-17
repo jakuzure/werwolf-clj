@@ -90,8 +90,6 @@ module.exports = defineConfig({
       FIRST_DAY_TRIAL: 'true',
       // Long enough that a phase never expires while a test is mid-assertion.
       DISCUSSION_SECS: '3600',
-      NOMINATION_SECS: '3600',
-      VOTE_SECS: '3600',
       NIGHT_SECS: '3600',
       REACTION_SECS: '3600',
       // Voice. The suite skips its audio tests when this is unreachable rather

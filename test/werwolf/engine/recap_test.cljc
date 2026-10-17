@@ -60,9 +60,6 @@
    {:type :elect :player 5 :target 5} {:type :elect :player 6 :target 5}
    {:type :elect :player 7 :target 5} {:type :elect :player 8 :target 5}
    {:type :elect :player 9 :target 5}
-   {:type :advance-phase :player 0}
-   {:type :nominate :player 3 :target 1}
-   {:type :advance-phase :player 0}
    {:type :vote :player 2 :target 1} {:type :vote :player 3 :target 1}
    {:type :vote :player 4 :target 1} {:type :vote :player 5 :target 1}
    {:type :vote :player 6 :target 1} {:type :vote :player 7 :target 1}
@@ -78,14 +75,13 @@
    {:type :hexe-pass :player 4}
    ;; day 2: a card rewritten mid-game, and a lover lynched
    {:type :gm/reassign-role :player 0 :target 7 :role :dorfbewohner}
-   {:type :advance-phase :player 0}
-   {:type :nominate :player 2 :target 4}
-   {:type :advance-phase :player 0}
    {:type :vote :player 2 :target 4} {:type :vote :player 3 :target 4}
    {:type :vote :player 5 :target 4} {:type :vote :player 6 :target 4}
    {:type :vote :player 7 :target 4}
    {:type :vote-abstain :player 4} {:type :vote-abstain :player 9}
-   ;; night 3: the Spielleiter skips the Seherin
+   ;; night 3: the Spielleiter skips the Seherin, and the Weißer Werwolf —
+   ;; alone of the pack now, and still hunting with it — the wolves' turn
+   {:type :gm/skip-role :player 0}
    {:type :gm/skip-role :player 0}
    ;; day 3: the Bürgermeister, who is the Jäger, is taken out of the game
    {:type :gm/force-kill :player 0 :target 5}
@@ -166,12 +162,11 @@
            es))))
 
 (deftest the-first-day-has-the-election-and-the-lynch-with-their-ballots
-  (let [[election nominated lynch died] (entries-of (the-recap) :day 1)]
+  (let [[election lynch died] (entries-of (the-recap) :day 1)]
     (is (= :election/resolved (:type election)))
     (is (= 5 (:mayor election)))
     (is (= (zipmap (range 1 10) (repeat 5)) (:votes election))
         "ballots that were secret while the election ran")
-    (is (= {:type :player/nominated :by 3 :target 1} nominated))
     (is (= {:type :vote/resolved :target 1 :tie? false
             :votes {1 nil 2 1 3 1 4 1 5 1 6 1 7 1 8 nil 9 1}}
            lynch)
@@ -197,6 +192,7 @@
             {:type :player/died :player 9 :cause :liebe}]
            (take-last 2 (entries-of rc :day 2))))
     (is (= [{:type :gm/forced :action :skip-role :skipped :seherin}
+            {:type :gm/forced :action :skip-role :skipped :werwolf}
             {:type :night/quiet}]
            (entries-of rc :night 3)))
     (testing "the Spielleiter's setup is not in the story at all"

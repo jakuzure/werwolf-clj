@@ -38,7 +38,7 @@
     :elect :elect-abstain :mayor-appoint :mayor-decline
     :hexe-heal :hexe-poison :hexe-pass
     :jaeger-shoot :jaeger-pass
-    :ready :nominate :nominate-pass :vote :vote-abstain :advance-phase
+    :ready :vote :vote-abstain :advance-phase
     ;; Taking the seat of a host who has gone missing.
     :claim-host
     ;; The host dealing the same table again once a game is over.
