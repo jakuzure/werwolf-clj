@@ -41,6 +41,9 @@
    :landing/join      "Join a game"
    :landing/invited "You're invited to room"
    :landing/not-invited "Another room instead"
+   :landing/invite-not-open "This game is not open right now — it is under way or over."
+   :landing/join-anyway "Try anyway"
+   :notice/left "You left the game."
    :landing/code      "Room code"
    :landing/or        "or"
    ;; The open rooms sit above the code field: typing a code is now the fallback
@@ -97,6 +100,7 @@
    :lobby/password-clear     "Remove password"
    :lobby/make-narrator      "Make narrator"
    :lobby/make-host          "Make narrator"
+   :lobby/seat-menu "Options for this seat"
 
    ;; The roles. Only the special cards are chosen — villagers fill whatever
    ;; is left, so they are not a decision anybody makes.
@@ -205,6 +209,9 @@
 
    ;; ----------------------------------------------------- game master ---
    :gm/panel          "Game master"
+   :gm/who "Who?"
+   :gm/which-role "Which role?"
+   :gm/which-phase "Which phase?"
    :gm/panel-hint     "Only you can see these. Every override goes in the chronicle."
    :gm/open           "Open"
    :gm/close          "Close"
@@ -266,6 +273,9 @@
    :game/wolves-channel "Only the werewolves can hear you"
    :game/dead-channel   "Only the dead can hear you"
    :game/narrator-channel "Everyone hears you — you are the narrator"
+   :chat/tag-wolves "Wolves"
+   :chat/tag-dead "Dead"
+   :chat/tag-narrator "Narrator"
    :game/paused         "Clock paused"
    :game/new-round      "Back to the start"
    :game/play-again-wait "The narrator can start another game with all of you."

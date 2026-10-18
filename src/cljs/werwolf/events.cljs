@@ -93,6 +93,7 @@
                            ::fetch-build true}))
 
 (rf/reg-event-db ::dismiss-invite (fn [db _] (dissoc db :invited)))
+(rf/reg-event-db ::dismiss-notice (fn [db _] (dissoc db :notice)))
 
 (rf/reg-fx
  ::fetch-build
@@ -543,7 +544,9 @@
    Named and public so the reset is testable — it has to be COMPLETE, and it
    was not: `:view/seq` stayed behind and rejected the next room's views."
   [{:keys [db]} _]
-  {:db (unseat db)
+  ;; Said on the start page: arriving there unasked, with nothing saying why,
+  ;; read as the app having crashed — the same reason a kick says so.
+  {:db (assoc (unseat db) :notice :left)
    ::ws/forget-seat true
    ;; Hang up on the way out. Without this the microphone stays live and
    ;; published into a room the player has walked out of — they would be audible
@@ -605,6 +608,7 @@
 (defmethod handle-server :server/welcome [db {:keys [room-id player-id host?]}]
   (assoc db
          :screen :room
+         :notice nil
          ;; The invitation is used up; back at the start page it is the
          ;; ordinary one again.
          :invited nil

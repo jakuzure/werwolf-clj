@@ -38,6 +38,9 @@
    :landing/join      "Runde beitreten"
    :landing/invited "Du bist eingeladen in Runde"
    :landing/not-invited "Lieber eine andere Runde"
+   :landing/invite-not-open "Diese Runde ist gerade nicht offen — sie läuft schon oder ist vorbei."
+   :landing/join-anyway "Trotzdem versuchen"
+   :notice/left "Du hast die Runde verlassen."
    :landing/code      "Raumcode"
    :landing/or        "oder"
    ;; Die offenen Runden stehen über dem Codefeld: einen Code abtippen ist jetzt
@@ -99,6 +102,7 @@
    :lobby/password-clear     "Passwort entfernen"
    :lobby/make-narrator      "Zum Spielleiter machen"
    :lobby/make-host          "Zum Spielleiter machen"
+   :lobby/seat-menu "Optionen für diesen Platz"
 
    ;; Die Rollen. Gewählt werden nur die besonderen Karten — die Dorfbewohner
    ;; füllen auf, was übrig bleibt, und sind darum keine Entscheidung.
@@ -206,6 +210,9 @@
 
    ;; ---------------------------------------------------- Spielleitung ---
    :gm/panel          "Spielleiter"
+   :gm/who "Wen?"
+   :gm/which-role "Welche Rolle?"
+   :gm/which-phase "Welche Phase?"
    :gm/panel-hint     "Nur du siehst diese Schalter. Jeder Eingriff steht in der Chronik."
    :gm/open           "Öffnen"
    :gm/close          "Schließen"
@@ -271,6 +278,9 @@
    :game/wolves-channel "Nur die Werwölfe hören dich"
    :game/dead-channel   "Nur die Toten hören dich"
    :game/narrator-channel "Alle hören dich — du bist der Spielleiter"
+   :chat/tag-wolves "Wölfe"
+   :chat/tag-dead "Tote"
+   :chat/tag-narrator "SL"
    :game/paused         "Zeit angehalten"
    :game/new-round      "Zurück zum Start"
    :game/play-again-wait "Der Spielleiter kann gleich noch ein Spiel mit euch allen starten."

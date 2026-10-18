@@ -20,6 +20,9 @@ test.describe('removing a player from the lobby', () => {
     // somebody else's card.
     await expect(bob.getByTestId('kick-0')).toHaveCount(0);
     await expect(anna.getByTestId('kick-0')).toHaveCount(0);
+    // Behind the card's ⋯, so a long table is not a column of buttons.
+    await expect(anna.getByTestId('card-menu-0')).toHaveCount(0);
+    await anna.getByTestId('card-menu-1').click();
     const kick = anna.getByTestId('kick-1');
     await expect(kick).toHaveText('Entfernen');
 
