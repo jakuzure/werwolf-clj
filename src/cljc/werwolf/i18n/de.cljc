@@ -25,7 +25,7 @@
    :guide/night-title "Die Nacht"
    :guide/night       "Alle schlafen. Die Rollen werden nacheinander gerufen, und wer gerufen wird, handelt heimlich auf dem eigenen Bildschirm: die Seherin schaut sich eine Karte an, die Werwölfe einigen sich auf ein Opfer, die Hexe darf es retten."
    :guide/day-title   "Der Tag"
-   :guide/day         "Am Morgen erfahrt ihr, wer die Nacht nicht überlebt hat, und seht seine Karte. Am ersten Tag wählt ihr einen Bürgermeister und lernt euch kennen — angeklagt wird noch niemand. Ab dem zweiten Tag redet ihr und stimmt zugleich ab, wer verurteilt wird. Dafür braucht es eine Mehrheit der Lebenden; bis alle abgestimmt haben, könnt ihr umstimmen."
+   :guide/day         "Am Morgen erfahrt ihr, wer die Nacht nicht überlebt hat, und seht seine Karte. Am ersten Tag wählt ihr einen Bürgermeister und redet über die Nacht — angeklagt wird noch niemand. Ab dem zweiten Tag redet ihr und stimmt zugleich ab, wer verurteilt wird. Dafür braucht es eine Mehrheit der Lebenden; bis alle abgestimmt haben, könnt ihr umstimmen."
    :guide/win-title   "Wer gewinnt"
    :guide/win         "Das Dorf gewinnt, sobald kein Werwolf mehr lebt. Die Werwölfe gewinnen, wenn außer ihnen niemand mehr übrig ist. Zwei Verliebte gewinnen gemeinsam, wenn nur noch sie leben — egal, zu wem sie gehören. Tote reden nur noch mit Toten."
    :guide/roles-title "Die Rollen"
@@ -296,7 +296,7 @@
    :explain/election    "Wählt einen Bürgermeister. Seine Stimme zählt bei jeder Abstimmung doppelt."
    :explain/discussion  "Redet miteinander: Wem traut ihr nicht? Sag Bescheid, wenn du fertig bist."
    :explain/trial       (fn [_] "Redet miteinander und stimmt ab, wer verurteilt wird. Ihr könnt umstimmen, bis alle abgestimmt haben.")
-   :explain/first-discussion "Lernt euch kennen. Heute wird noch niemand angeklagt — sag Bescheid, wenn du fertig bist, dann bricht die Nacht herein."
+   :explain/first-discussion "Heute wird noch niemand angeklagt. Redet über die Nacht und darüber, wem ihr traut — sag Bescheid, wenn du fertig bist, dann bricht die Nacht herein."
    :explain/day-resolve "Das Urteil fällt."
    :explain/reaction    "Ein Toter hat noch eine letzte Handlung. Alle warten auf ihn."
    :step/night       "Nacht"
@@ -337,6 +337,9 @@
    :dawn/ok "Weiter"
    :record/title (fn [n] (str "Diese Runde, nach " n " Spielen"))
    :record/won "gewonnen"
+   :hexe/victim (fn [who] (str "🐺 Die Werwölfe haben " who " gewählt."))
+   :hexe/victim-you "🐺 Die Werwölfe haben dich gewählt."
+   :hexe/no-victim "🐺 Die Werwölfe haben heute Nacht niemanden gewählt."
    :ballot/title     "Abstimmung"
    :ballot/needed    (fn [n] (str "Verurteilt ab " n " Stimmen"))
    :ballot/none      "Noch hat niemand eine Stimme bekommen."

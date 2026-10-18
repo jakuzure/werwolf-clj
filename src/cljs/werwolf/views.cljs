@@ -823,6 +823,19 @@
                       "rounded-xl border-2 border-emerald-500 bg-emerald-950/40 p-3 space-y-2
                        ring-4 ring-emerald-500/20")
              :data-testid "my-task"}
+       ;; The Hexe's decision starts from the wolves' choice. It used to sit in
+       ;; the night notes under the whole board, or show only as the card
+       ;; lit up after "Heiltrank benutzen"; it belongs here, read first.
+       (when (contains? actions :hexe-pass)
+         (let [victims (keep #(when (= :werwolf (:cause %)) (:player %))
+                             (:pending-deaths @(rf/subscribe [::sub/night-info])))
+               players @(rf/subscribe [::sub/players])
+               me (:id @(rf/subscribe [::sub/me-view]))]
+           [:div {:class "text-sm font-semibold text-rose-200" :data-testid "hexe-victim"}
+            (cond
+              (= [me] victims) (t :hexe/victim-you)
+              (seq victims) (t :hexe/victim (str/join ", " (map #(get-in players [% :name]) victims)))
+              :else (t :hexe/no-victim))]))
        [:div {:class (str "text-xs font-bold uppercase tracking-wide "
                           (if voted? "text-slate-300" "text-emerald-300"))}
         (if voted?
