@@ -330,6 +330,8 @@
    :target/hint       "Klicke unten auf einen Mitspieler"
 
    ;; ------------------------------------------------------------ badges ---
+   :dawn/title "Der Morgen graut"
+   :dawn/ok "Weiter"
    :ballot/title     "Abstimmung"
    :ballot/needed    (fn [n] (str "Verurteilt ab " n " Stimmen"))
    :ballot/none      "Noch hat niemand eine Stimme bekommen."

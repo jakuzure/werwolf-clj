@@ -196,7 +196,7 @@
 
 (def ^:private notes
   {:a3 220.00 :c4 261.63 :e4 329.63 :g4 392.00
-   :c5 523.25 :d5 587.33 :e5 659.25 :fs5 739.99 :g5 783.99 :a5 880.00 :d6 1174.66})
+   :c5 523.25 :d5 587.33 :e5 659.25 :fs5 739.99 :g5 783.99 :a5 880.00 :d6 1174.66 :e6 1318.51})
 
 (defn- score!
   "Lay out one of the three chimes on `out`."
@@ -206,6 +206,10 @@
     :night (do (bell! ctx out (:e4 notes) 0.00 0.90 0.10)
                (bell! ctx out (:c4 notes) 0.24 0.90 0.10)
                (bell! ctx out (:a3 notes) 0.48 1.00 0.12))
+    ;; Two quick taps on the shoulder, a fifth apart: it is you. Short and
+    ;; high, so it cannot be mistaken for the phase chimes, which are chords.
+    :turn  (do (voice! ctx out {:type "sine" :freq (:a5 notes) :at 0.00 :dur 0.16 :peak 0.09 :attack 0.004})
+               (voice! ctx out {:type "sine" :freq (:e6 notes) :at 0.13 :dur 0.30 :peak 0.09 :attack 0.004}))
     ;; Rising, major, quick, each note ringing under the next.
     :day   (doseq [[i k] (map-indexed vector [:d5 :fs5 :a5 :d6])]
              (voice! ctx out {:type "triangle" :freq (k notes) :at (* i 0.11)
@@ -238,3 +242,20 @@
   nil)
 
 (rf/reg-fx ::play play!)
+
+(defn buzz!
+  "A short double buzz, where the device can. Android browsers can; Safari on
+   the iPhone has no vibration at all, so there the turn chime has to do."
+  []
+  (try
+    (when (gobj/get js/navigator "vibrate")
+      (.vibrate js/navigator #js [70 60 70]))
+    (catch :default _ nil))
+  nil)
+
+(rf/reg-fx ::buzz (fn [_] (buzz!)))
+
+(rf/reg-fx
+ ::title
+ ;; The tab's name, so a player in another tab sees that it is their turn.
+ (fn [title] (try (set! (.-title js/document) title) (catch :default _ nil))))

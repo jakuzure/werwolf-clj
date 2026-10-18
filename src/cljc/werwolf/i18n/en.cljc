@@ -326,6 +326,8 @@
    :target/hint       "Click a player below"
 
    ;; ------------------------------------------------------------ badges ---
+   :dawn/title "Day breaks"
+   :dawn/ok "Continue"
    :ballot/title     "The vote"
    :ballot/needed    (fn [n] (str "Condemned at " n " votes"))
    :ballot/none      "Nobody has a vote yet."

@@ -945,3 +945,47 @@
     (testing "only while the ballot is open"
       (is (nil? (sub/ballot (assoc v :trial? false))))
       (is (nil? (sub/ballot (assoc v :phase :night)))))))
+
+(deftest the-turn-is-yours-when-the-game-waits-on-you
+  (let [v {:phase :night :me {:id 1} :actions #{:chat :seherin-inspect}}]
+    (is (true? (sub/my-turn? v)))
+    (is (false? (sub/my-turn? (assoc v :actions #{:chat :leave}))) "chat is not a move")
+    (is (false? (sub/my-turn? (assoc-in v [:me :narrator?] true))) "the Spielleiter always has buttons")
+    (is (false? (sub/my-turn? (assoc v :phase :lobby :actions #{:start-game}))))
+    (is (false? (sub/my-turn? {:phase :discussion :trial? true :me {:id 1} :votes {1 2}
+                               :actions #{:vote :vote-abstain}}))
+        "a cast vote is not a turn still owed")
+    (testing "it STARTS on the view that makes it yours, not on the first after a welcome"
+      (is (true? (sub/turn-started? (assoc v :actions #{:chat}) v)))
+      (is (false? (sub/turn-started? v v)))
+      (is (false? (sub/turn-started? nil v))))))
+
+(deftest a-turn-starting-buzzes-chimes-and-marks-the-tab
+  (let [seated (assoc db :me {:room-id "ABCD" :player-id 1})
+        old {:phase :night :night 1 :me {:id 1} :actions #{:chat}}
+        new (assoc old :actions #{:chat :seherin-inspect})
+        fx  (ev/server-message-fx {:db (assoc seated :view old :sound/on? true)}
+                                  [::ev/server {:type :room/view :seq 2 :view new}])]
+    (is (= :turn (:werwolf.chime/play fx)))
+    (is (true? (:werwolf.chime/buzz fx)))
+    (is (str/starts-with? (:werwolf.chime/title fx) "● "))
+    (testing "the phase chime wins a shared moment, the buzz still comes"
+      (let [fx (ev/server-message-fx {:db (assoc seated :view (assoc old :phase :setup :night 0) :sound/on? true)}
+                                     [::ev/server {:type :room/view :seq 2 :view new}])]
+        (is (= :night (:werwolf.chime/play fx)))
+        (is (true? (:werwolf.chime/buzz fx)))))
+    (testing "with the sound off: no chime, no buzz, but the tab is still marked"
+      (let [fx (ev/server-message-fx {:db (assoc seated :view old :sound/on? false)}
+                                     [::ev/server {:type :room/view :seq 2 :view new}])]
+        (is (nil? (:werwolf.chime/play fx)))
+        (is (nil? (:werwolf.chime/buzz fx)))
+        (is (str/starts-with? (:werwolf.chime/title fx) "● "))))))
+
+(deftest the-morning-card-tells-the-night-once
+  (let [died {:type :player/died :player 3 :cause :werwolf :role :hexe}
+        v {:room-id "ABCD" :phase :discussion :night 2
+           :log [{:type :night/began :night 2} {:type :night/ended} died {:type :day/began}]}]
+    (is (= [died] (sub/dawn-news v nil)))
+    (is (nil? (sub/dawn-news v "ABCD:2")) "read")
+    (is (= [died] (sub/dawn-news v "ABCD:1")) "yesterday's reading does not count")
+    (is (nil? (sub/dawn-news (assoc v :phase :night) nil)) "only while the day is young")))

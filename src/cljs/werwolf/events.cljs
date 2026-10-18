@@ -11,6 +11,7 @@
    a convention."
   (:require [re-frame.core :as rf]
             [werwolf.chime :as chime]
+            [werwolf.i18n.core :as i18n]
             [werwolf.subs :as sub]
             [werwolf.ws :as ws]))
 
@@ -78,7 +79,10 @@
    ;; why `unseat` leaves it alone. Overwritten from storage by ::init.
    :sound/on?   true})
 
-(rf/reg-event-db ::init (fn [_ _] (assoc initial-db :sound/on? (chime/stored-on?))))
+(declare stored-dawn)
+
+(rf/reg-event-db ::init (fn [_ _] (assoc initial-db :sound/on? (chime/stored-on?)
+                                          :dawn/seen (stored-dawn))))
 
 (rf/reg-event-fx
  ::connected
@@ -391,6 +395,23 @@
 
 (rf/reg-event-fx ::set-locale set-locale-fx)
 
+(def ^:private dawn-key "werwolf/dawn-seen")
+
+(defn stored-dawn
+  "Which morning this tab last dismissed, as `sub/dawn-id` names it. Per tab
+   (sessionStorage): a reload keeps it, another device shows its own."
+  []
+  (try (.getItem js/sessionStorage dawn-key) (catch :default _ nil)))
+
+(rf/reg-fx ::store-dawn
+  (fn [id] (try (.setItem js/sessionStorage dawn-key id) (catch :default _ nil))))
+
+(rf/reg-event-fx
+ ::dawn-seen
+ ;; The morning card is read. Named by room and night, so the next morning —
+ ;; or another room's — shows its own, and a reload does not bring it back.
+ (fn [{:keys [db]} [_ id]] {:db (assoc db :dawn/seen id) ::store-dawn id}))
+
 (defn send-chat-fx
   "Named and public so the clearing behaviour is testable without a browser —
    the same reason create-room-fx and join-room-fx are."
@@ -671,6 +692,12 @@
   ;; like any other refusal, so it is in the player's own language.
   (if (released? db msg) (assoc (unseat db) :error :kicked) db))
 
+(defn turn-title
+  "The tab's name for this view: marked while the game waits on this player."
+  [view]
+  (let [title (i18n/t (or (get-in view [:me :locale]) default-locale) :app/title)]
+    (if (sub/my-turn? view) (str "● " title) title)))
+
 (defn- with-chime
   "Add the phase chime, if this view turned the phase and the player wants to
    hear it. `fx` already holds the db AFTER the view, `db` is the one before.
@@ -679,8 +706,19 @@
    of order leaves `:view` as it was, and so rings nothing — an old frame must
    not announce a turn already past."
   [fx db]
-  (let [cue (and (:sound/on? db) (chime/cue-for (:view db) (get-in fx [:db :view])))]
-    (cond-> fx cue (assoc ::chime/play cue))))
+  (let [old  (:view db)
+        new  (get-in fx [:db :view])
+        cue  (and (:sound/on? db) (chime/cue-for old new))
+        turn (and (:sound/on? db) (sub/turn-started? old new))]
+    (cond-> fx
+      cue  (assoc ::chime/play cue)
+      ;; Its own sound only when no phase chime rings in the same moment: the
+      ;; two at once are a noise, and the phase chime already says "wake up".
+      (and turn (not cue)) (assoc ::chime/play :turn)
+      turn (assoc ::chime/buzz true)
+      ;; Every accepted view, not only a turn starting: the mark must also go
+      ;; away when the turn ends.
+      new  (assoc ::chime/title (turn-title new)))))
 
 (defn server-message-fx
   "Named and public so the effects of a message, not only its db change, are

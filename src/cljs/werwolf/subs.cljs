@@ -313,6 +313,42 @@
 
 (rf/reg-sub ::voted? :<- [::view] (fn [v _] (voted? v)))
 
+(defn my-turn?
+  "Is the game waiting on this player? A move of their own to make, not a vote
+   already cast, outside the lobby and the end, and never the Spielleiter,
+   whose console always offers something."
+  [{:keys [phase actions me] :as view}]
+  (boolean (and me (not (:narrator? me))
+                (not (#{:lobby :game-over} phase))
+                (not (voted? view))
+                (seq (player-moves actions)))))
+
+(defn turn-started?
+  "Did the step from view `old` to view `new` make it this player's turn? No
+   previous view, no news: the first view after a welcome describes a turn
+   that began who knows when — the same rule as the chime's."
+  [old new]
+  (boolean (and old (not (my-turn? old)) (my-turn? new))))
+
+(declare latest-news)
+
+(defn dawn-id
+  "The name of one morning: its room and its night."
+  [{:keys [room-id night]}]
+  (str room-id ":" night))
+
+(defn dawn-news
+  "What the night did, for the morning card: the news since the night ended,
+   while the day is young — the election or the talk — and until this player
+   has read it. Nil otherwise."
+  [{:keys [phase log] :as view} seen]
+  (when (and (#{:election :discussion} phase) (not= seen (dawn-id view)))
+    (let [since (drop-while #(not= :night/ended (:type %)) log)]
+      (when (seq since) (latest-news since)))))
+
+(rf/reg-sub ::dawn-seen (fn [db _] (:dawn/seen db)))
+(rf/reg-sub ::dawn-news :<- [::view] :<- [::dawn-seen] (fn [[v seen] _] (dawn-news v seen)))
+
 (rf/reg-sub
  ::can-act?
  :<- [::actions]
