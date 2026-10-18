@@ -1,18 +1,26 @@
-# Builds the PR preview image for every push to a push-* branch (the branches
-# `jj git push -c` creates), pushes it to Cachix, and sets the commit status
-# `preview` that lain's controller reads (see nix/previews-module.nix).
+# Builds the PR preview image for every push to a branch other than main, pushes
+# it to Cachix, and sets the commit status `preview` that lain's controller reads
+# (see nix/previews-module.nix). A branch without an open PR gets an image and a
+# status but no preview: the controller only runs open PRs.
 #
 # `push`, not `pull_request`: the `cachix` environment matches its branch rules
 # against GITHUB_REF, which for pull_request runs is refs/pull/<n>/merge. On a
-# push it is refs/heads/push-…, which the rule `push-*` allows. Renovate's
-# branches (renovate/*) never match, so dependency-update code never runs with
-# the Cachix token, and forks cannot push here at all. Renovate's previews are
-# built without the token by ci.yml and pushed by preview-renovate.yml.
+# push it is refs/heads/<branch>, which the environment's rules allow for
+# `push-*` (what `jj git push -c` creates), any name without a slash, and the
+# usual `feat/*`, `fix/*`, ... prefixes. Renovate's branches (renovate/...) are
+# left out twice — by `branches-ignore` here and by the environment, whose rules
+# match no `renovate/` name — so dependency-update code never runs with the
+# Cachix token. Forks cannot push here at all. Renovate's previews are built
+# without the token by ci.yml and pushed by preview-renovate.yml. Main and
+# release-please's branch have nothing to preview.
 name: preview
 
 on:
   push:
-    branches: ["push-*"]
+    branches-ignore:
+      - main
+      - "renovate/**"
+      - "release-please--**"
 
 concurrency:
   group: preview-${{ github.ref }}
