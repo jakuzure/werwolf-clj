@@ -305,6 +305,23 @@
 
 (rf/reg-sub ::ballot :<- [::view] (fn [v _] (ballot v)))
 
+(defn table-record
+  "The table's record across its games, for the end screen: one row per
+   player still seated, most wins first, then most games, then by name. Nil
+   when the server sent none (the first game of a room)."
+  [{:keys [stats players]}]
+  (when-let [{:keys [games] ps :players} stats]
+    {:games games
+     :rows  (->> ps
+                 (keep (fn [[pid {:keys [played won roles]}]]
+                         (when-let [nm (get-in players [pid :name])]
+                           {:id pid :name nm :played played :won won
+                            :roles (sort-by (fn [[r n]] [(- n) (str r)]) roles)})))
+                 (sort-by (juxt (comp - :won) (comp - :played) :name))
+                 vec)}))
+
+(rf/reg-sub ::table-record :<- [::view] (fn [v _] (table-record v)))
+
 (defn voted?
   "Has this player cast today's ballot? It stays open to change, so the vote
    buttons are still offered — but the game is no longer waiting on them."

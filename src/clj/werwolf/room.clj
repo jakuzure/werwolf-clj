@@ -34,6 +34,7 @@
             [clojure.tools.logging :as log]
             [werwolf.engine.core :as engine]
             [werwolf.engine.recap :as recap]
+            [werwolf.engine.stats :as stats]
             [werwolf.password :as password]
             [werwolf.store :as store])
   (:import (java.security SecureRandom)))
@@ -735,23 +736,31 @@
     (cond
       (not= :game-over (:phase (:state rm)))
       (when (contains? rm :recap)
-        (swap! (:rooms ctx) update room-id #(when % (dissoc % :recap))))
+        (swap! (:rooms ctx) update room-id #(when % (dissoc % :recap :stats))))
 
+      ;; The table's record across its games rides along: the same log, read
+      ;; the same once, at the same moment.
       (not (contains? rm :recap))
-      (let [rc (try (recap/recap (store/load-events (:ds ctx) room-id))
-                    (catch Exception ex
-                      (log/warn ex "could not build the recap for" room-id)
-                      nil))]
-        (swap! (:rooms ctx) update room-id #(when % (assoc % :recap rc)))))))
+      (let [evs (store/load-events (:ds ctx) room-id)
+            safe (fn [f what]
+                   (try (f evs)
+                        (catch Exception ex
+                          (log/warn ex "could not build the" what "for" room-id)
+                          nil)))
+            rc (safe recap/recap "recap")
+            st (safe stats/stats "stats")]
+        (swap! (:rooms ctx) update room-id #(when % (assoc % :recap rc :stats st)))))))
 
 (defn- with-recap
   "Attach the cached recap to a view — at :game-over and never before. The
    phase is checked here as well as when caching: this is the line that puts it
    on a socket, so it is the one that has to be right."
   [view r]
-  (cond-> view
-    (and (= :game-over (:phase (:state r))) (:recap r))
-    (assoc :recap (:recap r))))
+  (let [over? (= :game-over (:phase (:state r)))]
+    (cond-> view
+      (and over? (:recap r)) (assoc :recap (:recap r))
+      ;; From the second game on: after one, the recap already says it all.
+      (and over? (< 1 (get-in r [:stats :games] 0))) (assoc :stats (:stats r)))))
 
 ;; -------------------------------------------------------------------- chat ---
 

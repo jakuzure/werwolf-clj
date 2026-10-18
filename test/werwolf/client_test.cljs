@@ -989,3 +989,17 @@
     (is (nil? (sub/dawn-news v "ABCD:2")) "read")
     (is (= [died] (sub/dawn-news v "ABCD:1")) "yesterday's reading does not count")
     (is (nil? (sub/dawn-news (assoc v :phase :night) nil)) "only while the day is young")))
+
+(deftest the-table-record-ranks-wins-then-games
+  (let [v {:players {1 {:name "Anna"} 2 {:name "Bert"} 3 {:name "Cem"}}
+           :stats {:games 3
+                   :players {1 {:played 3 :won 1 :roles {:werwolf 1 :dorfbewohner 2}}
+                             2 {:played 3 :won 2 :roles {:seherin 3}}
+                             3 {:played 2 :won 1 :roles {:hexe 2}}
+                             9 {:played 1 :won 1 :roles {:jaeger 1}}}}}
+        {:keys [games rows]} (sub/table-record v)]
+    (is (= 3 games))
+    (is (= ["Bert" "Anna" "Cem"] (map :name rows))
+        "wins first, then games played; a seat no longer at the table is left out")
+    (is (= [[:dorfbewohner 2] [:werwolf 1]] (:roles (second rows))) "most-held card first")
+    (is (nil? (sub/table-record (dissoc v :stats))))))
