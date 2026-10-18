@@ -133,6 +133,45 @@
 
 ;; -------------------------------------------------------- public pieces ---
 
+(defn night-plan
+  "The roles this night calls, in calling order, each `:done`, `:current` or
+   `:todo` — so a sleeping table can see where the night is and what is left.
+
+   Built from PUBLIC facts only, never from the engine's own queue, which knows
+   what the table does not: the deck as it was announced (`roles/composition`),
+   the cards the log turned over on death, the night's number, the room's rules,
+   and the role being called, which is public already (the narrator says it out
+   loud). The queue skips a role whose holders are all dead; that is public too,
+   since a death reveals the card. It does not know, and must not tell, whether a
+   role the Spielleiter dealt in setup is in the deck: such a role joins the list
+   when it is called, and one he took out is passed over like any finished turn.
+
+   The pack's turn is the pack's, so it comes while any of the wolf team is left,
+   the Weißer Werwolf included — as `phases/holders` has it."
+  [state]
+  (when (= :night (:phase state))
+    (let [n      (:night state 0)
+          cursor (:night-cursor state)
+          dealt  (:dealt (roles/composition (count (e/participant-ids state)) (:deck state)))
+          dead   (frequencies (keep #(when (= :player/died (:type %)) (:role %)) (:log state)))
+          left?  #(> (get dealt % 0) (get dead % 0))
+          pack   (filter #(= :werewolf (roles/team-of %)) roles/all-ids)
+          calls? (fn [r]
+                   (let [{:keys [first-night-only? skips-first-night? acts-on-even-nights?]}
+                         (roles/role r)]
+                     (and (if (= :werwolf r) (some left? pack) (left? r))
+                          (or (not first-night-only?) (= 1 n))
+                          (or (not acts-on-even-nights?) (even? n))
+                          (or (not skips-first-night?) (not= 1 n) (:first-night-kill? state)))))
+          order  (filterv #(or (= % cursor) (calls? %)) (roles/night-acting-ids))
+          at     (if cursor (.indexOf order cursor) -1)]
+      (into [] (map-indexed (fn [i r] {:role r
+                                       :state (cond (neg? at) :todo
+                                                    (< i at)  :done
+                                                    (= i at)  :current
+                                                    :else     :todo)}))
+            order))))
+
 (defn- deck-view
   "What the table knows about the deck. Public, all of it, in every phase.
 
@@ -270,6 +309,8 @@
      ;; Which ROLE is currently being called is public — the human narrator says
      ;; it out loud ("Werwölfe, wacht auf"). Which PLAYER holds it is not.
      :night-cursor (:night-cursor state)
+     ;; Where the night is: public facts only, see `night-plan`.
+     :night-plan  (night-plan state)
 
      ;; ---- role knowledge, decided solely by revealed-roles ----
      :known-roles roles-in

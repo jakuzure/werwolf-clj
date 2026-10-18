@@ -164,6 +164,29 @@
 ;; narrator says it out loud ("Werwölfe, wacht auf") — and which player holds it
 ;; is not in the view. This is most of the answer to "whose turn is it?" at night.
 (rf/reg-sub ::night-cursor :<- [::view] (fn [v _] (:night-cursor v)))
+(rf/reg-sub ::night-plan :<- [::view] (fn [v _] (or (:night-plan v) [])))
+
+(defn asleep?
+  "Is this player simply asleep right now: night, alive, playing, nothing to
+   do, and not the role being called? Then the screen says so and keeps quiet,
+   rather than showing a whole board nobody may touch.
+
+   The last condition is the wolf who has voted while the rest of the pack has
+   not: nothing left to do, but awake, and waiting for the others. The pack's
+   turn is the whole wolf team's, the Weißer Werwolf included."
+  [{:keys [phase me night-cursor]} can-act?]
+  (let [role (:role me)
+        called? (or (= night-cursor role)
+                    (and (= :werwolf night-cursor) (= :werewolf (roles/team-of role))))]
+    (boolean (and (= :night phase) me (:alive? me) (not (:narrator? me))
+                  (not can-act?) (not called?)))))
+
+(rf/reg-sub ::asleep? :<- [::view] :<- [::can-act?] (fn [[v can?] _] (asleep? v can?)))
+
+(defn next-up
+  "The role the night calls after the current one, if any."
+  [plan]
+  (:role (first (filter #(= :todo (:state %)) plan))))
 
 ;; Set only when THIS player is the one who owes a reaction — the Jäger who has
 ;; just been told he is dead and still has a shot. The table is waiting on them

@@ -280,8 +280,11 @@
    ;; Wörter gehören den Ergebnissen, und ein Satz, der sie immer enthält,
    ;; macht sie auf dem Bildschirm wertlos.
    :stage/round       (fn [n] (str "Runde " n))
-   :stage/called      (fn [role] (str "Gerufen: " role))
-   :stage/call        (fn [role] (str "Rufe auf: " role))
+   :stage/called-label "Die Nacht ruft"
+   :stage/call-label "Rufe auf, der Reihe nach"
+   :turn/asleep "Du schläfst"
+   :turn/asleep-next (fn [role] (str "Als Nächstes: " role))
+   :board/show (fn [n] (str "Spielbrett zeigen (" n ")"))
    :stage/latest      "Zuletzt"
    :stage/progress    "Ablauf der Runde"
    :stage/interrupted "unterbrochen"
