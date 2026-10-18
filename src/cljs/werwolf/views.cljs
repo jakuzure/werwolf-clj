@@ -1713,6 +1713,56 @@
       [:div {:class "flex flex-wrap gap-2" :data-testid "game-leave"}
        [leave-button]])))
 
+(defn- dawn-card
+  "The morning, told once and large: who did not survive the night and what
+   they were, or that the night was quiet. A line under the stage was easy to
+   read past while everybody started talking. Gone with \"Weiter\", and for
+   good that day; the stage's \"Zuletzt\" line keeps saying it."
+  []
+  (when-let [entries @(rf/subscribe [::sub/dawn-news])]
+    (let [players @(rf/subscribe [::sub/players])
+          id      (sub/dawn-id @(rf/subscribe [::sub/view]))
+          rows    (i18n/chronicle (lc) players entries {:show-all? false})
+          death?  (some #(= :death (:tone %)) rows)]
+      (when (seq rows)
+        [:section {:class (str "rounded-xl border-2 p-4 space-y-3 text-center "
+                               (if death? "border-rose-700 bg-rose-950/40" "border-sky-800 bg-sky-950/30"))
+                   :data-testid "dawn"}
+         [:div {:class "text-3xl" :aria-hidden true} "🌅"]
+         [:h3 {:class "text-xs font-bold uppercase tracking-wide text-slate-300"} (t :dawn/title)]
+         (for [[i {:keys [text]}] (map-indexed vector (reverse rows))]
+           ^{:key i}
+           [:p {:class (str "text-lg font-semibold " (if death? "text-rose-100" "text-sky-100"))} text])
+         ;; The card each of them held, which a death turns over for everybody.
+         (when-let [dead (seq (filter #(and (= :player/died (:type %)) (:role %)) entries))]
+           [:div {:class "flex flex-wrap justify-center gap-2"}
+            (for [{:keys [player role]} dead]
+              ^{:key player}
+              [:span {:class "text-sm text-rose-200"}
+               (str (get-in players [player :name]) ": " (i18n/icon-of role) " " (role-name role))])])
+         [btn (t :dawn/ok) #(rf/dispatch [::ev/dawn-seen id]) {:tone :ghost :testid "dawn-ok"}]]))))
+
+(defn- turn-dock
+  "\"Du bist dran\", stuck to the bottom of a phone screen while it is true.
+   Whoever has scrolled down to the board or the chat still sees it, under the
+   thumb, and one tap brings the task back. Not on a wide screen, where the
+   task is never out of sight."
+  []
+  (let [my-turn? @(rf/subscribe [::sub/can-act?])
+        phase    @(rf/subscribe [::sub/phase])
+        secs     @(rf/subscribe [::sub/seconds-left])]
+    (when (and my-turn? (not (#{:lobby :game-over} phase)))
+      [:button {:class "fixed inset-x-0 bottom-0 z-40 lg:hidden flex items-center justify-between gap-3
+                        px-4 py-3 bg-emerald-600 text-white font-bold text-left
+                        border-t-2 border-emerald-300"
+                :style {:padding-bottom "max(0.75rem, env(safe-area-inset-bottom))"}
+                :data-testid "turn-dock"
+                :on-click #(some-> (.querySelector js/document "[data-testid=my-task]")
+                                   (.scrollIntoView #js {:behavior "smooth" :block "center"}))}
+       [:span (str "👉 " (t :turn/yours))]
+       (when secs
+         [:span {:class "font-mono"} (str (quot secs 60) ":" (when (< (mod secs 60) 10) "0") (mod secs 60))])])))
+
 (defn- ballot-panel
   "The day's vote at a glance: a bar for everybody with votes, filling towards
    the majority it takes, so the table sees who is close and how close. The
@@ -1770,19 +1820,28 @@
   ;; everyone who is not host — and an empty flex item still consumes a `gap-4`.
   ;; Without it every phone screen carried two mystery gaps.
   (let [my-turn? @(rf/subscribe [::sub/can-act?])]
-  [:div {:class "space-y-4"}
+  ;; Room at the foot for the dock, so it never covers the last thing on the page.
+  [:div {:class (str "space-y-4 " (when my-turn? "pb-20 lg:pb-0"))}
    [phase-stage]
+   [turn-dock]
    [target-prompt]
    [:div {:class "flex flex-col gap-4 lg:grid lg:grid-cols-5 lg:gap-4"}
     [:div {:class "contents lg:block lg:col-span-3 lg:space-y-4"}
      [:div {:class "order-1 empty:hidden"} [game-over-panel]]
+     [:div {:class "order-1 empty:hidden"} [dawn-card]]
      ;; First on a phone during the vote: it is what everybody is watching.
      [:div {:class "order-1 empty:hidden"} [ballot-panel]]
-     [:div {:class "order-3 empty:hidden"} [me-panel]]
      ;; On your turn the task jumps above your role card, straight under the
      ;; stage that says it is your turn: the answer to "what do I do" should not
-     ;; be a scroll away from the question.
-     [:div {:class (str (if my-turn? "order-2" "order-4") " empty:hidden")} [action-bar]]
+     ;; be a scroll away from the question. `order` does it on a phone; on a
+     ;; wide screen the column is a plain block, so the DOM order has to say it.
+     (if my-turn?
+       [:<>
+        [:div {:class "order-2 empty:hidden"} [action-bar]]
+        [:div {:class "order-3 empty:hidden"} [me-panel]]]
+       [:<>
+        [:div {:class "order-3 empty:hidden"} [me-panel]]
+        [:div {:class "order-4 empty:hidden"} [action-bar]]])
      ;; Above the board on a phone: joining the call is something you do once, at
      ;; the start, and hunting for it under nine player cards is how people end up
      ;; playing in silence.
