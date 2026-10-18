@@ -310,6 +310,18 @@
       (t locale k names)
       (str (count run) "× " (log-line locale players (first run))))))
 
+(defn- told-twice?
+  "A death the line before it has already told. The Jäger's shot names its
+   target, and the :player/died that follows said it again: 'chris erschießt
+   Emil', then 'Emil wurde vom Jäger erschossen'."
+  [prev e]
+  (and (= :player/died (:type e)) (= :jaeger (:cause e))
+       (= :jaeger/shot (:type prev)) (= (:target prev) (:player e))))
+
+(defn- drop-retold [log]
+  (keep (fn [[prev e]] (when-not (told-twice? prev e) e))
+        (map vector (cons nil log) log)))
+
 (defn chronicle
   "The raw log as display rows, newest first: {:text :tone :count}.
 
@@ -319,14 +331,26 @@
    filtered out unless asked for, because showing every ready/pass/vote by
    default buried the one line that said somebody had died."
   [locale players log {:keys [show-all?]}]
-  (->> log
+  (->> (drop-retold log)
        (map (fn [e] (assoc e ::tone (log-tone e))))
        (filter (fn [e] (or show-all? (loud? (::tone e)))))
        (partition-by :type)
        (mapcat (fn [run]
-                 (if (or (< (count run) 2) (superseding (:type (first run))))
+                 (cond
+                   (or (< (count run) 2) (superseding (:type (first run))))
                    [{:tone (::tone (last run))
                      :text (log-line locale players (last run))}]
+
+                   ;; Without a plural phrasing a run is only one row when its
+                   ;; lines are the same line. Two deaths in a night — one to
+                   ;; the wolves, one for love — once read "2× chris wurde von
+                   ;; den Werwölfen gerissen", and the second death vanished.
+                   (and (not (group-keys (:type (first run))))
+                        (not (apply = (map #(log-line locale players %) run))))
+                   (for [e run]
+                     {:tone (::tone e) :text (log-line locale players e)})
+
+                   :else
                    [{:tone (::tone (first run))
                      :text (group-line locale players run)
                      :count (count run)}])))

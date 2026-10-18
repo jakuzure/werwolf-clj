@@ -171,6 +171,25 @@
               the singular form could not do"
       (is (not (str/includes? (:text (first de-rows)) "ist fertig"))))))
 
+(deftest two-deaths-in-one-night-are-two-lines
+  ;; The night a wolf's victim takes a lover with them: the Chronik and the
+  ;; dawn read "2× Anna wurde von den Werwölfen gerissen", and Bob's death,
+  ;; for love, was nowhere.
+  (let [log  [{:type :player/died :player 0 :cause :werwolf :role :jaeger}
+              {:type :player/died :player 1 :cause :liebe :role :hexe}]
+        rows (i18n/chronicle :de players log {:show-all? false})]
+    (is (= 2 (count rows)))
+    (is (not-any? #(str/includes? (:text %) "×") rows))
+    (is (some #(str/includes? (:text %) "Bob") rows) "the second death is told")))
+
+(deftest the-jaegers-shot-is-told-once
+  (let [log  [{:type :player/died :player 0 :cause :werwolf :role :jaeger}
+              {:type :jaeger/shot :player 0 :target 1}
+              {:type :player/died :player 1 :cause :jaeger :role :seherin}]
+        rows (i18n/chronicle :de players log {:show-all? false})]
+    (is (= ["Anna erschießt Bob" "Anna wurde von den Werwölfen gerissen"] (map :text rows))
+        "the shot names its target; the death after it would only repeat it")))
+
 (deftest the-table-switches-read-both-ways
   (testing "each switch logs its new position, and both positions need a line"
     (doseq [locale i18n/locales
