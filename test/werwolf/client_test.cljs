@@ -1013,6 +1013,11 @@
                   {:type :night/began :night 2} {:type :night/ended} d2 {:type :day/began}]}]
     (is (= [d2] (sub/dawn-news v nil)))))
 
+(deftest the-move-comes-first-and-no-comes-last
+  (is (= [:jaeger-shoot :jaeger-pass] (sub/player-moves #{:jaeger-pass :jaeger-shoot})))
+  (is (= [:hexe-heal :hexe-poison :hexe-pass] (sub/player-moves #{:hexe-pass :hexe-poison :hexe-heal})))
+  (is (= [:vote :vote-abstain] (sub/player-moves #{:vote-abstain :vote :chat}))))
+
 (deftest a-busy-morning-loses-nobody
   ;; The wolves' victim, a lover following them, the Jäger's shot and its
   ;; victim: four entries, and the card used to keep the last three.

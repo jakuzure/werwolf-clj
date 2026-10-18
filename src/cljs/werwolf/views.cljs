@@ -289,12 +289,27 @@
        [:div {:class "text-slate-400"} (t :guide/mayor)]]]]
     [:p {:class "text-slate-400"} (t :guide/table)]]])
 
+(declare qr-code invite-link)
+
+(defn- notice-line
+  "A word on arriving here, when there is one to say: you left the game."
+  []
+  (when-let [n @(rf/subscribe [::sub/notice])]
+    [:div {:class "flex items-center justify-between gap-2 rounded-lg border border-slate-700
+                   bg-slate-900/70 px-3 py-2 text-sm text-slate-300"
+           :data-testid "notice"}
+     [:span (t (keyword "notice" (name n)))]
+     [:button {:class "px-1 text-slate-500 hover:text-slate-200" :aria-label "×"
+               :on-click #(rf/dispatch [::ev/dismiss-notice])} "×"]]))
+
 (defn landing []
   ;; Greyed out while a create or join is unanswered. The events already drop a
   ;; second tap; this is so the first one visibly took.
   (let [pending? @(rf/subscribe [::sub/seat-pending?])
         ask-password? @(rf/subscribe [::sub/join-password?])
-        invited @(rf/subscribe [::sub/invited])]
+        invited @(rf/subscribe [::sub/invited])
+        not-open? (and invited @(rf/subscribe [::sub/rooms-loaded?])
+                       (not-any? #(= invited (:room-id %)) @(rf/subscribe [::sub/rooms])))]
     (if invited
       ;; Arrived by a shared link: one name and one tap, the rest of the page
       ;; a tap further away for whoever wanted something else.
@@ -304,6 +319,12 @@
        [:p {:class "text-center text-slate-300"}
         (t :landing/invited) " "
         [:span {:class "font-mono tracking-widest text-indigo-300"} invited]]
+       ;; Before anybody types a name: a room that is not open — running
+       ;; already, or gone — said so only after the tap. Still joinable by
+       ;; hand, since the list can lag behind a room just opened.
+       (when not-open?
+         [:p {:class "text-center text-sm text-amber-300" :data-testid "invite-not-open"}
+          (t :landing/invite-not-open)])
        [:div {:class "space-y-3"}
         [field :name (t :landing/name) {:on-enter [::ev/join-room]}]
         (when ask-password?
@@ -313,14 +334,19 @@
                           disabled:opacity-40"
                   :disabled pending?
                   :on-click #(rf/dispatch [::ev/join-room])}
-         (t :landing/join)]]
+         ;; Having been told it is not open, the tap is an attempt — and the
+         ;; refusal that may follow reads as its answer, not as news.
+         (t (if not-open? :landing/join-anyway :landing/join))]]
        [:button {:class "w-full text-sm text-slate-500 hover:text-slate-200 underline"
                  :on-click #(rf/dispatch [::ev/dismiss-invite])}
         (t :landing/not-invited)]
+       ;; To pass the invitation on to whoever sits next to you.
+       [:div {:class "flex justify-center"} [qr-code (invite-link invited)]]
        [how-to-play]]
     [:div {:class "max-w-sm mx-auto mt-16 space-y-8"}
      [:div {:class "flex justify-center"} [language-switch]]
      [:h1 {:class "text-3xl font-bold text-center"} (t :app/title)]
+     [notice-line]
      [:div {:class "space-y-3"}
       [field :name (t :landing/name)]
       ;; A plain text field, not type=password. The word is read out at the
@@ -594,6 +620,16 @@
           [:div {:class "font-bold"} headline]
           (when detail [:div {:class "text-sm opacity-90"} detail])]
          (when (and narrator? (not= :setup phase)) [narrator-waits])
+         ;; The pack's tally where a wolf is looking. It sat only in the
+         ;; night notes under the Mitspieler tab, which on a phone is not
+         ;; where anybody deciding with the pack is.
+         (let [votes (:werewolf-votes @(rf/subscribe [::sub/night-info]))
+               players @(rf/subscribe [::sub/players])
+               nm #(get-in players [% :name] (str "#" %))]
+           (when (and (seq votes) (not narrator?) (= :night phase))
+             [:div {:class "text-sm text-rose-200" :data-testid "wolf-votes"}
+              (str "🐺 " (t :narrator/wolf-votes) ": "
+                   (str/join ", " (for [[w v] (sort-by key votes)] (str (nm w) " → " (nm v)))))]))
          [action-bar]]))))
 
 (defn- voice-panel
@@ -681,7 +717,18 @@
              ;; A control inside a card must not count as clicking the card,
              ;; which in targeting mode would pick the seat.
              :on-click #(.stopPropagation %)}
-       (when transfer?
+       ;; Behind ⋯ in the lobby: two full-width buttons on every card made a
+       ;; table of thirteen a long scroll of "Zum Spielleiter machen" and
+       ;; "Entfernen". Open while one of them is armed, so a confirm in
+       ;; flight never disappears.
+       (when (and (or transfer? kick?)
+                  (not (or (= id (:card-menu gm)) confirming? confirming-kick?)))
+         [:button {:class "h-7 px-2 rounded-md border border-slate-600 text-slate-300 text-sm leading-none hover:bg-slate-700"
+                   :aria-label (t :lobby/seat-menu)
+                   :data-testid (str "card-menu-" id)
+                   :on-click #(rf/dispatch [::ev/form-set :gm (assoc gm :card-menu id)])}
+          "⋯"])
+       (when (and transfer? (or (= id (:card-menu gm)) confirming? confirming-kick?))
          [btn (if confirming?
                 (t :gm/confirm)
                 (t (if narrated? :lobby/make-narrator :lobby/make-host)))
@@ -692,7 +739,7 @@
                                                  (assoc :confirm-transfer id))]))
           {:tone (if confirming? :danger :quiet)
            :testid (str "make-host-" id)}])
-       (when kick?
+       (when (and kick? (or (= id (:card-menu gm)) confirming? confirming-kick?))
          [btn (t (if confirming-kick? :kick/confirm :kick/button))
           (if confirming-kick?
             #(do (rf/dispatch [::ev/act :gm/kick id])
@@ -884,10 +931,9 @@
 ;; ------------------------------------------------------------------ actions ---
 
 (def ^:private declines
-  "The 'no' answers. Grouped apart from the rest so saying no is never hidden
-   among the things that kill somebody."
-  #{:ready :hexe-pass :vote-abstain :jaeger-pass
-    :elect-abstain :mayor-decline})
+  "The 'no' answers, drawn quieter. The same set orders them last — see
+   `sub/declines`."
+  sub/declines)
 
 (defn- action-bar
   "Your moves, inside the Jetzt card. Without a frame of its own: the card
@@ -1057,19 +1103,25 @@
                                 (seq choices) (assoc (proto/choice-key action) choice))])
                 (put! [:confirm] nil))]
     [:div {:class "flex flex-wrap items-center gap-2"}
+     ;; Each select says what it asks for: two bare dropdowns side by side —
+     ;; a name and a role — left the reader to work out which was which.
      (when (seq targets)
+       [:label {:class "flex items-center gap-1.5 text-xs text-violet-300"}
+        (t :gm/who)
        [gm-select {:value target
                    :options targets
                    :parse js/parseInt
                    :label #(or (get-in players [% :name]) (str "#" %))
-                   :on-change #(put! [:target action] %)}])
+                   :on-change #(put! [:target action] %)}]])
      (when (seq choices)
+       [:label {:class "flex items-center gap-1.5 text-xs text-violet-300"}
+        (t (if (= :gm/set-phase action) :gm/which-phase :gm/which-role))
        [gm-select {:value (some-> choice name)
                    :options (map name choices)
                    :parse keyword
                    :label #(let [k (keyword %)]
                              (if (= :gm/set-phase action) (phase-name k) (role-name k)))
-                   :on-change #(put! [:choice action] %)}])
+                   :on-change #(put! [:choice action] %)}]])
      [btn (cond
             confirming? (t :gm/confirm)
             ;; A switch says which way it will flip, not merely that it is one.
@@ -1465,7 +1517,9 @@
 
      ;; Not while the morning card is open: it tells the same news, larger,
      ;; and the two read as the page repeating itself.
-     (when-not (or (= :game-over phase) @(rf/subscribe [::sub/dawn-news])) [latest-news])]))
+     ;; At the end too: under "Das Dorf gewinnt", the line that decided it —
+     ;; "Ida wurde vom Dorf gerichtet".
+     (when-not @(rf/subscribe [::sub/dawn-news]) [latest-news])]))
 
 ;; -------------------------------------------------------------------- chat ---
 
@@ -1489,6 +1543,16 @@
         ^{:key i}
         ;; A long word or a link breaks rather than running off the panel.
         [:div {:class "[overflow-wrap:anywhere]"}
+         ;; The channel in a word, not only a colour: a wolves' whisper and a
+         ;; public line differed in hue alone.
+         (when-let [k (case (:channel m) :wolves :chat/tag-wolves :dead :chat/tag-dead
+                                         :narrator :chat/tag-narrator nil)]
+           [:span {:class (str "mr-1 rounded px-1 text-[10px] font-bold uppercase tracking-wide "
+                               (case (:channel m)
+                                 :wolves   "bg-rose-950 text-rose-300"
+                                 :dead     "bg-slate-800 text-slate-400"
+                                 "bg-violet-950 text-violet-300"))}
+            (t k)])
          [:span {:class (case (:channel m)
                           :wolves   "text-rose-400 font-semibold"
                           :dead     "text-slate-500 font-semibold"

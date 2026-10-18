@@ -93,6 +93,10 @@
 
 (rf/reg-sub ::rooms (fn [db _] (or (:rooms db) [])))
 (rf/reg-sub ::invited (fn [db _] (:invited db)))
+(rf/reg-sub ::notice (fn [db _] (:notice db)))
+;; Whether the room list has come at all: an empty list and no answer yet
+;; mean different things to the invitation page.
+(rf/reg-sub ::rooms-loaded? (fn [db _] (some? (:rooms db))))
 (rf/reg-sub ::seat-pending? (fn [db _] (boolean (:seat/pending? db))))
 (rf/reg-sub ::join-password? (fn [db _] (boolean (:join/password? db))))
 
@@ -267,14 +271,23 @@
 (def ^:private not-a-move
   "Offered, but never what the game is waiting for. Chat, language and the way
    out are always there. :claim-host is offered to everybody while the host is
-   away, and nobody waits on it. :advance-phase is a Spielleitung power despite
-   its plain name — `host-actions` grants it, and its label says \"(SL)\".
+   away, and nobody waits on it. :advance-phase is a Spielleiter power despite
+   its plain name — `host-actions` grants it, and it sits in his console.
    :play-again has a button of its own on the game-over panel."
   #{:chat :leave :set-locale :advance-phase :claim-host :play-again})
 
+(def declines
+  "The 'no' answers. Shown last, after the moves that do something: sorted by
+   name, \"Nicht schießen\" stood before \"Schuss abgeben …\" and \"Keinen
+   Trank benutzen\" before the poison, while \"Verurteilen\" came before
+   \"Enthalten\" — the answer the screen is asking for wandered."
+  #{:ready :hexe-pass :vote-abstain :jaeger-pass :elect-abstain :mayor-decline
+    :weisser-pass :dieb-keep})
+
 (defn player-moves
   "The actions that are this player's own moves in the game, sorted: what the
-   action bar shows and what makes it 'your turn'.
+   action bar shows and what makes it 'your turn'. The moves that act first,
+   the ways of saying no last.
 
    One definition for both, because they disagreed. The turn banner left the
    Spielleitung powers (`:gm/*`, :advance-phase) in, so a host who plays along
@@ -282,7 +295,8 @@
    leaving them out, said there was nothing to do. Those powers are always on
    offer and have a console of their own; nobody is ever waiting on them."
   [actions]
-  (sort (remove #(or (= "gm" (namespace %)) (not-a-move %)) actions)))
+  (sort-by (juxt #(boolean (declines %)) str)
+           (remove #(or (= "gm" (namespace %)) (not-a-move %)) actions)))
 
 (defn ballot
   "The open vote as the table should read it, or nil outside one: who has how
@@ -470,7 +484,9 @@
    stays on screen."
   [log]
   (let [tone #(i18n/log-tone %)
-        newest-first (rseq (vec log))
+        ;; Never the winner: the stage's headline says it, larger. What is
+        ;; left at the end is the move that decided it.
+        newest-first (rseq (vec (remove #(= :game/ended (:type %)) log)))
         from-news (drop-while #(not (news-tones (tone %))) newest-first)]
     (->> from-news
          (remove #(= :muted (tone %)))
