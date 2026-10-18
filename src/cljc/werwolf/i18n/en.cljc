@@ -28,7 +28,7 @@
    :guide/night-title "The night"
    :guide/night       "Everyone is asleep. The roles are called one after another, and whoever is called acts in secret on their own screen: the Seherin looks at a card, the werewolves agree on a victim, the Hexe may save them."
    :guide/day-title   "The day"
-   :guide/day         "In the morning you learn who did not survive the night, and see their card. On the first day you elect a mayor and talk about the night — nobody is accused yet. From the second day you talk and vote at the same time on who is condemned. That takes a majority of the living; until everyone has voted, you can change your vote."
+   :guide/day         "In the morning you learn who did not survive the night, and see their card. On the first day you elect a mayor first. Then you talk and vote at the same time on who is condemned — every day, the first one included. That takes a majority of the living; until everyone has voted, you can change your vote."
    :guide/win-title   "Who wins"
    :guide/win         "The village wins once no werewolf is left alive. The werewolves win when nobody but them is left. Two lovers win together if they are the last two alive — whichever side they were on. The dead talk only to the dead."
    :guide/roles-title "The roles"
