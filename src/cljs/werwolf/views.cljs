@@ -19,7 +19,8 @@
    * **What just happened.** The Chronik is a column of its own, newest first,
      colour-coded by consequence. A log where a death and a reconnect look the
      same is a log nobody reads."
-  (:require [clojure.string :as str]
+  (:require ["uqr" :refer [encode]]
+            [clojure.string :as str]
             [re-frame.core :as rf]
             [reagent.core :as r]
             [werwolf.build-info :as build-info]
@@ -1776,6 +1777,35 @@
 (defn- invite-link [code]
   (str (.-origin js/location) "/?join=" code))
 
+(def ^:private qr-path
+  "The dark modules of a QR code for `text`, as one SVG path in module units.
+   Memoized: the lobby re-renders on every view, the link never changes."
+  (memoize
+   (fn [text]
+     (let [rows (.-data (encode text #js {:ecc "M" :border 2}))
+           n (alength rows)]
+       {:n n
+        :d (str/join (for [y (range n)
+                           :let [row (aget rows y)]
+                           x (range n)
+                           :when (aget row x)]
+                       (str "M" x " " y "h1v1h-1z")))}))))
+
+(defn- qr-code
+  "The invitation link as a QR code, for the people at the same table: they
+   point their camera at the host's screen instead of typing a code. Drawn
+   here from the matrix `uqr` computes rather than through its SVG string,
+   and dark on white whatever the theme, because that is what a camera reads."
+  [text]
+  (let [{:keys [n d]} (qr-path text)]
+    [:svg {:class "w-24 h-24 shrink-0 rounded-lg bg-white"
+           :viewBox (str "0 0 " n " " n)
+           :shape-rendering "crispEdges"
+           :role "img"
+           :aria-label (t :lobby/qr)
+           :data-testid "invite-qr"}
+     [:path {:fill "#0f172a" :d d}]]))
+
 (defn- share!
   "The phone's own share sheet where there is one — WhatsApp, Signal, a text —
    and the clipboard where there is not. A link rather than the code alone:
@@ -1797,16 +1827,17 @@
   (let [code (:room-id @(rf/subscribe [::sub/me]))
         view @(rf/subscribe [::sub/view])
         copied? (= code (:copied @(rf/subscribe [::sub/form])))]
-    [:section {:class "rounded-xl border border-slate-700 bg-slate-900/60 p-4 flex flex-wrap items-center justify-between gap-3"
+    [:section {:class "rounded-xl border border-slate-700 bg-slate-900/60 p-4 flex flex-wrap items-center gap-4"
                :data-testid "invite"}
-     [:div
+     [qr-code (invite-link code)]
+     [:div {:class "flex-1 min-w-0 space-y-2"}
       [:div {:class "text-xs uppercase tracking-wide text-slate-400"} (t :lobby/share)]
       [:div {:class "font-mono text-4xl tracking-[0.3em] text-indigo-300"} code]
       (when (:locked? view)
         [:div {:class "text-xs text-slate-400" :data-testid "lobby-locked"}
-         (str "🔒 " (t :landing/locked))])]
-     [btn (if copied? (str "✓ " (t :lobby/link-copied)) (str "🔗 " (t :lobby/share-link)))
-      #(share! code) {:tone :ghost :testid "share-link"}]]))
+         (str "🔒 " (t :landing/locked))])
+      [btn (if copied? (str "✓ " (t :lobby/link-copied)) (str "🔗 " (t :lobby/share-link)))
+       #(share! code) {:tone :ghost :testid "share-link"}]]]))
 
 (defn- guest-card
   "What a guest is waiting for, and on whom. The host sees the switches and

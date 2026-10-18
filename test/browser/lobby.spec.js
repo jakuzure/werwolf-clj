@@ -21,6 +21,24 @@ test.describe('getting in and out of a room', () => {
   let pages = [];
   test.afterEach(async () => { await closeAll(pages); pages = []; });
 
+  test('the invitation link seats a friend with one name and one tap', async ({ browser }) => {
+    // What the QR code and the share button hand out: /?join=CODE opens the
+    // start page with the room filled in, and the link is gone from the
+    // address afterwards, so a reload does not offer a dead room.
+    const host = await (await browser.newContext()).newPage();
+    const guest = await (await browser.newContext()).newPage();
+    pages = [host, guest];
+    const code = await createRoom(host, 'Anna');
+    await expect(host.getByTestId('invite-qr')).toBeVisible();
+
+    await guest.goto(`/?join=${code.toLowerCase()}`);
+    await expect(guest.getByTestId('invited')).toContainText(code);
+    expect(new URL(guest.url()).search).toBe('');
+    await guest.getByPlaceholder(DE.name).fill('Bob');
+    await guest.getByRole('button', { name: DE.join }).click();
+    await expect(guest.getByTestId('guest-card')).toContainText('Anna');
+  });
+
   test('a page that has left can open another room straight away', async ({ browser }) => {
     // Leaving used to leave the socket bound to the seat it gave up, so the
     // server refused the next create from this page as "already in a round"

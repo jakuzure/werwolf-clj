@@ -87,6 +87,7 @@
    :lobby/invite-text (fn [code] (str "Play Werewolf with us — room " code))
    :lobby/link-copied "Link copied"
    :lobby/share-link "Share link"
+   :lobby/qr "QR code to join"
    :lobby/you-are-in "You're in"
    :lobby/host-starts (fn [n] (str n " starts the game once everybody is here."))
    :lobby/fix-deck "The roles don't fit the table yet — see Roles."
