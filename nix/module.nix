@@ -206,6 +206,9 @@ in
           MemoryMax = cfg.memoryMax;
           Restart = "on-failure";
           RestartSec = 5;
+          # The JVM answers systemd's SIGTERM by shutting down cleanly and
+          # exiting 143 (128 + 15), which systemd would log as a failed stop.
+          SuccessExitStatus = 143;
 
           # Hardening. Deliberately NOT MemoryDenyWriteExecute: the JIT needs it.
           NoNewPrivileges = true;
