@@ -57,9 +57,26 @@ async function pickTarget(page, seat) {
 async function tryAct(page, name, targetSeat) {
   const btn = page.getByRole('button', { name });
   if (!(await btn.count()) || !(await btn.first().isVisible())) return false;
-  await btn.first().click();
-  if (targetSeat != null) await pickTarget(page, targetSeat);
+  await clickMove(page, btn.first(), targetSeat);
   return true;
+}
+
+/**
+ * Click a move's button, then pick its target if it asks for one.
+ *
+ * A move with exactly one possible target names that player on its button and
+ * is made by the click itself — the Seherin on night two, say, once the only
+ * stranger left is the Hexe. There is nothing to pick then; the button says
+ * who it went to, so check that instead.
+ */
+async function clickMove(page, button, targetSeat) {
+  const direct = ((await button.getAttribute('data-testid')) || '').startsWith('direct-');
+  if (direct && targetSeat != null) {
+    const target = await page.getByTestId(`seat-${targetSeat}`).locator('.font-semibold').first().innerText();
+    await expect(button).toContainText(target.trim());
+  }
+  await button.click();
+  if (targetSeat != null && !direct) await pickTarget(page, targetSeat);
 }
 
 /** Wait until SOMEBODY is offered this action, then let the broadcast settle. */
@@ -92,8 +109,7 @@ async function actAs(roles, roleName, name, targetSeat, { optional = false } = {
     if (optional) return false;
     throw new Error(`${roleName} was never offered ${name}`);
   }
-  await btn.first().click();
-  if (targetSeat != null) await pickTarget(who.page, targetSeat);
+  await clickMove(who.page, btn.first(), targetSeat);
   return true;
 }
 

@@ -252,7 +252,6 @@
    :game/chat          "Gespräch"
    :game/chat-hint     "Nachricht schreiben…"
    :game/waiting       "Warte auf die anderen…"
-   :game/nothing-to-do "Für dich ist gerade nichts zu tun."
    :game/wolves-channel "Nur die Werwölfe hören dich"
    :game/dead-channel   "Nur die Toten hören dich"
    :game/narrator-channel "Alle hören dich — du bist der Spielleiter"
@@ -268,12 +267,11 @@
    ;; because "warte auf die anderen" already exists as :game/waiting and these
    ;; are the other half of that sentence.
    :turn/yours   "Du bist dran"
-   :turn/hint    "Wähle unten eine Aktion"
+   :turn/hint    "Wähle, was du tust"
    :turn/urgent  "Alle warten auf dich"
    :turn/calling (fn [role] (str "Der Spielleiter ruft: " role))
    ;; Der Spielleiter ist nie "dran" und wartet nie — er führt.
    :turn/narrating "Du leitest das Spiel"
-   :turn/task      "Deine Aufgabe"
 
    ;; ------------------------------------------------------------ stage ---
    ;;
@@ -333,6 +331,8 @@
    :target/yes "Ja, sicher"
    :target/cancel     "Abbrechen"
    :target/hint       "Klicke unten auf einen Mitspieler"
+   :target/direct (fn [action who] (str action ": " who))
+   :target/tap "Oder tipp einfach auf einen Mitspieler"
 
    ;; ------------------------------------------------------------ badges ---
    :dawn/title "Der Morgen graut"
@@ -349,6 +349,7 @@
    :ballot/abstained (fn [n] (str n (if (= 1 n) " Enthaltung" " Enthaltungen")))
    :badge/votes       "Stimmen"
    :badge/vote        "Stimme"
+   :badge/your-vote   "deine Stimme"
    :badge/ready       "fertig"
    :badge/decided     "hat gewählt"
    :badge/mayor       "Bürgermeister"

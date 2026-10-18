@@ -143,6 +143,7 @@
                         :lover   "bg-pink-900 text-pink-200 "
                         :mayor   "bg-amber-700 text-amber-50 "
                         :voice   "bg-sky-900 text-sky-200 "
+                        :mine    "bg-amber-500 text-slate-900 "
                         "bg-slate-700 text-slate-200 "))}
    label])
 
@@ -344,17 +345,30 @@
                  [::ev/act action (first picks)]))
   (disarm!))
 
+(defn- tap-action
+  "The move a tap on a card makes when nothing is armed: the one move on offer
+   that needs a player, if there is exactly one. The day's vote, the
+   Seherin's look, the pack's choice — each used to be a button to arm first
+   and a card to tap second, and the button was the step people missed.
+   Read from what the server offered, so it names no role: with two such
+   moves, the Hexe's potions, a tap could mean either and does nothing."
+  []
+  (let [targets @(rf/subscribe [::sub/targets])
+        aimed (filter #(seq (get targets %)) (sub/player-moves @(rf/subscribe [::sub/actions])))]
+    (when (= 1 (count aimed)) (first aimed))))
+
 (defn- pick!
-  "Add a target to the pending action, and fire once enough are chosen.
+  "Add a target to `action`, and fire once enough are chosen.
 
    For a two-target action the command carries :a and :b, which is the shape the
    engine has always wanted — it was the wire schema that lacked them, and
    because that schema is closed, Amor was not degraded but unplayable."
-  [id]
-  (let [{:keys [action picks confirm?]} (pending)
+  [action id]
+  (let [{armed :action :keys [picks confirm?]} (pending)
         arity (get @(rf/subscribe [::sub/arity]) action 1)
-        ;; Tapping another card while asked to confirm is choosing again.
-        picks' (conj (if confirm? [] (vec picks)) id)]
+        ;; Tapping another card while asked to confirm is choosing again, and
+        ;; so is a tap for a move other than the armed one.
+        picks' (conj (if (or confirm? (not= armed action)) [] (vec picks)) id)]
     (cond
       (< (count picks') arity)
       (rf/dispatch [::ev/form-set :pending {:action action :picks picks'}])
@@ -445,8 +459,13 @@
          [btn label (if (seq owing) #(rf/dispatch [::ev/form-set :skip-confirm here]) fire!)
           {:tone :quiet :testid "narrator-skip"}]))]))
 
-(defn- turn-banner
-  "One line, high on the screen, answering 'is the game waiting for ME?'.
+(declare action-bar)
+
+(defn- now-card
+  "Jetzt: one card, straight under the stage, answering 'is the game waiting
+   for ME?' and holding the buttons that answer it. The banner that said
+   \"Du bist dran\" and the frame with the moves used to be two boxes a role
+   card apart, and the eye had to travel from the question to the answer.
 
    The most common complaint from the playtest was not knowing whose turn it was.
    Everything needed was already on the client — `::can-act?`, `:night-cursor`,
@@ -472,7 +491,8 @@
         narrator? @(rf/subscribe [::sub/narrator?])
         asleep?  @(rf/subscribe [::sub/asleep?])
         plan     @(rf/subscribe [::sub/night-plan])
-        deal-problem (:deal-problem @(rf/subscribe [::sub/narrator-info]))]
+        deal-problem (:deal-problem @(rf/subscribe [::sub/narrator-info]))
+        voted?   @(rf/subscribe [::sub/voted?])]
     (when-not (#{:lobby :game-over} phase)
       (let [[tone headline detail]
             (cond
@@ -496,8 +516,15 @@
               ["border-rose-500 bg-rose-950/60 text-rose-100"
                (t :turn/yours) (t :turn/urgent)]
 
+              ;; Voted, and free to change it until everybody has: not what
+              ;; the table is waiting for any more, so not green.
+              (and can-act? voted?)
+              ["border-slate-600 bg-slate-900/70 text-slate-200"
+               (t :game/waiting)
+               (when (seq waiting) (str (t :badge/waiting-for) ": " (str/join ", " waiting)))]
+
               can-act?
-              ["border-emerald-500 bg-emerald-950/50 text-emerald-100"
+              ["border-emerald-500 bg-emerald-950/50 text-emerald-100 ring-4 ring-emerald-500/20"
                (t :turn/yours) (t :turn/hint)]
 
               ;; Asleep: what the night is doing and what comes next, which is
@@ -520,10 +547,13 @@
                  ;; A dead player is not being waited on and never will be, so do
                  ;; not imply their input is pending.
                  (false? (:alive? me)) (t :game/dead-hint))])]
-        [:div {:class (str "rounded-xl border-2 px-4 py-3 " tone)}
-         [:div {:class "font-bold"} headline]
-         (when detail [:div {:class "text-sm opacity-90"} detail])
-         (when (and narrator? (not= :setup phase)) [narrator-waits])]))))
+        [:section {:class (str "rounded-xl border-2 px-4 py-3 space-y-2 " tone)
+                   :data-testid "now"}
+         [:div
+          [:div {:class "font-bold"} headline]
+          (when detail [:div {:class "text-sm opacity-90"} detail])]
+         (when (and narrator? (not= :setup phase)) [narrator-waits])
+         [action-bar]]))))
 
 (defn- voice-panel
   "Join the call, and mute yourself.
@@ -660,7 +690,12 @@
         narrator-info @(rf/subscribe [::sub/narrator-info])
         known @(rf/subscribe [::sub/known-roles])
         votes @(rf/subscribe [::sub/votes])
-        {:keys [action picks]} (pending)
+        {armed :action :keys [picks]} (pending)
+        ;; Nothing armed: a tap still makes the one move that wants a player.
+        ;; Such a card invites the tap, but the board is not put into a mode —
+        ;; the others are not dimmed, nothing has been chosen yet.
+        implicit (when-not armed (tap-action))
+        action  (or armed implicit)
         targets (when action (set (get @(rf/subscribe [::sub/targets]) action)))
         selectable? (and targets (contains? targets id) (not (some #{id} picks)))
         picked? (boolean (some #{id} picks))
@@ -689,18 +724,21 @@
     [:div {:class (str "rounded-xl border-2 p-3 transition select-none "
                        (cond
                          picked?      "border-amber-400 bg-amber-500/20 "
+                         (and selectable? implicit)
+                         (str (if me? "border-indigo-500 " "border-slate-600 ")
+                              "bg-slate-800 cursor-pointer hover:border-amber-400 hover:bg-slate-700 ")
                          selectable?  "border-amber-400 bg-slate-800 cursor-pointer hover:bg-slate-700 "
                          (not alive?) "border-slate-800 bg-slate-900/70 opacity-60 "
                          sl?          "border-dashed border-violet-700 bg-violet-950/30 "
                          me?          "border-indigo-500 bg-slate-800 "
                          :else        "border-slate-700 bg-slate-800/50 ")
-                       (when (and targets (not selectable?) (not picked?)) "opacity-40 "))
+                       (when (and armed targets (not selectable?) (not picked?)) "opacity-40 "))
            ;; The second and last test hook. A browser test picking a target has
            ;; to click a specific seat, and nothing on the card identifies one
            ;; uniquely — two players may share a name.
            ;; Reveals nothing: seat ids are public and already in every view.
            :data-testid (str "seat-" id)
-           :on-click (when selectable? #(pick! id))}
+           :on-click (when selectable? #(pick! action id))}
      [:div {:class "flex items-start gap-2"}
       ;; The player's initial. It carries the speaking ring, because it is the
       ;; one element on the card whose position never moves as pills wrap.
@@ -752,7 +790,11 @@
         ;; next day begins, so the condemned carried "3 Stimmen" through the
         ;; whole night after.
         (when (and ballot? (pos? n-votes))
-          [pill (str n-votes " " (t (if (= 1 n-votes) :badge/vote :badge/votes))) :votes])]
+          [pill (str n-votes " " (t (if (= 1 n-votes) :badge/vote :badge/votes))) :votes])
+        ;; Where your own vote went, since a tap is now all it takes to cast
+        ;; or move it.
+        (when (and ballot? (= id (get votes (:id me))))
+          [pill (t :badge/your-vote) :mine])]
        [card-controls id]]]]))
 
 (defn- player-grid
@@ -787,11 +829,25 @@
   #{:ready :hexe-pass :vote-abstain :jaeger-pass
     :elect-abstain :mayor-decline})
 
-(defn- action-bar []
+(defn- action-bar
+  "Your moves, inside the Jetzt card. Without a frame of its own: the card
+   around it already says whether the table is waiting on you."
+  []
   (let [actions @(rf/subscribe [::sub/actions])
         targets @(rf/subscribe [::sub/targets])
+        arity   @(rf/subscribe [::sub/arity])
+        players @(rf/subscribe [::sub/players])
         armed (:action (pending))
         needs-target? (fn [a] (seq (get targets a)))
+        ;; The one player a move can go to, when there is only one: the Hexe's
+        ;; healing potion on the wolves' victim. Named on the button, so the
+        ;; move is one tap instead of "Heiltrank benutzen …" and then finding
+        ;; the right card. Not for the moves that kill — those keep their
+        ;; second tap — and not for a pair.
+        only    (fn [a] (let [ts (get targets a)]
+                          (when (and (= 1 (count ts)) (= 1 (get arity a 1))
+                                     (not (confirm-first a)))
+                            (first ts))))
         ;; GM powers have their own console below and :claim-host a banner of
         ;; its own; see `sub/player-moves`, which the turn banner reads too.
         plain (sub/player-moves actions)
@@ -803,26 +859,12 @@
       ;; would be false.
       (and (empty? plain) narrator?) nil
 
-      ;; At the end there is nothing left to do for anyone, and the stage says
-      ;; so with the winner; repeating it as a grey shrug is noise.
-      (and (empty? plain) (= :game-over @(rf/subscribe [::sub/phase]))) nil
+      ;; Nothing to do: the card's headline already says what the table is
+      ;; waiting for, and a grey "nothing to do" under it would be a shrug.
+      (empty? plain) nil
 
-      ;; At night the turn banner already says "you are asleep".
-      (and (empty? plain) (= :night @(rf/subscribe [::sub/phase]))) nil
-
-      (empty? plain)
-      [:div {:class "text-sm text-slate-500"} (t :game/nothing-to-do)]
-
-      ;; Framed and titled, because this is what "Du bist dran" points at: a row
-      ;; of ordinary buttons under the role card was easy to read past.
       :else
-      [:div {:class (if voted?
-                      ;; Cast, and still open to change: the buttons stay, but
-                      ;; this is no longer what the table is waiting for.
-                      "rounded-xl border-2 border-slate-600 bg-slate-800/40 p-3 space-y-2"
-                      "rounded-xl border-2 border-emerald-500 bg-emerald-950/40 p-3 space-y-2
-                       ring-4 ring-emerald-500/20")
-             :data-testid "my-task"}
+      [:div {:class "space-y-2" :data-testid "my-task"}
        ;; The Hexe's decision starts from the wolves' choice. It used to sit in
        ;; the night notes under the whole board, or show only as the card
        ;; lit up after "Heiltrank benutzen"; it belongs here, read first.
@@ -836,28 +878,36 @@
               (= [me] victims) (t :hexe/victim-you)
               (seq victims) (t :hexe/victim (str/join ", " (map #(get-in players [% :name]) victims)))
               :else (t :hexe/no-victim))]))
-       [:div {:class (str "text-xs font-bold uppercase tracking-wide "
-                          (if voted? "text-slate-300" "text-emerald-300"))}
-        (if voted?
+       ;; Cast, and still open to change: the buttons stay, but this is no
+       ;; longer what the table is waiting for.
+       (when voted?
+         [:div {:class "text-xs font-bold uppercase tracking-wide text-slate-300"}
           (let [target (get-in view [:votes (get-in view [:me :id])])]
             (str "🗳 " (if target
                          (t :vote/yours (get-in view [:players target :name]))
-                         (t :vote/yours-abstained))))
-          (str "👉 " (t :turn/task)))]
+                         (t :vote/yours-abstained))))])
+       (when (and (not armed) (tap-action))
+         [:div {:class "text-sm opacity-90" :data-testid "tap-hint"}
+          (str "👆 " (t :target/tap))])
        [:div {:class "flex flex-wrap gap-2"}
-       (for [a plain]
+       (for [a plain
+             :let [one (only a)]]
          ^{:key (str a)}
-         ;; The ellipsis marks the buttons that do NOT act yet — they arm a
-         ;; choice and wait for a player to be picked. Without it an immediate
-         ;; "I'm done" and a two-step "Accuse…" looked identical, so a tap that
-         ;; only changed the board's mode read as a tap that did nothing.
-         [btn (str (action-name a) (when (needs-target? a) " …"))
-          (if (needs-target? a)
-            #(if (= armed a) (disarm!) (arm! a))
-            #(rf/dispatch [::ev/act a]))
-          {:tone (cond (= armed a) :armed
-                       (declines a) :quiet
-                       :else :primary)}])]])))
+         (if one
+           [btn (t :target/direct (action-name a) (get-in players [one :name]))
+            #(rf/dispatch [::ev/act a one])
+            {:tone :primary :testid (str "direct-" (name a))}]
+           ;; The ellipsis marks the buttons that do NOT act yet — they arm a
+           ;; choice and wait for a player to be picked. Without it an immediate
+           ;; "I'm done" and a two-step "Accuse…" looked identical, so a tap that
+           ;; only changed the board's mode read as a tap that did nothing.
+           [btn (str (action-name a) (when (needs-target? a) " …"))
+            (if (needs-target? a)
+              #(if (= armed a) (disarm!) (arm! a))
+              #(rf/dispatch [::ev/act a]))
+            {:tone (cond (= armed a) :armed
+                         (declines a) :quiet
+                         :else :primary)}]))]])))
 
 ;; ---------------------------------------------------------------- GM console ---
 ;;
@@ -1309,9 +1359,7 @@
 
      [:div {:class "overflow-x-auto -mx-1 px-1"} [round-strip]]
 
-     (when-not (= :game-over phase) [latest-news])
-
-     [turn-banner]]))
+     (when-not (= :game-over phase) [latest-news])]))
 
 ;; -------------------------------------------------------------------- chat ---
 
@@ -1987,6 +2035,7 @@
              :leave? (and (contains? actions :leave) (not= :game-over phase))}
     [role-chip] [bar-clock] [voice-quick]]
    [phase-stage]
+   [now-card]
    [turn-dock]
    [target-prompt]
    [:div {:class "flex flex-col gap-4 lg:grid lg:grid-cols-5 lg:gap-4"}
@@ -1995,17 +2044,7 @@
      [:div {:class "order-1 empty:hidden"} [dawn-card]]
      ;; First on a phone during the vote: it is what everybody is watching.
      [:div {:class "order-1 empty:hidden"} [ballot-panel]]
-     ;; On your turn the task jumps above your role card, straight under the
-     ;; stage that says it is your turn: the answer to "what do I do" should not
-     ;; be a scroll away from the question. `order` does it on a phone; on a
-     ;; wide screen the column is a plain block, so the DOM order has to say it.
-     (if my-turn?
-       [:<>
-        [:div {:class "order-2 empty:hidden"} [action-bar]]
-        [:div {:class "order-3 empty:hidden"} [me-panel]]]
-       [:<>
-        [:div {:class "order-3 empty:hidden"} [me-panel]]
-        [:div {:class "order-4 empty:hidden"} [action-bar]]])
+     [:div {:class "order-3 empty:hidden"} [me-panel]]
      ;; Above the board on a phone: joining the call is something you do once, at
      ;; the start, and hunting for it under nine player cards is how people end up
      ;; playing in silence.
