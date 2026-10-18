@@ -25,7 +25,7 @@
    :guide/night-title "Die Nacht"
    :guide/night       "Alle schlafen. Die Rollen werden nacheinander gerufen, und wer gerufen wird, handelt heimlich auf dem eigenen Bildschirm: die Seherin schaut sich eine Karte an, die Werwölfe einigen sich auf ein Opfer, die Hexe darf es retten."
    :guide/day-title   "Der Tag"
-   :guide/day         "Am Morgen erfahrt ihr, wer die Nacht nicht überlebt hat, und seht seine Karte. Am ersten Tag wählt ihr einen Bürgermeister und redet über die Nacht — angeklagt wird noch niemand. Ab dem zweiten Tag redet ihr und stimmt zugleich ab, wer verurteilt wird. Dafür braucht es eine Mehrheit der Lebenden; bis alle abgestimmt haben, könnt ihr umstimmen."
+   :guide/day         "Am Morgen erfahrt ihr, wer die Nacht nicht überlebt hat, und seht seine Karte. Am ersten Tag wählt ihr zuerst einen Bürgermeister. Dann redet ihr und stimmt zugleich ab, wer verurteilt wird — jeden Tag, den ersten eingeschlossen. Dafür braucht es eine Mehrheit der Lebenden; bis alle abgestimmt haben, könnt ihr umstimmen."
    :guide/win-title   "Wer gewinnt"
    :guide/win         "Das Dorf gewinnt, sobald kein Werwolf mehr lebt. Die Werwölfe gewinnen, wenn außer ihnen niemand mehr übrig ist. Zwei Verliebte gewinnen gemeinsam, wenn nur noch sie leben — egal, zu wem sie gehören. Tote reden nur noch mit Toten."
    :guide/roles-title "Die Rollen"

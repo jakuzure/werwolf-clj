@@ -41,10 +41,13 @@
            ;; sleep through it, and nobody is eliminated before they have said
            ;; a word.
            :first-night-kill? #boolean #or [#env FIRST_NIGHT_KILL "true"]
-           ;; Rule variant. false (default): nobody is accused on the first
-           ;; day — nobody knows anything yet, so it is talk and the election,
-           ;; and then the night. true restores the classic Düsterwald rule.
-           :first-day-trial? #boolean #or [#env FIRST_DAY_TRIAL "false"]
+           ;; Rule variant. true (default): the Düsterwald rule, the village
+           ;; votes every day, the first one included — the wolves have already
+           ;; taken somebody, and a day with a victim and no way to answer it
+           ;; read as a missing step. false makes the first day talk and the
+           ;; election only; it suits a peaceful first night
+           ;; (FIRST_NIGHT_KILL=false), where nobody knows anything yet.
+           :first-day-trial? #boolean #or [#env FIRST_DAY_TRIAL "true"]
            ;; Whether a new room's creator narrates rather than plays. true
            ;; (default): the creator is the Spielleiter — dealt no card, sees
            ;; every card, and the room starts without a clock. The host can
