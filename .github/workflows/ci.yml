@@ -80,7 +80,13 @@ jobs:
           else
             git config user.name  "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git commit -m "chore(deps): regenerate deps-lock.json" -- deps-lock.json
+            # [skip ci]: this run already builds and previews with the new
+            # lock. Without it GitHub starts a second run for the bot's push,
+            # held for approval, which on approval cancels this one (PR runs
+            # cancel the one they replace) — and, started by the workflow
+            # token, its own success never reaches preview-renovate.yml. The
+            # PR then had a green build and no preview.
+            git commit -m "chore(deps): regenerate deps-lock.json [skip ci]" -- deps-lock.json
             git push
           fi
 
@@ -91,8 +97,8 @@ jobs:
       # the updated dependencies' build and so must never hold the Cachix token.
       # It builds the image and hands over its closure, and preview-renovate.yml,
       # which runs nothing from it, pushes it and sets the status. Built here
-      # because only this run sees the regenerated deps-lock.json: a push made
-      # with the workflow token starts no workflow of its own.
+      # because only this run sees the regenerated deps-lock.json: the push of
+      # it says [skip ci], so it starts no run of its own — see above.
       - name: Build the preview image on Renovate branches
         if: github.event_name == 'pull_request' && startsWith(github.event.pull_request.head.ref, 'renovate/')
         run: |
