@@ -331,6 +331,8 @@
    ;; ------------------------------------------------------------ badges ---
    :dawn/title "Day breaks"
    :dawn/ok "Continue"
+   :record/title (fn [n] (str "This table, after " n " games"))
+   :record/won "won"
    :ballot/title     "The vote"
    :ballot/needed    (fn [n] (str "Condemned at " n " votes"))
    :ballot/none      "Nobody has a vote yet."

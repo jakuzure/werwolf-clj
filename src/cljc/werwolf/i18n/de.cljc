@@ -335,6 +335,8 @@
    ;; ------------------------------------------------------------ badges ---
    :dawn/title "Der Morgen graut"
    :dawn/ok "Weiter"
+   :record/title (fn [n] (str "Diese Runde, nach " n " Spielen"))
+   :record/won "gewonnen"
    :ballot/title     "Abstimmung"
    :ballot/needed    (fn [n] (str "Verurteilt ab " n " Stimmen"))
    :ballot/none      "Noch hat niemand eine Stimme bekommen."

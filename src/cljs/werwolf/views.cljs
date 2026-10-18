@@ -1698,6 +1698,27 @@
           (for [[i round] (map-indexed vector rounds)]
             ^{:key i} [recap-round (:players view) round])])])))
 
+(defn- table-record
+  "How the table has fared since it sat down: from the second game of a room
+   on, who won how often and which cards they held."
+  []
+  (when-let [{:keys [games rows]} @(rf/subscribe [::sub/table-record])]
+    [:div {:class "rounded-lg border border-slate-700 bg-slate-900/60 p-3 space-y-2"
+           :data-testid "table-record"}
+     [:div {:class "text-sm font-bold text-slate-200"} (str "🏆 " (t :record/title games))]
+     [:ul {:class "divide-y divide-slate-800"}
+      (for [{:keys [id name played won roles]} rows]
+        ^{:key id}
+        [:li {:class "py-1.5 flex items-center justify-between gap-3 text-sm"}
+         [:div {:class "min-w-0"}
+          [:div {:class "font-semibold truncate"} name]
+          [:div {:class "text-xs text-slate-400"}
+           (str/join " · " (for [[r n] roles]
+                             (str (i18n/icon-of r) " " (role-name r) (when (> n 1) (str " ×" n)))))]]
+         [:div {:class "shrink-0 text-right"}
+          [:div {:class "font-mono"} (str won " / " played)]
+          [:div {:class "text-xs text-slate-500"} (t :record/won)]]])]]))
+
 (defn- game-over-panel
   "The end of the game, and the way out of it.
 
@@ -1728,6 +1749,7 @@
        (when (contains? actions :leave)
          [btn (t :game/new-round) #(rf/dispatch [::ev/leave])
           {:tone (if (contains? actions :play-again) :quiet :primary)}])
+       [table-record]
        ;; Below the way out rather than above it: the story is for reading at
        ;; leisure, the button for the people who already want the next round.
        [recap-panel]])))
