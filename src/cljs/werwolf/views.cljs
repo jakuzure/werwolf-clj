@@ -133,7 +133,10 @@
                                    (rf/dispatch on-enter))}]))})))
 
 (defn- pill [label tone]
-  [:span {:class (str "px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide "
+  ;; Cut short rather than spill over: a badge wider than its card read as
+  ;; broken layout.
+  [:span {:class (str "inline-block max-w-full truncate align-top px-1.5 py-0.5 rounded "
+                      "text-[10px] font-bold uppercase tracking-wide "
                       (case tone
                         :dead    "bg-rose-950 text-rose-300 "
                         :absent  "bg-amber-950 text-amber-300 "
@@ -745,12 +748,13 @@
       ;; Not the seat number, which it used to be: 0, 1, 2 is the server's
       ;; bookkeeping, and on the table it read like a ranking or a turn order.
       ;;
-      ;; The small states sit on its rim rather than in the badge row: a ✓
-      ;; once this player has answered what the phase asks, and 📴 while they
-      ;; are away. Words for those made every card a row of tags.
+      ;; The ✓ sits on its rim rather than in the badge row, once this player
+      ;; has answered what the phase asks. Words for it made every card a row
+      ;; of tags.
       [:div {:class "relative shrink-0"}
        [:div {:class (str "w-8 h-8 rounded-full grid place-items-center font-bold "
                           (if alive? "bg-slate-700 text-slate-100" "bg-slate-800 text-slate-500")
+                          (when (and alive? (false? connected?)) " opacity-50")
                           (when talking? " ring-2 ring-emerald-400 "))
               :aria-hidden true}
         (initial pname)]
@@ -758,20 +762,24 @@
          [:span {:class "absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-emerald-600
                          text-white text-[10px] leading-none grid place-items-center"
                  :title done? :data-testid (str "done-" id)}
-          "✓" [:span {:class "sr-only"} done?]])
-       ;; 📴 rather than a plain dot, which nobody could read without asking.
-       (when (false? connected?)
-         [:span {:class "absolute -top-1.5 -right-1.5 text-xs leading-none"
-                 :title (t :game/absent) :data-testid (str "absent-" id)}
-          [:span {:aria-hidden true} "📴"]
-          [:span {:class "sr-only"} (t :game/absent)]])]
+          "✓" [:span {:class "sr-only"} done?]])]
       [:div {:class "min-w-0 flex-1"}
        [:div {:class (str "font-semibold truncate "
-                          (when-not alive? "line-through text-slate-500"))}
-        pname]
-       ;; Only what a glance at the card cannot already tell. No "du" (the
-       ;; border says it) and no "tot" (the grey card and the struck name do).
-       [:div {:class "flex flex-wrap gap-1 mt-1 empty:hidden"}
+                          (cond (not alive?)         "line-through text-slate-500"
+                                (false? connected?) "text-slate-400"))}
+        pname
+        ;; Away: greyed out and said in a word. A 📴 on the initial's rim read
+        ;; as an unexplained orange square. Unlike the dead, the name is not
+        ;; struck through and the card keeps its colour: they may be back.
+        (when (false? connected?)
+          [:span {:class "ml-1.5 text-xs font-normal text-slate-500"
+                  :data-testid (str "absent-" id)}
+           (t :game/absent)])]]]
+      ;; Only what a glance at the card cannot already tell. No "du" (the
+      ;; border says it) and no "tot" (the grey card and the struck name do).
+      ;; A row of its own under the initial, the whole card wide: beside it, in
+      ;; half a phone's width, "👑 BÜRGERMEISTER" ran out of the card.
+      [:div {:class "flex flex-wrap gap-1 mt-2 empty:hidden"}
         (cond
           sl?  [pill (t :narrator/title) :host]
           ;; A host who plays has a seat like anyone's and no say in the game,
@@ -795,7 +803,9 @@
         ;; or move it.
         (when (and ballot? (= id (get votes (:id me))))
           [pill (t :badge/your-vote) :mine])]
-       [card-controls id]]]]))
+      [card-controls id]]))
+
+(declare tab-state)
 
 (defn- player-grid
   "The table, the Spielleiter included. He has a seat but no card, no vote and
@@ -809,12 +819,13 @@
   (let [view @(rf/subscribe [::sub/view])
         narrator (:narrator view)
         asleep? @(rf/subscribe [::sub/asleep?])
-        grid [:div {:class "grid sm:grid-cols-2 gap-2"}
+        grid [:div {:class "grid grid-cols-2 gap-2"}
               (for [[id p] (sort-by (fn [[id]] [(if (= id narrator) 0 1) id]) (:players view))]
                 ^{:key id} [player-card (assoc p :id id)])]]
     ;; Folded while you sleep: a whole board nobody may touch is noise at
-    ;; night. One tap opens it, for whoever wants to brood over it anyway.
-    (if asleep?
+    ;; night. One tap opens it, for whoever wants to brood over it anyway —
+    ;; except on a phone's Mitspieler tab, where going to the tab was that tap.
+    (if (and asleep? (not= :table (:tab (tab-state))))
       [:details {:class "group" :data-testid "board-folded"}
        [:summary {:class "cursor-pointer select-none text-sm text-slate-400 hover:text-slate-200 py-1"}
         (t :board/show (count (:players view)))]
@@ -1169,7 +1180,8 @@
   (let [log @(rf/subscribe [::sub/log])
         players @(rf/subscribe [::sub/players])
         show-all? @(rf/subscribe [::sub/show-all-log?])
-        open? @(rf/subscribe [::sub/chronik-open?])
+        ;; Its own tab on a phone is a place you went to read it, not a fold.
+        open? (or @(rf/subscribe [::sub/chronik-open?]) (= :log (:tab (tab-state))))
         rows (i18n/chronicle (lc) players log {:show-all? show-all?})
         hidden (count (remove #(i18n/loud? (i18n/log-tone %)) log))]
     [:div {:class "rounded-xl border border-slate-700 bg-slate-900/80 overflow-hidden"}
@@ -1375,7 +1387,7 @@
         channel (cond (and (:narrator? me) (not= :lobby phase)) :narrator
                       (false? (:alive? me)) :dead
                       (= :night phase) :wolves)]
-    [:div {:class "flex flex-col h-64 rounded-xl border border-slate-700 bg-slate-900/80 overflow-hidden"}
+    [:div {:class "flex flex-col h-[65dvh] lg:h-80 rounded-xl border border-slate-700 bg-slate-900/80 overflow-hidden"}
      [:div {:class "px-4 py-2 bg-slate-800 text-sm font-bold uppercase tracking-wide"}
       (t :game/chat)]
      [:div {:class "flex-1 overflow-y-auto px-4 py-2 space-y-1 text-sm"}
@@ -1942,26 +1954,73 @@
                (str (get-in players [player :name]) ": " (i18n/icon-of role) " " (role-name role))])])
          [btn (t :dawn/ok) #(rf/dispatch [::ev/dawn-seen id]) {:tone :ghost :testid "dawn-ok"}]]))))
 
+(defn- tab-state
+  "Which tab a phone shows, and how much chat is unread. The tab is per room,
+   like the menu: a new room starts on Jetzt."
+  []
+  (let [form @(rf/subscribe [::sub/form])
+        room (:room-id @(rf/subscribe [::sub/me]))
+        tab  (if (= room (:tab-room form)) (:tab form :now) :now)
+        n    (count @(rf/subscribe [::sub/chat]))]
+    {:tab tab
+     :unread (if (= :chat tab) 0 (max 0 (- n (:chat-seen form 0))))
+     :go! (fn [k]
+            ;; Leaving or entering the chat marks it read; what arrives while
+            ;; it is open is read as it arrives.
+            (when (or (= :chat k) (= :chat tab)) (rf/dispatch [::ev/form-set :chat-seen n]))
+            (rf/dispatch [::ev/form-set :tab-room room])
+            (rf/dispatch [::ev/form-set :tab k])
+            (js/window.scrollTo 0 0))}))
+
+(defn- tab-bar
+  "A phone's four places: what to do now, the table, the talk and the story.
+   They used to be one column, nine player cards long, with the chat and the
+   Chronik at the bottom of it. Not on a wide screen, which shows them side
+   by side."
+  []
+  (let [{:keys [tab unread go!]} (tab-state)
+        my-turn? @(rf/subscribe [::sub/can-act?])
+        item (fn [k icon label badge]
+               [:button {:class (str "relative flex flex-col items-center gap-0.5 py-2 text-[11px] "
+                                     (if (= k tab) "text-indigo-300 font-semibold" "text-slate-400"))
+                         :aria-current (when (= k tab) "page")
+                         :data-testid (str "tab-" (name k))
+                         :on-click #(go! k)}
+                [:span {:class "text-lg leading-none" :aria-hidden true} icon]
+                label
+                badge])]
+    [:nav {:class "fixed inset-x-0 bottom-0 z-40 lg:hidden grid grid-cols-4
+                   border-t border-slate-800 bg-slate-950/95 backdrop-blur"
+           :style {:padding-bottom "env(safe-area-inset-bottom)"}}
+     [item :now "👉" (t :tab/now)
+      (when (and my-turn? (not= :now tab))
+        [:span {:class "absolute top-1.5 right-[30%] w-2.5 h-2.5 rounded-full bg-emerald-400"}])]
+     [item :table "👥" (t :tab/table) nil]
+     [item :chat "💬" (t :game/chat)
+      (when (pos? unread)
+        [:span {:class "absolute top-1 right-[22%] min-w-4 h-4 px-1 rounded-full bg-rose-600
+                        text-white text-[10px] leading-4 text-center"
+                :data-testid "chat-unread"}
+         (if (> unread 9) "9+" unread)])]
+     [item :log "📜" (t :game/log) nil]]))
+
 (defn- turn-dock
-  "\"Du bist dran\", stuck to the bottom of a phone screen while it is true.
-   Whoever has scrolled down to the board or the chat still sees it, under the
-   thumb, and one tap brings the task back. Not on a wide screen, where the
-   task is never out of sight."
+  "\"Du bist dran\", above the tabs, while it is true and the phone is showing
+   something else: whoever is reading the chat still learns it, and one tap
+   takes them back to Jetzt."
   []
   (let [my-turn? @(rf/subscribe [::sub/can-act?])
         phase    @(rf/subscribe [::sub/phase])
-        secs     @(rf/subscribe [::sub/seconds-left])]
-    (when (and my-turn? (not (#{:lobby :game-over} phase)))
-      [:button {:class "fixed inset-x-0 bottom-0 z-40 lg:hidden flex items-center justify-between gap-3
+        secs     @(rf/subscribe [::sub/seconds-left])
+        {:keys [tab go!]} (tab-state)]
+    (when (and my-turn? (not= :now tab) (not (#{:lobby :game-over} phase)))
+      [:button {:class "fixed inset-x-0 bottom-14 z-40 lg:hidden flex items-center justify-between gap-3
                         px-4 py-3 bg-emerald-600 text-white font-bold text-left
                         border-t-2 border-emerald-300"
-                :style {:padding-bottom "max(0.75rem, env(safe-area-inset-bottom))"}
                 :data-testid "turn-dock"
-                :on-click #(some-> (.querySelector js/document "[data-testid=my-task]")
-                                   (.scrollIntoView #js {:behavior "smooth" :block "center"}))}
+                :on-click #(go! :now)}
        [:span (str "👉 " (t :turn/yours))]
-       (when secs
-         [:span {:class "font-mono"} (str (quot secs 60) ":" (when (< (mod secs 60) 10) "0") (mod secs 60))])])))
+       (when secs [:span {:class "font-mono"} (clock secs)])])))
 
 (defn- ballot-panel
   "The day's vote at a glance: a bar for everybody with votes, filling towards
@@ -1992,39 +2051,30 @@
        [:p {:class "text-xs text-slate-400"} (t :ballot/abstained abstained)])]))
 
 (defn game []
-  ;; On a phone this is one column, and its ORDER is a design decision rather
-  ;; than a side effect of the desktop grid. It used to be: role, actions, GM
-  ;; console, then the whole player grid — which on a phone is one full-width
-  ;; card per seat, so at nine players the Chronik sat two or three screens down,
-  ;; below the board. The only record of what the night did was the last thing
-  ;; you could reach, and the chat was easier to find than the story.
+  ;; A phone shows one of four tabs, a wide screen three columns: the table on
+  ;; the left, what is happening and what you do in the middle, the story and
+  ;; the talk on the right. One tree serves both: below `lg` the column
+  ;; wrappers are display:contents, so every panel is a direct item of one
+  ;; flex column and carries its own tab and `max-lg:order`; from `lg` up the
+  ;; wrappers are real columns and the tab classes do nothing.
   ;;
-  ;; Now it reads: where are we and is it my turn (the stage), who am I, what
-  ;; can I do, the call, the board to pick from, the Spielleiter's tools, the
-  ;; folded Chronik, then talk. The stage's 'Zuletzt' line is what keeps the
-  ;; story near the top now that the Chronik starts folded.
+  ;; It used to be one column on a phone, nine player cards long, with the
+  ;; chat and the Chronik a few screens down — the one record of what the
+  ;; night did was the last thing you could reach.
   ;;
-  ;; `contents` is what makes that possible without touching the desktop layout.
-  ;; Below `lg` the two column wrappers are display:contents, so their children
-  ;; become direct flex items of this container and can be ordered individually;
-  ;; at `lg` they turn back into real columns, each with its own independent
-  ;; height, which is the two-column layout that was already there.
+  ;; The board is on Jetzt as well while a tap on it is a move, since picking
+  ;; a player is what the card above it is asking for.
   ;;
-  ;; If `display: contents` were ever not honoured, the wrappers stay ordinary
-  ;; boxes and the phone falls back to plain DOM order — which is the layout that
-  ;; shipped before this. Worth knowing: the failure mode is the old arrangement,
-  ;; not a broken one.
-  ;;
-  ;; `empty:hidden` is load-bearing, not decoration. Two of these panels render
-  ;; nothing most of the time — game-over except at the end, the GM console for
-  ;; everyone who is not host — and an empty flex item still consumes a `gap-4`.
-  ;; Without it every phone screen carried two mystery gaps.
-  (let [my-turn? @(rf/subscribe [::sub/can-act?])
-        phase    @(rf/subscribe [::sub/phase])
+  ;; `empty:hidden` is load-bearing: several panels render nothing most of
+  ;; the time, and an empty flex item still takes a gap.
+  (let [phase    @(rf/subscribe [::sub/phase])
         view     @(rf/subscribe [::sub/view])
-        actions  @(rf/subscribe [::sub/actions])]
-  ;; Room at the foot for the dock, so it never covers the last thing on the page.
-  [:div {:class (str "space-y-4 " (when my-turn? "pb-20 lg:pb-0"))}
+        actions  @(rf/subscribe [::sub/actions])
+        {:keys [tab]} (tab-state)
+        picking? (boolean (or (pending) (tap-action)))
+        on (fn [tabs order]
+             (str "empty:hidden " order " " (when-not (contains? tabs tab) "max-lg:hidden")))]
+  [:div {:class "pb-20 lg:pb-0"}
    ;; The way out of a game under way lives in the bar, as far from the moves
    ;; as the screen allows, and two taps like the lobby's. Not at the end,
    ;; where the game-over panel has its own one-tap way out.
@@ -2034,35 +2084,34 @@
              :code   (:room-id @(rf/subscribe [::sub/me]))
              :leave? (and (contains? actions :leave) (not= :game-over phase))}
     [role-chip] [bar-clock] [voice-quick]]
-   [phase-stage]
-   [now-card]
-   [turn-dock]
    [target-prompt]
-   [:div {:class "flex flex-col gap-4 lg:grid lg:grid-cols-5 lg:gap-4"}
-    [:div {:class "contents lg:block lg:col-span-3 lg:space-y-4"}
-     [:div {:class "order-1 empty:hidden"} [game-over-panel]]
-     [:div {:class "order-1 empty:hidden"} [dawn-card]]
-     ;; First on a phone during the vote: it is what everybody is watching.
-     [:div {:class "order-1 empty:hidden"} [ballot-panel]]
-     [:div {:class "order-3 empty:hidden"} [me-panel]]
-     ;; Above the board on a phone: joining the call is something you do once, at
-     ;; the start, and hunting for it under nine player cards is how people end up
-     ;; playing in silence.
-     [:div {:class "order-5 empty:hidden"} [voice-panel]]
-     ;; His notes before his switches: the Spielleiter reads the night far more
-     ;; often than he overrides it.
-     ;; The board straight after the call: picking a player is what an armed
-     ;; action asks for next, and it used to wait below the Spielleiter's
-     ;; panels and the Chronik, a long scroll away from the button that asked.
-     [:div {:class "order-6 empty:hidden"} [player-grid]]
+   [:div {:class "mt-4 flex flex-col gap-4 lg:grid lg:items-start lg:gap-5
+                  lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_minmax(0,1fr)]"}
+    [:div {:class "contents lg:flex lg:flex-col lg:gap-4"}
+     [:div {:class (on #{:now} "max-lg:order-6")} [me-panel]]
+     [:div {:class (on #{:table} "max-lg:order-7")} [voice-panel]]
+     [:div {:class (on (if picking? #{:now :table} #{:table}) "max-lg:order-5")} [player-grid]]
      ;; Under the board: the table reads it when it is reasoning about who
      ;; could be what, which is when it is looking at the board anyway.
-     [:div {:class "order-6 empty:hidden"} [deck-strip]]
-     [:div {:class "order-7 empty:hidden"} [narrator-panel]]
-     [:div {:class "order-7 empty:hidden"} [gm-panel]]]
-    [:div {:class "contents lg:block lg:col-span-2 lg:space-y-4"}
-     [:div {:class "order-8 empty:hidden"} [log-panel]]
-     [:div {:class "order-9 empty:hidden"} [chat-panel]]]]]))
+     [:div {:class (on #{:table} "max-lg:order-8")} [deck-strip]]
+     ;; His notes before his switches: the Spielleiter reads the night far
+     ;; more often than he overrides it.
+     [:div {:class (on #{:table} "max-lg:order-9")} [narrator-panel]]
+     [:div {:class (on #{:table} "max-lg:order-9")} [gm-panel]]]
+    [:div {:class "contents lg:flex lg:flex-col lg:gap-4"}
+     [:div {:class (on #{:now} "max-lg:order-1")} [dawn-card]]
+     [:div {:class (on #{:now} "max-lg:order-2")} [phase-stage]]
+     [:div {:class (on #{:now} "max-lg:order-3")} [now-card]]
+     ;; Straight under the moves during the vote: it is what everybody is
+     ;; watching.
+     [:div {:class (on #{:now} "max-lg:order-4")} [ballot-panel]]
+     ;; Under the stage, whose headline says who won.
+     [:div {:class (on #{:now} "max-lg:order-4")} [game-over-panel]]]
+    [:div {:class "contents lg:flex lg:flex-col lg:gap-4"}
+     [:div {:class (on #{:log} "max-lg:order-10")} [log-panel]]
+     [:div {:class (on #{:chat} "max-lg:order-10")} [chat-panel]]]]
+   [turn-dock]
+   [tab-bar]]))
 
 ;; ---------------------------------------------------------------------- app ---
 
