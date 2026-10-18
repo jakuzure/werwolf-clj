@@ -52,6 +52,8 @@
                          "disabled:opacity-40 disabled:cursor-not-allowed "
                          (case tone
                            :danger "bg-rose-700 hover:bg-rose-600 text-white "
+                           ;; On a red banner, where a red button would vanish.
+                           :inverse "bg-white hover:bg-rose-50 text-rose-700 "
                            :ghost  "bg-slate-700 hover:bg-slate-600 text-slate-100 "
                            :armed  "bg-amber-500 hover:bg-amber-400 text-slate-900 ring-2 ring-amber-300 "
                            :quiet  "bg-transparent border border-slate-600 hover:bg-slate-800 text-slate-300 "
@@ -328,6 +330,19 @@
 (defn- disarm! []
   (rf/dispatch [::ev/form-set :pending nil]))
 
+(def ^:private confirm-first
+  "Moves that cost somebody their life and cannot be taken back: they wait
+   for a second tap after the pick. One mis-tap on a crowded board used to
+   poison the wrong player. The day's vote is not here — it can be changed
+   until everybody has voted."
+  #{:hexe-poison :jaeger-shoot :weisser-kill :werewolf-vote})
+
+(defn- fire! [action picks]
+  (rf/dispatch (if (= 2 (count picks))
+                 [::ev/act-pair action (first picks) (second picks)]
+                 [::ev/act action (first picks)]))
+  (disarm!))
+
 (defn- pick!
   "Add a target to the pending action, and fire once enough are chosen.
 
@@ -335,22 +350,38 @@
    engine has always wanted — it was the wire schema that lacked them, and
    because that schema is closed, Amor was not degraded but unplayable."
   [id]
-  (let [{:keys [action picks]} (pending)
+  (let [{:keys [action picks confirm?]} (pending)
         arity (get @(rf/subscribe [::sub/arity]) action 1)
-        picks' (conj (vec picks) id)]
-    (if (< (count picks') arity)
+        ;; Tapping another card while asked to confirm is choosing again.
+        picks' (conj (if confirm? [] (vec picks)) id)]
+    (cond
+      (< (count picks') arity)
       (rf/dispatch [::ev/form-set :pending {:action action :picks picks'}])
-      (do (rf/dispatch (if (= 2 arity)
-                         [::ev/act-pair action (first picks') (second picks')]
-                         [::ev/act action (first picks')]))
-          (disarm!)))))
+
+      (confirm-first action)
+      (rf/dispatch [::ev/form-set :pending {:action action :picks picks' :confirm? true}])
+
+      :else (fire! action picks'))))
 
 (defn- target-prompt
   "The mode indicator. Without this, arming an action was invisible and the
    player was left wondering why the board had stopped responding."
   []
-  (when-let [{:keys [action picks]} (pending)]
-    (let [arity (get @(rf/subscribe [::sub/arity]) action 1)]
+  (when-let [{:keys [action picks confirm?]} (pending)]
+    (let [arity (get @(rf/subscribe [::sub/arity]) action 1)
+          players @(rf/subscribe [::sub/players])]
+      (if confirm?
+        ;; The second tap. Red, and it names the player, so what is about to
+        ;; happen is read before it happens.
+        [:div {:class "sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3
+                       rounded-lg bg-rose-600 text-white px-4 py-3 shadow-lg"
+               :data-testid "confirm-pick"}
+         [:div {:class "font-bold"}
+          (t :target/confirm (action-name action) (get-in players [(first picks) :name]))]
+         [:div {:class "flex gap-2"}
+          [btn (t :target/repick) #(rf/dispatch [::ev/form-set :pending {:action action :picks []}])
+           {:tone :ghost}]
+          [btn (t :target/yes) #(fire! action picks) {:tone :inverse :testid "confirm-yes"}]]]
       [:div {:class "sticky top-0 z-10 flex items-center justify-between gap-3
                      rounded-lg bg-amber-500 text-slate-900 px-4 py-3 shadow-lg"}
        [:div
@@ -361,7 +392,7 @@
            (= 2 arity) (t :target/pick-two)
            :else (t :target/pick-one))
          " — " (t :target/hint)]]
-       [btn (t :target/cancel) disarm! {:tone :quiet}]])))
+       [btn (t :target/cancel) disarm! {:tone :quiet}]]))))
 
 (defn- narrator-waits
   "Who the game is still waiting on, by name and card, and a way past them.

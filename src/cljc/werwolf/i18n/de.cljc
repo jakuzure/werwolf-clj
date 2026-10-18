@@ -326,6 +326,9 @@
    :target/pick-one   "Wähle ein Ziel"
    :target/pick-two   "Wähle zwei Ziele"
    :target/chosen-one "Erster gewählt — jetzt den zweiten"
+   :target/confirm (fn [action who] (str action ": " who "?"))
+   :target/repick "Anders wählen"
+   :target/yes "Ja, sicher"
    :target/cancel     "Abbrechen"
    :target/hint       "Klicke unten auf einen Mitspieler"
 
