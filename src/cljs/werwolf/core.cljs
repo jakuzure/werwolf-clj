@@ -28,8 +28,17 @@
     (reset! root (rdomc/create-root (js/document.getElementById "app"))))
   (rdomc/render @root [views/app]))
 
+(defn- invited-code
+  "The room code from a shared link, `/?join=ABCD`. Taken off the address at
+   once, so a reload or a bookmark does not keep offering a room that is long
+   gone."
+  []
+  (let [code (some-> (js/URLSearchParams. js/location.search) (.get "join") .toUpperCase)]
+    (when code (.replaceState js/history nil "" js/location.pathname))
+    (when (and code (re-matches #"[A-Z2-9]{4}" code)) code)))
+
 (defn init []
-  (rf/dispatch-sync [::ev/init])
+  (rf/dispatch-sync [::ev/init (invited-code)])
   ;; Before anything can be tapped: the tap that creates or joins a room is the
   ;; gesture that lets the first night's chime play at all.
   (chime/install!)
