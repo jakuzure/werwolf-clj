@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.7.0](https://github.com/jakuzure/werwolf-clj/compare/v0.6.0...v0.7.0) (2026-10-18)
+
+
+### Features
+
+* keep the table's record across the games of a room ([547161d](https://github.com/jakuzure/werwolf-clj/commit/547161d51e71b9f385e4d9f787a76a950591921c))
+* **ui:** ask before a move that kills ([098c375](https://github.com/jakuzure/werwolf-clj/commit/098c37523c78560a16bff2a9aafd1d161f26a70f))
+* **ui:** show the day's vote as bars towards the majority ([13cf752](https://github.com/jakuzure/werwolf-clj/commit/13cf7523945dc9609315a2545b89c6d1a07e8638))
+* **ui:** show the night's order, and let the sleeping sleep ([b9e1538](https://github.com/jakuzure/werwolf-clj/commit/b9e1538d8cd20285b55b2cdafad692f5636a24b6))
+* **ui:** tell the morning once, and tell a player when it is their turn ([ed808dc](https://github.com/jakuzure/werwolf-clj/commit/ed808dceae43477b10f6087714fcb7409cf50968))
+
+
+### Bug Fixes
+
+* **ui:** keep only what a glance cannot tell on the player cards ([41e7761](https://github.com/jakuzure/werwolf-clj/commit/41e776186eb4145daf1da4ad4fa1700870a47d31))
+
 ## [0.6.0](https://github.com/jakuzure/werwolf-clj/compare/v0.5.0...v0.6.0) (2026-10-17)
 
 
