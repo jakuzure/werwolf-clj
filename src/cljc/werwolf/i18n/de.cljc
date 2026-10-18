@@ -309,7 +309,7 @@
    :explain/election    "Wählt einen Bürgermeister. Seine Stimme zählt bei jeder Abstimmung doppelt."
    :explain/discussion  "Redet miteinander: Wem traut ihr nicht? Sag Bescheid, wenn du fertig bist."
    :explain/trial       (fn [_] "Redet miteinander und stimmt ab, wer verurteilt wird. Ihr könnt umstimmen, bis alle abgestimmt haben.")
-   :explain/first-discussion "Heute wird noch niemand angeklagt. Redet über die Nacht und darüber, wem ihr traut — sag Bescheid, wenn du fertig bist, dann bricht die Nacht herein."
+   :explain/first-discussion "Heute stimmt noch niemand ab. Sprecht über die Nacht und darüber, wem ihr traut. Wer genug geredet hat, tippt auf „Ich bin fertig“ – sind alle so weit, bricht die Nacht herein."
    :explain/day-resolve "Das Urteil fällt."
    :explain/reaction    "Ein Toter hat noch eine letzte Handlung. Alle warten auf ihn."
    :step/night       "Nacht"

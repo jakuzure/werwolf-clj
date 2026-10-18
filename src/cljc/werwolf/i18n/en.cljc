@@ -305,7 +305,7 @@
    :explain/election    "Elect a mayor. Their vote counts twice in every ballot."
    :explain/discussion  "Talk it over: who do you not trust? Say when you are done."
    :explain/trial       (fn [_] "Talk it over and vote on who is condemned. You can change your vote until everyone has voted.")
-   :explain/first-discussion "Nobody is accused today. Talk about the night and about whom you trust — say when you are done, and the night falls."
+   :explain/first-discussion "Nobody votes today. Talk about the night and about whom you trust. Once you have said enough, tap “I'm done” – when everyone is, night falls."
    :explain/day-resolve "The verdict falls."
    :explain/reaction    "Someone who just died has one last move. Everyone waits for them."
    :step/night       "Night"
