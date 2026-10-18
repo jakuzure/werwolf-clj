@@ -28,7 +28,7 @@
    :guide/night-title "The night"
    :guide/night       "Everyone is asleep. The roles are called one after another, and whoever is called acts in secret on their own screen: the Seherin looks at a card, the werewolves agree on a victim, the Hexe may save them."
    :guide/day-title   "The day"
-   :guide/day         "In the morning you learn who did not survive the night, and see their card. On the first day you elect a mayor and get to know each other — nobody is accused yet. From the second day you talk and vote at the same time on who is condemned. That takes a majority of the living; until everyone has voted, you can change your vote."
+   :guide/day         "In the morning you learn who did not survive the night, and see their card. On the first day you elect a mayor and talk about the night — nobody is accused yet. From the second day you talk and vote at the same time on who is condemned. That takes a majority of the living; until everyone has voted, you can change your vote."
    :guide/win-title   "Who wins"
    :guide/win         "The village wins once no werewolf is left alive. The werewolves win when nobody but them is left. Two lovers win together if they are the last two alive — whichever side they were on. The dead talk only to the dead."
    :guide/roles-title "The roles"
@@ -292,7 +292,7 @@
    :explain/election    "Elect a mayor. Their vote counts twice in every ballot."
    :explain/discussion  "Talk it over: who do you not trust? Say when you are done."
    :explain/trial       (fn [_] "Talk it over and vote on who is condemned. You can change your vote until everyone has voted.")
-   :explain/first-discussion "Get to know each other. Nobody is accused today — say when you are done, and the night falls."
+   :explain/first-discussion "Nobody is accused today. Talk about the night and about whom you trust — say when you are done, and the night falls."
    :explain/day-resolve "The verdict falls."
    :explain/reaction    "Someone who just died has one last move. Everyone waits for them."
    :step/night       "Night"
@@ -333,6 +333,9 @@
    :dawn/ok "Continue"
    :record/title (fn [n] (str "This table, after " n " games"))
    :record/won "won"
+   :hexe/victim (fn [who] (str "🐺 The werewolves chose " who "."))
+   :hexe/victim-you "🐺 The werewolves chose you."
+   :hexe/no-victim "🐺 The werewolves chose nobody tonight."
    :ballot/title     "The vote"
    :ballot/needed    (fn [n] (str "Condemned at " n " votes"))
    :ballot/none      "Nobody has a vote yet."
