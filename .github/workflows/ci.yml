@@ -71,7 +71,10 @@ jobs:
       - name: Regenerate deps-lock.json on Renovate branches
         if: github.event_name == 'pull_request' && startsWith(github.event.pull_request.head.ref, 'renovate/')
         run: |
-          nix run github:jlesquembre/clj-nix#deps-lock -- --alias-exclude dev
+          # The pinned clj-nix, not the latest: a newer one writes a lock
+          # format the pinned builder refuses ("Lock file generated with a
+          # different clj-nix version").
+          nix run --inputs-from . clj-nix#deps-lock -- --alias-exclude dev
           if git diff --quiet -- deps-lock.json; then
             echo "deps-lock.json already current"
           else

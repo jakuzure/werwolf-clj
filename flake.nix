@@ -12,7 +12,9 @@
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     # Builds Clojure offline from deps-lock.json. Regenerate that file whenever
     # deps.edn changes, or the build fails on a missing artifact:
-    #   nix run github:jlesquembre/clj-nix#deps-lock -- --alias-exclude dev
+    #   nix run --inputs-from . clj-nix#deps-lock -- --alias-exclude dev
+    # --inputs-from, so the lock is written by the clj-nix pinned below. The
+    # latest one writes a newer lock format, which this pin refuses to read.
     clj-nix = {
       url = "github:jlesquembre/clj-nix";
       inputs.nixpkgs.follows = "nixpkgs";
