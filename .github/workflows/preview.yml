@@ -24,7 +24,11 @@ permissions:
 jobs:
   image:
     runs-on: ubuntu-26.04
-    environment: cachix
+    # The job's environment is what GitHub lists under the PR as a deployment;
+    # its url turns that entry into a "View deployment" link to the preview.
+    environment:
+      name: cachix
+      url: ${{ steps.status.outputs.url }}
     permissions:
       contents: read
       statuses: write
@@ -47,6 +51,7 @@ jobs:
           echo "path=$path" >> "$GITHUB_OUTPUT"
 
       - name: Set the preview status
+        id: status
         env:
           GH_TOKEN: ${{ github.token }}
           IMAGE: nix:0${{ steps.build.outputs.path }}
@@ -55,7 +60,9 @@ jobs:
           pr=$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$BRANCH" --json number --jq '.[0].number // empty')
           args=(-f state=success -f context=preview -f "description=$IMAGE")
           if [ -n "$pr" ]; then
-            args+=(-f "target_url=https://pr-$pr.werwolf-chrz.duckdns.org")
+            url="https://pr-$pr.werwolf-chrz.duckdns.org"
+            args+=(-f "target_url=$url")
+            echo "url=$url" >> "$GITHUB_OUTPUT"
           fi
           gh api "repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" "${args[@]}" --silent
           echo "preview status set on $GITHUB_SHA${pr:+ (PR #$pr)}: $IMAGE"
