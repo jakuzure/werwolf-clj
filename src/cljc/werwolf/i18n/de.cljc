@@ -1,6 +1,6 @@
 (ns werwolf.i18n.de
   "German. The canonical Düsterwald terminology: Seherin, Hexe, Jäger, Amor,
-   Verliebte, Spielleitung.
+   Verliebte, Spielleiter.
 
    Every log entry is a WHOLE sentence rather than a stem plus a suffix. German
    and English put the pieces in different orders — 'wurde von den Werwölfen
@@ -33,7 +33,7 @@
    :guide/team-village "Das Dorf"
    :guide/mayor-title "Bürgermeister"
    :guide/mayor       "Keine Karte, sondern ein Amt: am ersten Tag gewählt, zählt seine Stimme doppelt. Stirbt er, bestimmt er seinen Nachfolger."
-   :guide/table       "Ab drei Spielern geht es los, richtig Spaß macht es ab fünf. Wer die Runde eröffnet, leitet sie als Spielleitung, sieht alle Karten und spielt nicht mit — oder spielt mit, dann läuft die Runde mit Zeitlimit von selbst. Redet über den Sprachchat oder am selben Tisch."
+   :guide/table       "Ab drei Spielern geht es los, richtig Spaß macht es ab fünf. Wer das Spiel eröffnet, ist der Spielleiter: Er sieht alle Karten und spielt nicht mit — oder er spielt mit, dann läuft das Spiel mit Zeitlimit von selbst. Redet über den Sprachchat oder am selben Tisch."
    :landing/create    "Neue Runde eröffnen"
    :landing/join      "Runde beitreten"
    :landing/invited "Du bist eingeladen in Runde"
@@ -54,7 +54,7 @@
    ;; ------------------------------------------------------------- lobby ---
    :lobby/title       "Warteraum"
    :lobby/players     "Mitspieler"
-   :lobby/count       (fn [n mx mn] (str n " / " mx " Mitspieler · am meisten Spaß macht es ab " mn " Mitspielern"))
+   :lobby/count       (fn [n mx mn] (str n " / " mx " Mitspieler" (when (< n mn) (str " · am meisten Spaß macht es ab " mn " Mitspielern"))))
    :lobby/start       "Spiel starten"
    :lobby/need-more   "Es fehlen noch Mitspieler"
    ;; Die Spielleitung darf unter der empfohlenen Größe starten. Ein Hinweis,
@@ -69,9 +69,9 @@
    ;; Der Spielleiter. Er sitzt im Raum, spielt aber nicht mit — der Warteraum
    ;; muss das sagen, sonst zählt jeder ihn als Mitspieler und wundert sich über
    ;; die Kartenzahl.
-   :lobby/mode               "Spielleitung"
-   :lobby/mode-narrated      "Mit Spielleiter: er spielt nicht mit, sieht alle Rollen und führt durchs Spiel."
-   :lobby/mode-players       "Ohne Spielleiter: die Spielleitung spielt mit und hat nur ihre Schalter nebenher."
+   :lobby/mode               "Spielleiter"
+   :lobby/mode-narrated      "Der Spielleiter bekommt keine Karte, sieht alle Rollen und führt durchs Spiel."
+   :lobby/mode-players       "Der Spielleiter spielt mit; seine Schalter laufen nebenher."
    :lobby/narrator-is        (fn [n] (str "Spielleiter: " n))
    :lobby/you-narrate        "Du bist der Spielleiter — du bekommst keine Rolle."
    :lobby/narrate            "Ich leite das Spiel"
@@ -80,8 +80,8 @@
    :lobby/timer-switch-on    "Zeitlimit einschalten"
    :lobby/timer-switch-off   "Zeitlimit ausschalten"
    :lobby/password           "Passwort"
-   :lobby/mode-short-narrated "Mit Spielleiter"
-   :lobby/mode-short-players "Alle spielen mit"
+   :lobby/mode-short-narrated "spielt nicht mit"
+   :lobby/mode-short-players "spielt mit"
    :lobby/timer-short-on "an"
    :lobby/timer-short-off "aus"
    :lobby/password-short-on "gesetzt"
@@ -98,7 +98,7 @@
    :lobby/password-change    "Passwort ändern"
    :lobby/password-clear     "Passwort entfernen"
    :lobby/make-narrator      "Zum Spielleiter machen"
-   :lobby/make-host          "Spielleitung übergeben"
+   :lobby/make-host          "Zum Spielleiter machen"
 
    ;; Die Rollen. Gewählt werden nur die besonderen Karten — die Dorfbewohner
    ;; füllen auf, was übrig bleibt, und sind darum keine Entscheidung.
@@ -106,7 +106,8 @@
    :deck/auto           "Automatisch"
    :deck/custom         "Eigene Auswahl"
    :deck/auto-hint      "Die Rollen richten sich nach der Zahl der Mitspieler."
-   :deck/custom-hint    "Die Spielleitung hat die Rollen gewählt."
+   :deck/custom-hint    "Der Spielleiter hat die Rollen gewählt."
+   :deck/custom-hint-own "Du hast die Rollen gewählt."
    :deck/fill           "füllen die übrigen Plätze"
    :deck/centre         "Mitte (für den Dieb)"
    :deck/in-game        "Im Spiel"
@@ -153,13 +154,13 @@
 
    ;; ----------------------------------------------------------- actions ---
    :action/start-game      "Spiel starten"
-   :action/play-again      "Nochmal mit dieser Runde"
+   :action/play-again      "Nochmal mit allen"
    :action/leave           "Verlassen"
    :action/set-locale      "Sprache"
    :action/chat            "Sagen"
    :action/ready           "Ich bin fertig"
    :action/amor-link       "Verliebte bestimmen"
-   :action/seherin-inspect "Rolle aufdecken"
+   :action/seherin-inspect "Rolle ansehen"
    :action/werewolf-vote   "Opfer wählen"
    :action/beschuetzer-protect "Schützen"
    :action/weisser-kill    "Einen Wolf reißen"
@@ -178,33 +179,33 @@
    :action/vote            "Verurteilen"
    :action/vote-abstain    "Enthalten"
    :action/begin-night     "Erste Nacht beginnen"
-   :action/advance-phase   "Phase weiter (SL)"
-   :action/claim-host      "Spielleitung übernehmen"
-   :action/gm-toggle-narrated "Spielleiter-Modus (SL)"
-   :action/gm-toggle-timer "Zeitlimit an/aus (SL)"
-   :action/gm-transfer-host "Spielleitung übergeben (SL)"
-   :action/gm-set-deck     "Rollen wählen (SL)"
-   :action/gm-auto-deck    "Rollen automatisch (SL)"
-   :action/gm-force-kill   "Töten (SL)"
-   :action/gm-revive       "Wiederbeleben (SL)"
-   :action/gm-skip-role    "Rolle überspringen (SL)"
-   :action/gm-set-phase    "Phase setzen (SL)"
-   :action/gm-reassign-role "Rolle neu vergeben (SL)"
-   :action/gm-pause        "Zeit anhalten (SL)"
-   :action/gm-resume       "Zeit weiterlaufen (SL)"
-   :action/gm-add-time     "+60 s (SL)"
+   :action/advance-phase   "Phase weiter"
+   :action/claim-host      "Spielleiter werden"
+   :action/gm-toggle-narrated "Spielleiter-Modus"
+   :action/gm-toggle-timer "Zeitlimit an/aus"
+   :action/gm-transfer-host "Spielleiter-Rolle übergeben"
+   :action/gm-set-deck     "Rollen wählen"
+   :action/gm-auto-deck    "Rollen automatisch"
+   :action/gm-force-kill   "Töten"
+   :action/gm-revive       "Wiederbeleben"
+   :action/gm-skip-role    "Rolle überspringen"
+   :action/gm-set-phase    "Phase setzen"
+   :action/gm-reassign-role "Rolle neu vergeben"
+   :action/gm-pause        "Zeit anhalten"
+   :action/gm-resume       "Zeit weiterlaufen"
+   :action/gm-add-time     "+60 s"
 
    ;; ------------------------------------------------------- entfernen ---
    ;; Der Host nimmt jemanden aus der Lobby: ein Geisterplatz, ein Tippfehler,
    ;; ein abgelöster Host. Zwei Tipps, wie beim Verlassen.
-   :action/gm-kick    "Entfernen (SL)"
+   :action/gm-kick    "Entfernen"
    :kick/button       "Entfernen"
    :kick/confirm      "Wirklich entfernen?"
    :log/kicked        (fn [n] (str n " wurde aus der Runde entfernt"))
    :error/kicked      "Du wurdest aus der Runde entfernt"
 
    ;; ---------------------------------------------------- Spielleitung ---
-   :gm/panel          "Spielleitung"
+   :gm/panel          "Spielleiter"
    :gm/panel-hint     "Nur du siehst diese Schalter. Jeder Eingriff steht in der Chronik."
    :gm/open           "Öffnen"
    :gm/close          "Schließen"
@@ -214,8 +215,8 @@
    :gm/confirm        "Wirklich?"
    :gm/clock          "Zeit"
    :gm/nothing        "Gerade nichts zu steuern."
-   :gm/timer-on       "Zeitlimit einschalten (SL)"
-   :gm/timer-off      "Zeitlimit ausschalten (SL)"
+   :gm/timer-on       "Zeitlimit einschalten"
+   :gm/timer-off      "Zeitlimit ausschalten"
 
    ;; ------------------------------------------------------- Spielleiter ---
    :narrator/title    "Spielleiter"
@@ -250,9 +251,9 @@
    ;; Die Spielleitung ist länger weg als die Schonfrist. Zwei Auswege, je
    ;; nachdem, was sicher ist: jemand übernimmt den Platz, oder die Uhr
    ;; übernimmt das Tempo.
-   :absence/title      (fn [n] (str "Die Spielleitung (" n ") ist abwesend"))
-   :absence/claim-hint "Jemand am Tisch kann die Spielleitung übernehmen."
-   :absence/clock-hint "Die Uhr hat übernommen: Jede Phase endet mit ihrem Zeitlimit, bis die Spielleitung zurück ist."
+   :absence/title      (fn [n] (str "Der Spielleiter (" n ") ist abwesend"))
+   :absence/claim-hint "Jemand am Tisch kann Spielleiter werden."
+   :absence/clock-hint "Die Uhr hat übernommen: Jede Phase endet mit ihrem Zeitlimit, bis der Spielleiter zurück ist."
    :game/your-role     "Deine Rolle"
    :bar/menu           "Menü"
    :bar/room           "Raum"
@@ -271,9 +272,8 @@
    :game/dead-channel   "Nur die Toten hören dich"
    :game/narrator-channel "Alle hören dich — du bist der Spielleiter"
    :game/paused         "Zeit angehalten"
-   :game/new-round      "Zurück — neue Runde"
-   :game/over-hint      "Alle Rollen sind jetzt aufgedeckt."
-   :game/play-again-wait "Die Spielleitung kann gleich noch eine Runde mit euch allen starten."
+   :game/new-round      "Zurück zum Start"
+   :game/play-again-wait "Der Spielleiter kann gleich noch ein Spiel mit euch allen starten."
    :game/dead-hint      "Du bist tot — du schaust nur noch zu."
 
    ;; ------------------------------------------------------------- turn ---
@@ -310,11 +310,13 @@
    :explain/night       "Alle schlafen. Wer gerufen wird, wacht auf und handelt, ohne sich zu verraten."
    :explain/day-reveal  "Der Morgen graut. Gleich zeigt sich, was die Nacht angerichtet hat."
    :explain/election    "Wählt einen Bürgermeister. Seine Stimme zählt bei jeder Abstimmung doppelt."
-   :explain/discussion  "Redet miteinander: Wem traut ihr nicht? Sag Bescheid, wenn du fertig bist."
+   :explain/discussion  "Redet miteinander: Wem traut ihr nicht? Wer genug geredet hat, tippt auf „Ich bin fertig“."
    :explain/trial       (fn [_] "Redet miteinander und stimmt ab, wer verurteilt wird. Ihr könnt umstimmen, bis alle abgestimmt haben.")
    :explain/first-discussion "Heute stimmt noch niemand ab. Sprecht über die Nacht und darüber, wem ihr traut. Wer genug geredet hat, tippt auf „Ich bin fertig“ – sind alle so weit, bricht die Nacht herein."
    :explain/day-resolve "Das Urteil fällt."
    :explain/reaction    "Ein Toter hat noch eine letzte Handlung. Alle warten auf ihn."
+   :explain/reaction-jaeger "Der Jäger ist gestorben und legt noch einmal an. Alle warten auf seinen Schuss."
+   :explain/reaction-mayor "Der Bürgermeister ist gestorben und bestimmt, wer sein Amt übernimmt."
    :step/night       "Nacht"
    :step/day-reveal  "Morgen"
    :step/election    "Wahl"
@@ -330,8 +332,8 @@
    :voice/in-call        "im Gespräch"
    :voice/in-call-list   "Im Gespräch"
    :voice/nobody-in-call "Noch niemand im Gespräch."
-   :voice/title          "Sprache"
-   :voice/join           "🎧 Sprache beitreten"
+   :voice/title          "Sprachchat"
+   :voice/join           "🎧 Sprachchat beitreten"
    :voice/joining        "Verbinde…"
    :voice/leave          "Verlassen"
    :voice/mute           "Stumm schalten"
@@ -372,7 +374,7 @@
    :badge/ready       "fertig"
    :badge/decided     "hat gewählt"
    :badge/mayor       "Bürgermeister"
-   :badge/host        "Gastgeber"
+   :badge/host        "Spielleiter"
    :badge/lover       "verliebt"
    :badge/waiting-for "Es fehlen noch"
 
@@ -387,21 +389,21 @@
    :log/left          (fn [n] (str n " hat die Runde verlassen"))
    :log/disconnected  (fn [n] (str n " ist abwesend"))
    :log/reconnected   (fn [n] (str n " ist zurück"))
-   :log/host-changed  (fn [n] (str n " ist jetzt Spielleitung"))
-   :log/host-claimed  (fn [n] (str n " übernimmt die Spielleitung"))
-   :log/host-absent   (fn [n] (str "Die Spielleitung (" n ") ist abwesend"))
+   :log/host-changed  (fn [n] (str n " ist jetzt Spielleiter"))
+   :log/host-claimed  (fn [n] (str n " wird Spielleiter"))
+   :log/host-absent   (fn [n] (str "Der Spielleiter (" n ") ist abwesend"))
    :log/host-returned (fn [n] (str n " ist zurück und leitet wieder"))
    :log/game-started  "Die erste Nacht bricht an"
    :log/game-started-setup "Die Karten sind verteilt — der Spielleiter bereitet die erste Nacht vor"
-   :log/narrated-on   "Die Spielleitung spielt nicht mit und führt durchs Spiel"
-   :log/narrated-off  "Die Spielleitung spielt mit"
+   :log/narrated-on   "Der Spielleiter spielt nicht mit und führt durchs Spiel"
+   :log/narrated-off  "Der Spielleiter spielt mit"
    :log/timer-on      "Die Uhr läuft — jede Phase hat ein Zeitlimit"
-   :log/timer-off     "Die Uhr ist aus — die Spielleitung bestimmt das Tempo"
-   :log/timer-on-absent "Die Uhr übernimmt — ohne Spielleitung endet jede Phase mit ihrem Zeitlimit"
+   :log/timer-off     "Die Uhr ist aus — der Spielleiter bestimmt das Tempo"
+   :log/timer-on-absent "Die Uhr übernimmt — ohne Spielleiter endet jede Phase mit ihrem Zeitlimit"
    ;; Dass sich das Schloss geändert hat, nie der Schlüssel.
    :log/room-locked   "Die Runde ist jetzt mit einem Passwort geschützt"
    :log/room-unlocked "Die Runde braucht kein Passwort mehr"
-   :log/deck-set      (fn [d] (str "Die Spielleitung wählt die Rollen: " d))
+   :log/deck-set      (fn [d] (str "Der Spielleiter wählt die Rollen: " d))
    :log/deck-auto     "Die Rollen richten sich wieder nach der Zahl der Mitspieler"
    :log/amor-linked   "Amor hat zwei Verliebte bestimmt"
    :log/night-began   "Die Nacht bricht an"
@@ -422,7 +424,8 @@
    :log/died-lynch    (fn [n] (str n " wurde vom Dorf gerichtet"))
    :log/died-jaeger   (fn [n] (str n " wurde vom Jäger erschossen"))
    :log/died-weisser  (fn [n] (str n " wurde vom Weißen Werwolf gerissen"))
-   :log/died-gm       (fn [n] (str n " wurde von der Spielleitung aus dem Spiel genommen"))
+   :log/died-gm       (fn [n] (str n " wurde vom Spielleiter aus dem Spiel genommen"))
+   :log/died-left (fn [n] (str n " hat das Spiel verlassen und scheidet aus"))
    :log/died          (fn [n] (str n " ist gestorben"))
 
    :log/revived       (fn [n] (str n " lebt wieder"))
@@ -448,12 +451,12 @@
    ;; Die neue Rolle steht bewusst NICHT hier. Die Chronik liest der ganze
    ;; Tisch — dass eingegriffen wurde, geht alle an; was auf der Karte steht,
    ;; nur den einen. Siehe `handle :gm/reassign-role`.
-   :log/gm-forced     "Die Spielleitung greift ein"
-   :log/gm-skip-role  (fn [r] (str "Die Spielleitung überspringt " r))
-   :log/gm-set-phase  (fn [p] (str "Die Spielleitung setzt die Phase auf " p))
-   :log/gm-reassign-role (fn [n] (str n " hat von der Spielleitung eine neue Rolle bekommen"))
-   :log/gm-advance-phase (fn [p] (str "Die Spielleitung beendet: " p))
-   :log/clock-paused  "Die Spielleitung hält die Zeit an"
+   :log/gm-forced     "Der Spielleiter greift ein"
+   :log/gm-skip-role  (fn [r] (str "Der Spielleiter überspringt " r))
+   :log/gm-set-phase  (fn [p] (str "Der Spielleiter setzt die Phase auf " p))
+   :log/gm-reassign-role (fn [n] (str n " hat vom Spielleiter eine neue Rolle bekommen"))
+   :log/gm-advance-phase (fn [p] (str "Der Spielleiter beendet: " p))
+   :log/clock-paused  "Der Spielleiter hält die Zeit an"
    :log/clock-resumed "Die Zeit läuft weiter"
    :log/win-village   "Das Dorf hat gewonnen"
    :log/win-werewolf  "Die Werwölfe haben gewonnen"
@@ -487,7 +490,8 @@
    :recap/cause-lynch  "vom Dorf gerichtet"
    :recap/cause-jaeger "vom Jäger erschossen"
    :recap/cause-weisser "vom Weißen Werwolf gerissen"
-   :recap/cause-gm     "von der Spielleitung aus dem Spiel genommen"
+   :recap/cause-gm     "vom Spielleiter aus dem Spiel genommen"
+   :recap/cause-left "hat das Spiel verlassen"
    :recap/cause-other  "gestorben"
    :recap/dealt        (fn [r] (str "anfangs " r))
    :recap/lover        "verliebt"
@@ -505,7 +509,7 @@
    :recap/hexe-healed  (fn [n t] (str n " rettet " t " mit dem Heiltrank"))
    :recap/hexe-poisoned (fn [n t] (str n " vergiftet " t))
    :recap/nominated    (fn [by t] (str by " klagt " t " an"))
-   :recap/gm-reassigned (fn [n from to] (str "Die Spielleitung tauscht die Karte von " n ": " from " → " to))
+   :recap/gm-reassigned (fn [n from to] (str "Der Spielleiter tauscht die Karte von " n ": " from " → " to))
    :recap/votes        (fn [v] (str "Stimmen: " v))
    :recap/abandoned    "Niemand ist zurückgekommen — die Runde wurde ohne Sieger beendet"
 
@@ -515,7 +519,7 @@
    :error/mic-denied       "Kein Zugriff aufs Mikrofon — bitte in den Browser-Einstellungen erlauben"
    ;; Kein Fehler, den die App beheben kann: ohne HTTPS gibt der Browser gar kein
    ;; Mikrofon her. Betrifft vor allem Handys, die den Rechner über die IP öffnen.
-   :error/insecure-context "Sprache braucht HTTPS — über eine IP-Adresse ohne Zertifikat gibt der Browser kein Mikrofon frei"
+   :error/insecure-context "Der Sprachchat braucht HTTPS — über eine IP-Adresse ohne Zertifikat gibt der Browser kein Mikrofon frei"
    :error/join-failed      "Sprachverbindung fehlgeschlagen"
    :error/no-such-room     "Diesen Raum gibt es nicht"
    :error/game-in-progress "Die Runde läuft schon"
@@ -536,7 +540,7 @@
    :error/not-allowed      "Das darfst du gerade nicht"
    :error/invalid-target   "Dieses Ziel ist nicht erlaubt"
    :error/already-in-room  "Du bist schon in einer Runde"
-   :error/not-host         "Nur die Spielleitung darf das"
+   :error/not-host         "Nur der Spielleiter darf das"
    :error/password-required "Diese Runde hat ein Passwort — bitte eingeben"
    :error/wrong-password    "Falsches Passwort"
    :error/too-many-attempts "Zu viele Versuche — bitte warte eine Minute"

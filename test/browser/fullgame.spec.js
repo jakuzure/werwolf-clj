@@ -67,7 +67,7 @@ test.describe('a game played to the end', () => {
 
     // The engine reveals every role once the game is decided.
     for (const { page } of roles) {
-      await expect(page.getByText('Alle Rollen sind jetzt aufgedeckt.'))
+      await expect(page.getByTestId('recap'))
         .toBeVisible({ timeout: 20_000 });
     }
     // And it says who won, in the players' own language.
@@ -119,7 +119,7 @@ test.describe('a game played to the end', () => {
     await playNight(roles, { eat: witch });
 
     for (const { page } of roles) {
-      await expect(page.getByText('Alle Rollen sind jetzt aufgedeckt.'))
+      await expect(page.getByTestId('recap'))
         .toBeVisible({ timeout: 20_000 });
     }
     await expect(roles[0].page.getByText(/Werwölfe/).first())

@@ -1442,6 +1442,14 @@
         (cond
           (and (= :discussion phase) (:trial? view))
           (t :explain/trial (:votes-needed view))
+          ;; Which last move the table waits for: the dead player's card is
+          ;; public by now, so naming the Jäger or the Bürgermeister tells
+          ;; nobody anything new.
+          (= :reaction phase)
+          (t (case (:reaction-type view)
+               :reaction/jaeger-shot       :explain/reaction-jaeger
+               :reaction/mayor-succession  :explain/reaction-mayor
+               :explain/reaction))
           (= :discussion phase) (t :explain/first-discussion)
           ;; The Spielleiter has no card to look at; his part of the deal is
           ;; checking it and opening the night.
@@ -1810,7 +1818,12 @@
           #(rf/dispatch [::ev/act-with :gm/set-deck
                          {:deck (sub/deck-from-preview (:deck-preview view))}])]]
         [:span {:class "text-xs text-slate-400"} (t (if custom? :deck/custom :deck/auto))])]
-     [:p {:class "text-xs text-slate-400"} (t (if custom? :deck/custom-hint :deck/auto-hint))]
+     [:p {:class "text-xs text-slate-400"}
+      ;; To the Spielleiter himself, in the second person: "Der Spielleiter
+      ;; hat die Rollen gewählt" read oddly to the one who had.
+      (t (cond (and custom? edit?) :deck/custom-hint-own
+               custom?             :deck/custom-hint
+               :else               :deck/auto-hint))]
      (if (and edit? custom?)
        [:div
         [:div {:class "divide-y divide-slate-800"}
@@ -2108,7 +2121,6 @@
        ;; twice made the end of the game read like a stutter.
        ;; Every role is public now — view-for reveals them all once the game is
        ;; decided — so the table can finally read who everyone was.
-       [:p {:class "text-sm text-amber-100/80"} (t :game/over-hint)]
        ;; The host's rematch: everyone stays seated and the cards are dealt
        ;; again. The others are told it is coming, so leaving is not the only
        ;; thing the screen seems to offer them.

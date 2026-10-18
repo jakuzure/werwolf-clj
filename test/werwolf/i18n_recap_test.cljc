@@ -70,9 +70,9 @@
   (let [rows (recap/round-lines :en players every-kind-of-entry)]
     (is (= "The werewolves choose Name3 — but the Beschützer stands guard" (:text (nth rows 6))))
     (is (= "The werewolves agree on no victim" (:text (nth rows 7))))
-    (is (= "The game master swaps Name7's card: Beschützer → Dorfbewohner"
+    (is (= "The narrator swaps Name7's card: Beschützer → Dorfbewohner"
            (:text (nth rows 26))))
-    (is (= "The game master skips the Seherin" (:text (nth rows 27))))
+    (is (= "The narrator skips the Seherin" (:text (nth rows 27))))
     (is (= "No majority — the village condemns nobody" (:text (nth rows 25))))))
 
 (deftest an-abandoned-game-ends-without-a-winner
