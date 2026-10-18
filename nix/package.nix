@@ -223,36 +223,76 @@ let
       runHook postInstall
     '';
   };
+  # The release version without the "+<commit>" the flake appends.
+  release = lib.head (lib.splitString "+" version);
+
+  # werwolf's own AOT classes, resources and the frontend in one small jar —
+  # compiled with the commit stand-in, like the frontend, and so keyed on the
+  # code alone. The commit used to be compiled in, and every commit built its
+  # own: the preview of a branch, the PR's merge commit and main after the
+  # merge each compiled the very same code again, because each was a different
+  # revision. Now a rebase or a merge that changes nothing finds this in the
+  # cache, and only the wrapper below is built per commit.
+  app = stdenv.mkDerivation {
+    pname = "werwolf-clj-app";
+    version = release;
+
+    src = source [
+      ../deps.edn
+      # build.clj reads the version from it, and so does werwolf.build-info.
+      ../package.json
+      ../build
+      ../src/clj
+      ../src/cljc
+      resources
+    ];
+    nativeBuildInputs = [ jdk clj ];
+
+    # Read by werwolf.build-info at compile time.
+    WERWOLF_COMMIT = commitPlaceholder;
+
+    buildPhase = ''
+      runHook preBuild
+      ${cljEnv}
+      cp -r --no-preserve=mode ${frontend}/public/. resources/public/
+      clj -T:build app :libs-jar '"${libs}/share/java/werwolf-clj-libs.jar"'
+      runHook postBuild
+    '';
+
+    installPhase = ''
+      runHook preInstall
+      install -Dm644 target/werwolf-clj-*.jar $out/share/java/werwolf-clj.jar
+      runHook postInstall
+    '';
+  };
 in
+# The server as it is deployed, for one commit: the app jar with the commit
+# written over the stand-in where the bundle shows it, and the wrapper, which
+# also hands it to the server for its log (werwolf.build-info/running-commit).
+# Seconds to build; everything heavy is in `app`, `libs` and `frontend`.
 stdenv.mkDerivation {
   pname = "werwolf-clj";
   inherit version;
 
-  src = source [
-    ../deps.edn
-    # build.clj reads the version from it, and so does werwolf.build-info.
-    ../package.json
-    ../build
-    ../src/clj
-    ../src/cljc
-    resources
-  ];
-  nativeBuildInputs = [ jdk clj ];
+  dontUnpack = true;
+  nativeBuildInputs = [ zip unzip ];
 
-  # Read by werwolf.build-info at compile time. The sandbox has no git history,
-  # so the flake hands the revision in.
-  WERWOLF_COMMIT = commit;
-
+  # Only the bundle's files carry the stand-in. The compiled server class
+  # carries it too, but a class file's strings are length-prefixed and cannot
+  # be patched in place; the server reads the property instead.
   buildPhase = ''
     runHook preBuild
-    ${cljEnv}
-
-    cp -r --no-preserve=mode ${frontend}/public/. resources/public/
-    grep -rlF '${commitPlaceholder}' resources/public | while read -r f; do
-      substituteInPlace "$f" --replace-fail '${commitPlaceholder}' '${commit}'
-    done
-
-    clj -T:build app :libs-jar '"${libs}/share/java/werwolf-clj-libs.jar"'
+    cp ${app}/share/java/werwolf-clj.jar werwolf-clj.jar
+    chmod u+w werwolf-clj.jar
+    mkdir bundle
+    unzip -q werwolf-clj.jar 'public/*' -d bundle
+    (cd bundle
+     files=$(grep -rlF '${commitPlaceholder}' public || true)
+     [ -n "$files" ] || { echo "no ${commitPlaceholder} in the bundle" >&2; exit 1; }
+     for f in $files; do
+       substituteInPlace "$f" --replace-fail '${commitPlaceholder}' '${commit}'
+     done
+     zip -q ../werwolf-clj.jar $files)
     runHook postBuild
   '';
 
@@ -263,13 +303,13 @@ stdenv.mkDerivation {
   # werwolf.main is AOT-compiled with :gen-class.
   installPhase = ''
     runHook preInstall
-    install -Dm644 target/werwolf-clj-*.jar $out/share/java/werwolf-clj.jar
+    install -Dm644 werwolf-clj.jar $out/share/java/werwolf-clj.jar
     classpath="$out/share/java/werwolf-clj.jar:$(paste -sd: ${libs}/share/werwolf-clj/classpath)"
 
     mkdir -p $out/bin
     cat > $out/bin/werwolf-clj <<EOF
     #!${runtimeShell}
-    exec "${jdk}/bin/java" -XX:MaxRAMPercentage=75 \\
+    exec "${jdk}/bin/java" -XX:MaxRAMPercentage=75 -Dwerwolf.commit=${commit} \\
       -cp "$classpath" \\
       werwolf.main "\$@"
     EOF
@@ -278,7 +318,7 @@ stdenv.mkDerivation {
   '';
 
   # jdk: the preview image (nix/preview-image.nix) must run on the same one.
-  passthru = { inherit frontend libs sqlite-jdbc jdk; };
+  passthru = { inherit app frontend libs sqlite-jdbc jdk commit; };
 
   meta = {
     description = "Browser-based Werwolf game server";
