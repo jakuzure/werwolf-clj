@@ -239,6 +239,8 @@
    :game/your-role     "Your role"
    :bar/menu           "Menu"
    :bar/room           "Room"
+   :tab/now            "Now"
+   :tab/table          "Players"
    :game/in-love       "You are in love with"
    :game/heiltrank     "Healing potion"
    :game/gifttrank     "Poison"

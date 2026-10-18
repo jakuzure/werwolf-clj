@@ -244,6 +244,8 @@
    :game/your-role     "Deine Rolle"
    :bar/menu           "Menü"
    :bar/room           "Raum"
+   :tab/now            "Jetzt"
+   :tab/table          "Mitspieler"
    :game/in-love       "Du bist verliebt in"
    :game/heiltrank     "Heiltrank"
    :game/gifttrank     "Gifttrank"
