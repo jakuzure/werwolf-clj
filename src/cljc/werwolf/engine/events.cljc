@@ -415,6 +415,8 @@
   (-> state
       (assoc :night night
              :phase :night
+             ;; A new phase, a new clock: see :day/began.
+             :deadline nil
              :night-actions {}
              :night-cursor nil
              :pending-deaths [])
@@ -478,6 +480,11 @@
   [state _]
   (-> state
       (assoc :phase :discussion
+             ;; A new phase, a new clock. The timer only arms a phase with no
+             ;; deadline, so one left standing ran on: the first day's talk,
+             ;; which follows the election by this event and not by
+             ;; :phase/changed, ended when the election's 60 seconds did.
+             :deadline nil
              :votes {}
              :ready #{}
              :vote-resolved? false)
