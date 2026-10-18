@@ -295,9 +295,7 @@
    :explain/day-reveal  "Der Morgen graut. Gleich zeigt sich, was die Nacht angerichtet hat."
    :explain/election    "Wählt einen Bürgermeister. Seine Stimme zählt bei jeder Abstimmung doppelt."
    :explain/discussion  "Redet miteinander: Wem traut ihr nicht? Sag Bescheid, wenn du fertig bist."
-   :explain/trial       (fn [n] (str "Redet miteinander und stimmt ab: Wer soll verurteilt werden? "
-                                     "Verurteilt wird nur, wer mindestens " n " Stimmen bekommt. "
-                                     "Ihr könnt umstimmen, bis alle abgestimmt haben."))
+   :explain/trial       (fn [_] "Redet miteinander und stimmt ab, wer verurteilt wird. Ihr könnt umstimmen, bis alle abgestimmt haben.")
    :explain/first-discussion "Lernt euch kennen. Heute wird noch niemand angeklagt — sag Bescheid, wenn du fertig bist, dann bricht die Nacht herein."
    :explain/day-resolve "Das Urteil fällt."
    :explain/reaction    "Ein Toter hat noch eine letzte Handlung. Alle warten auf ihn."
@@ -332,6 +330,11 @@
    :target/hint       "Klicke unten auf einen Mitspieler"
 
    ;; ------------------------------------------------------------ badges ---
+   :ballot/title     "Abstimmung"
+   :ballot/needed    (fn [n] (str "Verurteilt ab " n " Stimmen"))
+   :ballot/none      "Noch hat niemand eine Stimme bekommen."
+   :ballot/mayor     "Die Stimme des Bürgermeisters zählt doppelt"
+   :ballot/abstained (fn [n] (str n (if (= 1 n) " Enthaltung" " Enthaltungen")))
    :badge/votes       "Stimmen"
    :badge/vote        "Stimme"
    :badge/ready       "fertig"

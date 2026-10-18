@@ -283,6 +283,28 @@
   [actions]
   (sort (remove #(or (= "gm" (namespace %)) (not-a-move %)) actions)))
 
+(defn ballot
+  "The open vote as the table should read it, or nil outside one: who has how
+   many votes, against how many it takes, and how many abstained.
+
+   Counted the way `phases/verdict` counts — the Bürgermeister's vote twice —
+   so the bar a player watches fill is the one that decides. The number it
+   takes comes from the server; only the adding up happens here."
+  [{:keys [phase trial? votes mayor votes-needed players]}]
+  (when (and (= :discussion phase) trial?)
+    (let [weight #(if (= % mayor) 2 1)
+          counts (reduce (fn [m [voter target]]
+                           (if (some? target) (update m target (fnil + 0) (weight voter)) m))
+                         {} votes)]
+      {:needed    votes-needed
+       :rows      (->> counts
+                       (sort-by (fn [[id n]] [(- n) id]))
+                       (mapv (fn [[id n]] {:id id :name (get-in players [id :name]) :count n
+                                           :mayor? (and mayor (= id (get votes mayor)))})))
+       :abstained (count (filter (comp nil? val) votes))})))
+
+(rf/reg-sub ::ballot :<- [::view] (fn [v _] (ballot v)))
+
 (defn voted?
   "Has this player cast today's ballot? It stays open to change, so the vote
    buttons are still offered — but the game is no longer waiting on them."
