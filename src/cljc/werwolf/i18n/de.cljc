@@ -242,6 +242,8 @@
    :absence/claim-hint "Jemand am Tisch kann die Spielleitung übernehmen."
    :absence/clock-hint "Die Uhr hat übernommen: Jede Phase endet mit ihrem Zeitlimit, bis die Spielleitung zurück ist."
    :game/your-role     "Deine Rolle"
+   :bar/menu           "Menü"
+   :bar/room           "Raum"
    :game/in-love       "Du bist verliebt in"
    :game/heiltrank     "Heiltrank"
    :game/gifttrank     "Gifttrank"

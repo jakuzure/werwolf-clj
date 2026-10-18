@@ -1273,49 +1273,23 @@
    The turn banner lives at its foot rather than in a box of its own, because
    'what is happening' and 'is it me' are read in the same glance.
 
-   Exactly one heading, holding exactly the phase name: browser tests and screen
-   readers both find the phase that way."
+   The phase's name, the clock and the room code are in the `top-bar` above:
+   they are wanted from anywhere on the page, the explanation only here."
   []
   (let [phase @(rf/subscribe [::sub/phase])
         view @(rf/subscribe [::sub/view])
-        secs @(rf/subscribe [::sub/seconds-left])
-        me @(rf/subscribe [::sub/me])
         cursor @(rf/subscribe [::sub/night-cursor])
         narrator? @(rf/subscribe [::sub/narrator?])
         ambience @(rf/subscribe [::sub/ambience])]
     [:section {:class (str "rounded-2xl border-2 p-4 space-y-3 transition-colors duration-700 "
                            (stage-classes phase ambience))}
-     [:div {:class "flex items-start justify-between gap-3"}
-      [:div {:class "flex items-start gap-3 min-w-0"}
-       [:div {:class "text-4xl leading-none pt-0.5" :aria-hidden true}
-        (phase-icon phase "🃏")]
-       [:div {:class "min-w-0"}
-        [:h2 {:class "text-2xl font-bold leading-tight"} (phase-name phase)]
-        [:div {:class "flex flex-wrap items-center gap-x-2 gap-y-1 mt-1 text-xs text-slate-400"}
-         (when (pos? (:night view 0))
-           [:span (t :stage/round (:night view))])
-         [:span {:class "font-mono"} (:room-id me)]
-         [language-switch]
-         [sound-switch]
-         ;; Off the board, so named here: everybody should know who is calling
-         ;; the night.
-         (when-let [n (:narrator view)]
-           [pill (t :lobby/narrator-is (get-in view [:players n :name])) :host])
-         ;; Next to his name, so "who is calling the night" and "nobody is"
-         ;; are read in one glance.
-         (when (:host-absent? view)
-           [pill (t :game/absent) :absent])]]]
-      [:div {:class "text-right shrink-0"}
-       (cond
-         ;; A paused clock must SAY it is paused. Simply freezing the digits, or
-         ;; hiding them, both read as a broken client.
-         (:paused? view)
-         [:div {:class "text-lg font-bold text-amber-400"} (str "⏸ " (t :game/paused))]
-
-         secs
-         [:div {:class (str "text-3xl font-mono leading-none "
-                            (if (< secs 11) "text-rose-400" "text-slate-200"))}
-          (str (quot secs 60) ":" (when (< (mod secs 60) 10) "0") (mod secs 60))])]]
+     ;; Off the board, so named here: everybody should know who is calling
+     ;; the night. Next to his name, so "who is calling the night" and
+     ;; "nobody is" are read in one glance.
+     (when-let [n (:narrator view)]
+       [:div {:class "flex flex-wrap items-center gap-1.5"}
+        [pill (t :lobby/narrator-is (get-in view [:players n :name])) :host]
+        (when (:host-absent? view) [pill (t :game/absent) :absent])])
 
      [:p {:class "text-sm sm:text-base text-slate-200"}
       (if (= :game-over phase)
@@ -1402,6 +1376,129 @@
        [btn (t :lobby/leave-confirm) #(rf/dispatch [::ev/leave]) {:tone :danger}]
        [btn (t :lobby/leave-cancel) #(rf/dispatch [::ev/form-set :leave nil]) {:tone :ghost}]]
       [btn (t :lobby/leave) #(rf/dispatch [::ev/form-set :leave phase]) {:tone :quiet}])))
+
+;; -------------------------------------------------------------------- bar ---
+
+(defn- clock [secs]
+  (str (quot secs 60) ":" (when (< (mod secs 60) 10) "0") (mod secs 60)))
+
+(def ^:private chip
+  "inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs whitespace-nowrap ")
+
+(defn- role-chip
+  "Who you are, always in sight, however far down the page you are. The card
+   itself, with what it does, is `me-panel`; this only has to remind."
+  []
+  (let [me @(rf/subscribe [::sub/me-view])
+        role (:role me)]
+    (cond
+      (:narrator? me)
+      [:span {:class (str chip "border-violet-700 bg-violet-950/60 text-violet-100")}
+       [:span {:aria-hidden true} "📜"] (t :narrator/title)]
+      role
+      [:span {:class (str chip (if (:alive? me)
+                                 "border-emerald-700 bg-emerald-950/60 text-emerald-100"
+                                 "border-rose-900 bg-rose-950/40 text-rose-200 line-through"))
+              :data-testid "role-chip"}
+       [:span {:aria-hidden true} (i18n/icon-of role)] (role-name role)])))
+
+(defn- bar-clock
+  "The phase's time, in the corner where a clock is looked for. A paused clock
+   says so: frozen digits read as a broken client."
+  []
+  (let [paused? (:paused? @(rf/subscribe [::sub/view]))
+        secs @(rf/subscribe [::sub/seconds-left])]
+    (cond
+      paused? [:span {:class (str chip "border-amber-700 text-amber-300 font-semibold")}
+               (str "⏸ " (t :game/paused))]
+      secs [:span {:class (str chip "font-mono tabular-nums "
+                               (if (< secs 11)
+                                 "border-rose-600 text-rose-300"
+                                 "border-slate-700 text-slate-200"))
+                   :data-testid "clock"}
+            (clock secs)])))
+
+(defn- voice-quick
+  "The call, from the bar, on a phone: one tap to join, then one to mute. The
+   whole panel, with who is in the call, is further down; on a wide screen it
+   is always in view, so this is not drawn there."
+  []
+  (when (and @(rf/subscribe [::sub/audio-available?])
+             (exists? js/isSecureContext) js/isSecureContext)
+    (let [state  @(rf/subscribe [::sub/audio-state])
+          muted? @(rf/subscribe [::sub/audio-muted?])
+          b (fn [label icon on-click tone]
+              [:button {:class (str "lg:hidden h-8 w-8 grid place-items-center rounded-full border text-base "
+                                    tone)
+                        :title label :aria-label label :on-click on-click}
+               icon])]
+      (case state
+        :idle    [b (t :voice/join) "🎧" #(rf/dispatch [::ev/join-audio])
+                  "border-slate-600 bg-slate-800"]
+        :joining [b (t :voice/joining) "…" nil "border-slate-700 opacity-60"]
+        :joined  [b (t (if muted? :voice/unmute :voice/mute)) (if muted? "🔇" "🎙")
+                  #(rf/dispatch [::ev/toggle-mute])
+                  (if muted? "border-slate-600 bg-slate-800" "border-amber-400 bg-amber-500/20")]
+        nil))))
+
+(defn- version-line []
+  [:div {:class "text-xs text-slate-600" :data-testid "app-version"}
+   (let [{:keys [version commit]} @(rf/subscribe [::sub/build])]
+     (str "v" (or version build-info/version) (when commit (str " · " commit))))])
+
+(defn- top-bar
+  "The one line that is always there: where the table is, who you are, how
+   long is left. Everything that used to sit in the stage's corner — the room
+   code, the language, the chime, the way out — went with it, so the stage can
+   be about the game.
+
+   A wide screen has room for the switches; a phone gets them behind ⋯.
+   `title` is the bar's heading, `sub` the small line under it, `code` the
+   room code where the screen has no bigger place for it, `leave?` whether
+   this screen offers a way out at all."
+  [{:keys [icon title sub code leave?]} & right]
+  (let [view @(rf/subscribe [::sub/view])
+        ;; Open for this room and this moment only: a menu left open is shut
+        ;; by the next phase, rather than covering the night that begins.
+        here [(:room-id @(rf/subscribe [::sub/me])) (:phase view) (:night view)]
+        open? (= here (:menu @(rf/subscribe [::sub/form])))
+        close! #(rf/dispatch [::ev/form-set :menu nil])
+        switches (fn [] [:<> [language-switch] [sound-switch]])]
+    [:<>
+     ;; A tap anywhere else closes it, as a menu does.
+     (when open?
+       [:div {:class "fixed inset-0 z-20 lg:hidden" :aria-hidden true :on-click close!}])
+     [:header {:class "sticky top-0 z-30 -mx-4 sm:-mx-6 -mt-4 sm:-mt-6 mb-4 px-4 sm:px-6 py-2
+                      border-b border-slate-800 bg-slate-950/85 backdrop-blur
+                      flex items-center gap-3"
+              :data-testid "top-bar"}
+     [:div {:class "flex items-center gap-2 min-w-0 flex-1"}
+      [:span {:class "text-2xl leading-none" :aria-hidden true} icon]
+      [:div {:class "min-w-0"}
+       [:h2 {:class "text-lg font-bold leading-tight truncate"} title]
+       (when sub [:div {:class "text-xs text-slate-400 truncate"} sub])]]
+     (into [:div {:class "flex items-center gap-1.5 shrink-0"}] right)
+     [:div {:class "hidden lg:flex items-center gap-1.5 shrink-0"}
+      (when code [:span {:class (str chip "border-slate-700 text-slate-300")}
+                  (t :bar/room) [:span {:class "font-mono tracking-widest"} code]])
+      [switches]
+      (when leave? [leave-button])]
+     [:div {:class "relative lg:hidden"}
+      [:button {:class (str "h-8 w-8 grid place-items-center rounded-full border text-lg leading-none "
+                            (if open? "border-indigo-400 bg-indigo-950" "border-slate-600 bg-slate-800"))
+                :aria-label (t :bar/menu) :aria-expanded open?
+                :data-testid "bar-menu"
+                :on-click (if open? close! #(rf/dispatch [::ev/form-set :menu here]))}
+       "⋯"]
+      (when open?
+        [:div {:class "absolute right-0 top-full mt-2 w-64 rounded-xl border border-slate-700
+                       bg-slate-900 shadow-2xl p-3 space-y-3"}
+         (when code
+           [:div {:class "text-sm text-slate-400"}
+            (str (t :bar/room) " ") [:span {:class "font-mono tracking-widest text-slate-100"} code]])
+         [:div {:class "flex flex-wrap items-center gap-2"} [switches]]
+         (when leave? [:div {:class "flex flex-wrap gap-2"} [leave-button]])
+         [version-line]])]]]))
 
 (defn- table-settings
   "How this table will play: with a Spielleiter or without, with a clock or
@@ -1768,18 +1865,6 @@
        ;; leisure, the button for the people who already want the next round.
        [recap-panel]])))
 
-(defn- game-leave
-  "Walking out of a game under way. The engine offers `:leave` in every phase —
-   a seat nobody could leave once the cards were dealt kept people in games
-   they had already abandoned, and reloading only resumed it. Not at the end,
-   where the game-over panel has its own one-tap way out."
-  []
-  (let [actions @(rf/subscribe [::sub/actions])
-        phase   @(rf/subscribe [::sub/phase])]
-    (when (and (contains? actions :leave) (not= :game-over phase))
-      [:div {:class "flex flex-wrap gap-2" :data-testid "game-leave"}
-       [leave-button]])))
-
 (defn- dawn-card
   "The morning, told once and large: who did not survive the night and what
    they were, or that the night was quiet. A line under the stage was easy to
@@ -1886,9 +1971,21 @@
   ;; nothing most of the time — game-over except at the end, the GM console for
   ;; everyone who is not host — and an empty flex item still consumes a `gap-4`.
   ;; Without it every phone screen carried two mystery gaps.
-  (let [my-turn? @(rf/subscribe [::sub/can-act?])]
+  (let [my-turn? @(rf/subscribe [::sub/can-act?])
+        phase    @(rf/subscribe [::sub/phase])
+        view     @(rf/subscribe [::sub/view])
+        actions  @(rf/subscribe [::sub/actions])]
   ;; Room at the foot for the dock, so it never covers the last thing on the page.
   [:div {:class (str "space-y-4 " (when my-turn? "pb-20 lg:pb-0"))}
+   ;; The way out of a game under way lives in the bar, as far from the moves
+   ;; as the screen allows, and two taps like the lobby's. Not at the end,
+   ;; where the game-over panel has its own one-tap way out.
+   [top-bar {:icon   (phase-icon phase "🃏")
+             :title  (phase-name phase)
+             :sub    (when (pos? (:night view 0)) (t :stage/round (:night view)))
+             :code   (:room-id @(rf/subscribe [::sub/me]))
+             :leave? (and (contains? actions :leave) (not= :game-over phase))}
+    [role-chip] [bar-clock] [voice-quick]]
    [phase-stage]
    [turn-dock]
    [target-prompt]
@@ -1926,10 +2023,7 @@
      [:div {:class "order-7 empty:hidden"} [gm-panel]]]
     [:div {:class "contents lg:block lg:col-span-2 lg:space-y-4"}
      [:div {:class "order-8 empty:hidden"} [log-panel]]
-     [:div {:class "order-9 empty:hidden"} [chat-panel]]
-     ;; Last, and on purpose: the way out of a game under way, as far from the
-     ;; moves as the screen allows. Two taps, like the lobby's.
-     [:div {:class "order-10 empty:hidden flex justify-end"} [game-leave]]]]]))
+     [:div {:class "order-9 empty:hidden"} [chat-panel]]]]]))
 
 ;; ---------------------------------------------------------------------- app ---
 
