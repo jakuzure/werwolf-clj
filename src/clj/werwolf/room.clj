@@ -72,12 +72,17 @@
    change, still holding the room's lock. The clock uses it to keep a room's
    deadline in step with its phase without room.clj having to know that timers
    exist. It may itself commit — Java monitors are reentrant — and must
-   converge, i.e. eventually make no further change."
-  [{:keys [ds send! max-chat after-commit game]}]
+   converge, i.e. eventually make no further change.
+
+   `on-events` is called as (f events) with every batch as it is committed —
+   not on replay — which is how the metrics count games without room.clj
+   knowing they exist."
+  [{:keys [ds send! max-chat after-commit on-events game]}]
   {:ds           ds
    :send!        send!
    :max-chat     (or max-chat 200)
    :after-commit after-commit
+   :on-events    on-events
    ;; Table-size limits from config. They live here rather than being read at
    ;; the point of use because they are baked into :game/created — a room keeps
    ;; the limits it was opened with, so changing config cannot retroactively
@@ -232,6 +237,7 @@
          from    (:seq r)
          now     (System/currentTimeMillis)]
      (store/append-events! (:ds ctx) room-id from events now)
+     (when-let [f (:on-events ctx)] (f events))
      ;; :last-activity goes to disk as well, so that a boot can tell how long a
      ;; room has really been abandoned — see `abandoned?`.
      (store/upsert-room! (:ds ctx) room-id (:phase state')

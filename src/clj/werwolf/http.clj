@@ -11,6 +11,7 @@
             [clojure.tools.logging :as log]
             [reitit.ring :as ring]
             [werwolf.build-info :refer [package-version running-commit]]
+            [werwolf.metrics :as metrics]
             [werwolf.protocol :as protocol]
             [werwolf.ws :as ws]))
 
@@ -110,7 +111,11 @@
     (if (ws/upgrade-request? req)
       (ws/websocket-response
        {:on-open    (fn [sock] (protocol/on-open deps sock))
-        :on-message (fn [sock raw] (protocol/dispatch deps sock (ws/read-transit raw)))
+        :on-message (fn [sock raw]
+                      (let [t0  (System/nanoTime)
+                            msg (ws/read-transit raw)]
+                        (protocol/dispatch deps sock msg)
+                        (metrics/message! msg (- (System/nanoTime) t0))))
         :on-close   (fn [sock _code _reason] (protocol/on-close deps sock))
         :on-error   (fn [sock e]
                       (log/warn "websocket error:" (ex-message e))

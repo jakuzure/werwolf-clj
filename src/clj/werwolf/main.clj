@@ -5,6 +5,7 @@
 
      db -> rooms -> timer
                  -> handler -> server
+                 -> metrics
 
    The log comes first because it is the truth; rooms are a fold over it; the
    clock and the sockets are both merely things that poke at rooms."
@@ -15,6 +16,7 @@
             [werwolf.config :as config]
             [werwolf.http :as http]
             [werwolf.livekit :as livekit]
+            [werwolf.metrics :as metrics]
             [werwolf.room :as room]
             [werwolf.store :as store]
             [werwolf.timer :as timer]
@@ -24,7 +26,7 @@
 
 (defn system-config
   "Build the integrant config from the loaded application config."
-  [{:keys [server db tokens game media]}]
+  [{:keys [server db tokens game media] :as cfg}]
   {::db      {:config db}
    ::rooms   {:db (ig/ref ::db) :game game}
    ::timer   {:rooms (ig/ref ::rooms)}
@@ -32,7 +34,10 @@
    ::handler {:rooms (ig/ref ::rooms) :tokens tokens :media (ig/ref ::media)}
    ::server  {:handler (ig/ref ::handler)
               :port    (:port server)
-              :host    (:host server)}})
+              :host    (:host server)}
+   ::metrics {:rooms (ig/ref ::rooms)
+              :port  (get-in cfg [:metrics :port])
+              :host  (get-in cfg [:metrics :host])}})
 
 (defmethod ig/init-key ::db [_ {:keys [config]}]
   (log/info "opening event log at" (:dbname config))
@@ -45,7 +50,8 @@
                             :game game
                             ;; Installing the clock's hook here is what makes
                             ;; deadlines exist at all — see werwolf.timer.
-                            :after-commit (timer/hook game)})
+                            :after-commit (timer/hook game)
+                            :on-events metrics/events!})
         restored (room/rehydrate! ctx)]
     (when (seq restored)
       (log/info "rehydrated" (count restored) "unfinished room(s):" restored)
@@ -85,7 +91,20 @@
   (http/handler {:rooms rooms
                  :tokens tokens
                  :media media
-                 :send! ws/send!}))
+                 ;; The protocol's replies. Its refusals are counted on the
+                 ;; way out, so the protocol has no metrics of its own to keep.
+                 :send! (fn [sock msg]
+                          (when (= :server/error (:type msg)) (metrics/refused! (:code msg)))
+                          (ws/send! sock msg))}))
+
+(defmethod ig/init-key ::metrics [_ {:keys [rooms port host]}]
+  (when-let [m (metrics/start! {:rooms rooms :port port :host host
+                                :version (package-version) :commit (running-commit)})]
+    (log/info (str "metrics on http://" host ":" port "/metrics"))
+    m))
+
+(defmethod ig/halt-key! ::metrics [_ m]
+  (when m (metrics/stop! m)))
 
 (defmethod ig/init-key ::server [_ {:keys [handler port host]}]
   (let [srv (hk/run-server handler {:port port

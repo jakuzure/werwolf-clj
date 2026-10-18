@@ -1,6 +1,11 @@
 {:server  {:port     #long #or [#env PORT 3000]
            :host     #or [#env HOST "0.0.0.0"]}
 
+ ;; Prometheus metrics on a port of their own, loopback only. 0 (default): off.
+ ;; See werwolf.metrics.
+ :metrics {:port     #long #or [#env METRICS_PORT 0]
+           :host     #or [#env METRICS_HOST "127.0.0.1"]}
+
  :db      {:dbtype   "sqlite"
            :dbname   #or [#env DB_PATH "data/werwolf.db"]}
 

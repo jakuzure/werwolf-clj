@@ -8,6 +8,7 @@
 #     enable = true;
 #     domain = "werwolf-chrz.duckdns.org";
 #     tokenSecretFile = "/var/lib/secrets/werwolf/token-secret";
+#     metrics.enable = true;  # /metrics on loopback, a Prometheus job, a Grafana dashboard
 #     voice = {
 #       publicIp = "78.47.48.43";
 #       keyFile = "/var/lib/secrets/werwolf/livekit-keys";
@@ -133,6 +134,50 @@ in
       description = "Open 80/443, plus LiveKit's media ports when voice is on.";
     };
 
+    metrics = {
+      enable = mkEnableOption ''
+        Prometheus metrics: rooms by phase, players present and absent, games
+        started and won, messages and refusals, and the JVM's own. Served on a
+        loopback port of their own, never through Caddy
+      '';
+
+      port = mkOption {
+        type = types.port;
+        default = 9341;
+        description = "Loopback port of the /metrics page.";
+      };
+
+      livekitPort = mkOption {
+        type = types.port;
+        default = 6789;
+        description = ''
+          Port of LiveKit's own /metrics (rooms, participants, tracks, packets,
+          loss, jitter), when voice is on. LiveKit binds it on every interface,
+          like its signalling port: what keeps it private is the firewall,
+          which this module never opens for it.
+        '';
+      };
+
+      prometheus = mkOption {
+        type = types.bool;
+        default = true;
+        description = ''
+          Add scrape jobs to services.prometheus: `werwolf`, and `livekit`
+          when voice is on. Harmless when Prometheus is not enabled on the host.
+        '';
+      };
+
+      grafanaDashboard = mkOption {
+        type = types.bool;
+        default = true;
+        description = ''
+          Provision the werwolf dashboard (nix/grafana/werwolf.json) into
+          services.grafana. It asks for its Prometheus data source, so it works
+          with whichever one the host already has.
+        '';
+      };
+    };
+
     voice = {
       enable = mkOption {
         type = types.bool;
@@ -192,6 +237,9 @@ in
           LIVEKIT_URL = "wss://${cfg.domain}/livekit";
         } // lib.optionalAttrs (cfg.commit != null) {
           WERWOLF_COMMIT = cfg.commit;
+        } // lib.optionalAttrs cfg.metrics.enable {
+          METRICS_HOST = "127.0.0.1";
+          METRICS_PORT = toString cfg.metrics.port;
         } // cfg.settings;
 
         serviceConfig = {
@@ -248,6 +296,10 @@ in
             use_external_ip = false;
             node_ip = voice.publicIp;
           };
+        } // lib.optionalAttrs cfg.metrics.enable {
+          # `prometheus.port`, not the deprecated `prometheus_port`, which
+          # LiveKit 1.13 still reads but warns about on every start.
+          prometheus.port = cfg.metrics.livekitPort;
         };
       };
     })
@@ -277,6 +329,32 @@ in
             }
           }
         '';
+      };
+    })
+
+    (mkIf (cfg.metrics.enable && cfg.metrics.prometheus) {
+      services.prometheus.scrapeConfigs = [{
+        job_name = "werwolf";
+        static_configs = [{ targets = [ "127.0.0.1:${toString cfg.metrics.port}" ]; }];
+      }] ++ optional voice.enable {
+        job_name = "livekit";
+        static_configs = [{ targets = [ "127.0.0.1:${toString cfg.metrics.livekitPort}" ]; }];
+      };
+    })
+
+    (mkIf (cfg.metrics.enable && cfg.metrics.grafanaDashboard) {
+      services.grafana.provision = {
+        enable = true;
+        dashboards.settings.providers = [{
+          name = "werwolf";
+          # Read-only in the UI: the file is the source, and an edit made in
+          # Grafana would be lost on the next deploy anyway.
+          allowUiUpdates = false;
+          options.path = pkgs.runCommand "werwolf-grafana-dashboards" { } ''
+            mkdir $out
+            cp ${./grafana/werwolf.json} $out/werwolf.json
+          '';
+        }];
       };
     })
 

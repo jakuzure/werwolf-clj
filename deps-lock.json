@@ -1,5 +1,5 @@
 {
-  "lock-version": 4,
+  "lock-version": 5,
   "git-deps": [],
   "mvn-deps": [
     {
@@ -313,6 +313,11 @@
       "hash": "sha256-kjrKCtp4rAXY3eZXZQABApyEge1kyahbC7M/+1keEKs="
     },
     {
+      "mvn-path": "com/google/code/findbugs/jsr305/3.0.2/jsr305-3.0.2.pom",
+      "mvn-repo": "https://repo1.maven.org/maven2/",
+      "hash": "sha256-GYidvfGyVLJgGl7mRbgUepdGRIgil2hMeYr+XWPXjf4="
+    },
+    {
       "mvn-path": "com/google/google/5/google-5.pom",
       "mvn-repo": "https://repo1.maven.org/maven2/",
       "hash": "sha256-4J00XnPKP7yn8+BfMN63Tp053Wt5qT/ujFEfI0F7aCg="
@@ -533,6 +538,161 @@
       "hash": "sha256-Y/C4zR1No0m2Dfk4kdHgDF0/0sm9M9jlvu0HWijNiFQ="
     },
     {
+      "mvn-path": "io/opentelemetry/instrumentation/opentelemetry-instrumentation-bom-alpha/2.31.1-alpha/opentelemetry-instrumentation-bom-alpha-2.31.1-alpha.pom",
+      "mvn-repo": "https://repo1.maven.org/maven2/",
+      "hash": "sha256-DmJPVwke+Bgbh5F6nFCjBlmZaLAaREnPGNcrwcc/G/I="
+    },
+    {
+      "mvn-path": "io/opentelemetry/instrumentation/opentelemetry-instrumentation-bom/2.31.1/opentelemetry-instrumentation-bom-2.31.1.pom",
+      "mvn-repo": "https://repo1.maven.org/maven2/",
+      "hash": "sha256-/UW60WgPxobC9p2DU24tT9ZAgD0O3ojN+UuZ7B7NYaA="
+    },
+    {
+      "mvn-path": "io/opentelemetry/opentelemetry-bom-alpha/1.65.0-alpha/opentelemetry-bom-alpha-1.65.0-alpha.pom",
+      "mvn-repo": "https://repo1.maven.org/maven2/",
+      "hash": "sha256-YtqilvtY8HUol/OjSZGjGMpPq474rmkUaeKihd/r/78="
+    },
+    {
+      "mvn-path": "io/opentelemetry/opentelemetry-bom/1.65.0/opentelemetry-bom-1.65.0.pom",
+      "mvn-repo": "https://repo1.maven.org/maven2/",
+      "hash": "sha256-bGkcOsfY0JMz2T0qEBB5zv5vqyYXxCjfSm+OF0pTivg="
+    },
+    {
+      "mvn-path": "io/prometheus/client_java/1.9.0/client_java-1.9.0.pom",
+      "mvn-repo": "https://repo1.maven.org/maven2/",
+      "hash": "sha256-wLVFXA0J1ePwhjetKbkNu+lzZkL/1TNEd9aN2XDXM3U="
+    },
+    {
+      "mvn-path": "io/prometheus/client_java_parent/1.9.0/client_java_parent-1.9.0.pom",
+      "mvn-repo": "https://repo1.maven.org/maven2/",
+      "hash": "sha256-Ws4PIGrs/jb+f1X4sG7lv2K8zeXJeCn3KWLX38x++ic="
+    },
+    {
+      "mvn-path": "io/prometheus/prometheus-metrics-config/1.9.0/prometheus-metrics-config-1.9.0.jar",
+      "mvn-repo": "https://repo1.maven.org/maven2/",
+      "hash": "sha256-LRAA1E7bQ/WQNhGuTRYhTxqchyU4LDTPC2eh33gbPhE="
+    },
+    {
+      "mvn-path": "io/prometheus/prometheus-metrics-config/1.9.0/prometheus-metrics-config-1.9.0.pom",
+      "mvn-repo": "https://repo1.maven.org/maven2/",
+      "hash": "sha256-6dV7W5YuYn+L4frz7Oimcqga1XaJuEJVRwcsyHzkWPE="
+    },
+    {
+      "mvn-path": "io/prometheus/prometheus-metrics-core/1.9.0/prometheus-metrics-core-1.9.0.jar",
+      "mvn-repo": "https://repo1.maven.org/maven2/",
+      "hash": "sha256-EbQq/xPvFqn4sprPQIBu8lT3R39oYEwD0ZtZDkNmFbI="
+    },
+    {
+      "mvn-path": "io/prometheus/prometheus-metrics-core/1.9.0/prometheus-metrics-core-1.9.0.pom",
+      "mvn-repo": "https://repo1.maven.org/maven2/",
+      "hash": "sha256-pVRbJ1XOLvDci45i0yIsQdUu8SPxsLCD55yo0idSggs="
+    },
+    {
+      "mvn-path": "io/prometheus/prometheus-metrics-exporter-common/1.9.0/prometheus-metrics-exporter-common-1.9.0.jar",
+      "mvn-repo": "https://repo1.maven.org/maven2/",
+      "hash": "sha256-JT4sHieC7bwJCYDS6WlVq0BZe4U0LuE/M+DvD+zoBV8="
+    },
+    {
+      "mvn-path": "io/prometheus/prometheus-metrics-exporter-common/1.9.0/prometheus-metrics-exporter-common-1.9.0.pom",
+      "mvn-repo": "https://repo1.maven.org/maven2/",
+      "hash": "sha256-DUay4pZErVQG9/UOMjUcarjkqTsrG6g8U2nMmMTv0QA="
+    },
+    {
+      "mvn-path": "io/prometheus/prometheus-metrics-exporter-httpserver/1.9.0/prometheus-metrics-exporter-httpserver-1.9.0.jar",
+      "mvn-repo": "https://repo1.maven.org/maven2/",
+      "hash": "sha256-t4BFvLT5e/9BDGCfAVOfZYqZ9yNLnQBf+t56DfJL/14="
+    },
+    {
+      "mvn-path": "io/prometheus/prometheus-metrics-exporter-httpserver/1.9.0/prometheus-metrics-exporter-httpserver-1.9.0.pom",
+      "mvn-repo": "https://repo1.maven.org/maven2/",
+      "hash": "sha256-zQIKLeCcGBlDuptqVaB1NU6CoSPwp/GPrXfqfpZV8Ok="
+    },
+    {
+      "mvn-path": "io/prometheus/prometheus-metrics-exposition-formats/1.9.0/prometheus-metrics-exposition-formats-1.9.0.jar",
+      "mvn-repo": "https://repo1.maven.org/maven2/",
+      "hash": "sha256-GrFQjVCvfTjyEUKR24cvVjm1A60vw8osEO3y/WlHOM0="
+    },
+    {
+      "mvn-path": "io/prometheus/prometheus-metrics-exposition-formats/1.9.0/prometheus-metrics-exposition-formats-1.9.0.pom",
+      "mvn-repo": "https://repo1.maven.org/maven2/",
+      "hash": "sha256-poOo9LqKfA95hC2Ejldvn9Um28VidpwRKW7uZushX2s="
+    },
+    {
+      "mvn-path": "io/prometheus/prometheus-metrics-exposition-textformats/1.9.0/prometheus-metrics-exposition-textformats-1.9.0.jar",
+      "mvn-repo": "https://repo1.maven.org/maven2/",
+      "hash": "sha256-Y5wuOcry4lqYp4OpQPD5FgUyJCE1u8Am0lXjbN9i4rY="
+    },
+    {
+      "mvn-path": "io/prometheus/prometheus-metrics-exposition-textformats/1.9.0/prometheus-metrics-exposition-textformats-1.9.0.pom",
+      "mvn-repo": "https://repo1.maven.org/maven2/",
+      "hash": "sha256-pk3GFvEBfxqPlvMXCampCwUHCOVqwCdpq7gQh9HLUPY="
+    },
+    {
+      "mvn-path": "io/prometheus/prometheus-metrics-instrumentation-jvm/1.9.0/prometheus-metrics-instrumentation-jvm-1.9.0.jar",
+      "mvn-repo": "https://repo1.maven.org/maven2/",
+      "hash": "sha256-Yw7mMOFZ2gxcSOd6tkgQB7fT4GJu1bfcOEij+QHX0GE="
+    },
+    {
+      "mvn-path": "io/prometheus/prometheus-metrics-instrumentation-jvm/1.9.0/prometheus-metrics-instrumentation-jvm-1.9.0.pom",
+      "mvn-repo": "https://repo1.maven.org/maven2/",
+      "hash": "sha256-06lIN9ImZ1M+TZlrNdpuHN73hpCAvJ3ykNAekKe4Mkc="
+    },
+    {
+      "mvn-path": "io/prometheus/prometheus-metrics-model/1.9.0/prometheus-metrics-model-1.9.0.jar",
+      "mvn-repo": "https://repo1.maven.org/maven2/",
+      "hash": "sha256-J3Z3+pYzozo7xoelTHHU2tddxo0PCtw/FHijIwQC960="
+    },
+    {
+      "mvn-path": "io/prometheus/prometheus-metrics-model/1.9.0/prometheus-metrics-model-1.9.0.pom",
+      "mvn-repo": "https://repo1.maven.org/maven2/",
+      "hash": "sha256-VrD/XuqSyKwyup9GtCbv/Dw4D15g0HW1JCOOm/tT3bM="
+    },
+    {
+      "mvn-path": "io/prometheus/prometheus-metrics-tracer-common/1.9.0/prometheus-metrics-tracer-common-1.9.0.jar",
+      "mvn-repo": "https://repo1.maven.org/maven2/",
+      "hash": "sha256-XyJ/z9XT1Esnl3aIIJICLU+rkX44WaV/XPd0DDCwO/w="
+    },
+    {
+      "mvn-path": "io/prometheus/prometheus-metrics-tracer-common/1.9.0/prometheus-metrics-tracer-common-1.9.0.pom",
+      "mvn-repo": "https://repo1.maven.org/maven2/",
+      "hash": "sha256-UQRUrkfbEIdPMjF/puLVncJPtff77fO/ZBC7smerafc="
+    },
+    {
+      "mvn-path": "io/prometheus/prometheus-metrics-tracer-initializer/1.9.0/prometheus-metrics-tracer-initializer-1.9.0.jar",
+      "mvn-repo": "https://repo1.maven.org/maven2/",
+      "hash": "sha256-GvrSEPejH6TSmsXjnINtUusWd24owh3FuLLEHwqCaXg="
+    },
+    {
+      "mvn-path": "io/prometheus/prometheus-metrics-tracer-initializer/1.9.0/prometheus-metrics-tracer-initializer-1.9.0.pom",
+      "mvn-repo": "https://repo1.maven.org/maven2/",
+      "hash": "sha256-rR91avxgzRbNl7hSJnI+i5wpgqUpfpo8VkcKVCPJ1ww="
+    },
+    {
+      "mvn-path": "io/prometheus/prometheus-metrics-tracer-otel-agent/1.9.0/prometheus-metrics-tracer-otel-agent-1.9.0.jar",
+      "mvn-repo": "https://repo1.maven.org/maven2/",
+      "hash": "sha256-BdRshZhbfbNa/aCQMoCbxm9b9feZWAkqy9mt9BY+aQo="
+    },
+    {
+      "mvn-path": "io/prometheus/prometheus-metrics-tracer-otel-agent/1.9.0/prometheus-metrics-tracer-otel-agent-1.9.0.pom",
+      "mvn-repo": "https://repo1.maven.org/maven2/",
+      "hash": "sha256-06NVPOBWYsuO90s2b73WRc1bQryV4l2liNbMIKRFHV4="
+    },
+    {
+      "mvn-path": "io/prometheus/prometheus-metrics-tracer-otel/1.9.0/prometheus-metrics-tracer-otel-1.9.0.jar",
+      "mvn-repo": "https://repo1.maven.org/maven2/",
+      "hash": "sha256-ehN5xr0ZgCE48MBoLGKeyf5+pMzFvdh628p9UPNkh+4="
+    },
+    {
+      "mvn-path": "io/prometheus/prometheus-metrics-tracer-otel/1.9.0/prometheus-metrics-tracer-otel-1.9.0.pom",
+      "mvn-repo": "https://repo1.maven.org/maven2/",
+      "hash": "sha256-wtilzUJs7KZfuXX839WUidvkexPdx0mhdYT+kHVy7mk="
+    },
+    {
+      "mvn-path": "io/prometheus/prometheus-metrics-tracer/1.9.0/prometheus-metrics-tracer-1.9.0.pom",
+      "mvn-repo": "https://repo1.maven.org/maven2/",
+      "hash": "sha256-oU9mq1DMc6c5FBTIXC86NE8oxkO3uFowgjkytnjFlAg="
+    },
+    {
       "mvn-path": "javax/activation/javax.activation-api/1.2.0/javax.activation-api-1.2.0.jar",
       "mvn-repo": "https://repo1.maven.org/maven2/",
       "hash": "sha256-Q/3vC1ts6zGwQksgi5MMdKtY+sLO63s/b9OuuLXKQ5M="
@@ -626,6 +786,11 @@
       "mvn-path": "meta-merge/meta-merge/1.0.0/meta-merge-1.0.0.pom",
       "mvn-repo": "https://repo.clojars.org/",
       "hash": "sha256-sAogZY/OzCvRNBAx85T1LWjFP7SAxEVBNMyqwgTqWTE="
+    },
+    {
+      "mvn-path": "metosin/malli/0.20.1/malli-0.20.1.pom",
+      "mvn-repo": "https://repo.clojars.org/",
+      "hash": "sha256-B+fEOtVMMuJa8MZjN10cdiwuZE/4Lbb9nCn6LYIaa8g="
     },
     {
       "mvn-path": "metosin/malli/0.20.3/malli-0.20.3.jar",
@@ -1238,6 +1403,16 @@
       "hash": "sha256-xRh5Bi5B/58hr6DkCbGZ/+nyo8aucizf7F/Z26BeQXI="
     },
     {
+      "mvn-path": "org/clojure/clojure/1.12.5/clojure-1.12.5.jar",
+      "mvn-repo": "https://repo1.maven.org/maven2/",
+      "hash": "sha256-397hMUYCFqhP7yLlN7sNBXmWX49wM410gyPf8m+OWos="
+    },
+    {
+      "mvn-path": "org/clojure/clojure/1.12.5/clojure-1.12.5.pom",
+      "mvn-repo": "https://repo1.maven.org/maven2/",
+      "hash": "sha256-J4xR2XfBloST2NTLDFxg4sslUNYEhcOBPPFh5Wr2iFg="
+    },
+    {
       "mvn-path": "org/clojure/clojure/1.12.6/clojure-1.12.6.jar",
       "mvn-repo": "https://repo1.maven.org/maven2/",
       "hash": "sha256-IbV42ziajnSyhs55xKf4bsZB4m2IsS8Y1pAwkWsOGMo="
@@ -1836,6 +2011,11 @@
       "mvn-path": "org/junit/junit-bom/5.7.1/junit-bom-5.7.1.pom",
       "mvn-repo": "https://repo1.maven.org/maven2/",
       "hash": "sha256-C5sUo9YhBvr+jGinF7h7h60YaFiZRRt1PAT6QbaFd4Q="
+    },
+    {
+      "mvn-path": "org/junit/junit-bom/6.1.3/junit-bom-6.1.3.pom",
+      "mvn-repo": "https://repo1.maven.org/maven2/",
+      "hash": "sha256-qQAAQ2EKPpDIUud5prGo63JKnzEs9ffd1XhisBDGXcg="
     },
     {
       "mvn-path": "org/msgpack/msgpack-core/0.9.12/msgpack-core-0.9.12.jar",
