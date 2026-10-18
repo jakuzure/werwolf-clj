@@ -349,7 +349,7 @@
   [old new]
   (boolean (and old (not (my-turn? old)) (my-turn? new))))
 
-(declare latest-news)
+(declare latest-news news-tones)
 
 (defn dawn-id
   "The name of one morning: its room and its night."
@@ -362,8 +362,18 @@
    has read it. Nil otherwise."
   [{:keys [phase log] :as view} seen]
   (when (and (#{:election :discussion} phase) (not= seen (dawn-id view)))
-    (let [since (drop-while #(not= :night/ended (:type %)) log)]
-      (when (seq since) (latest-news since)))))
+    ;; Everything the night and its aftermath did, not `latest-news`'s last
+    ;; run: a morning with a wolves' victim, a lover following them and a
+    ;; Jäger's shot is four deaths, and the card used to show the last three.
+    ;; From the LAST night's end: from the first one, every morning after the
+    ;; second retold the whole game.
+    (let [v    (vec log)
+          ends (keep-indexed (fn [i e] (when (= :night/ended (:type e)) i)) v)]
+      (when-let [i (last ends)]
+        (->> (subvec v i)
+             (filter #(news-tones (i18n/log-tone %)))
+             vec
+             not-empty)))))
 
 (rf/reg-sub ::dawn-seen (fn [db _] (:dawn/seen db)))
 (rf/reg-sub ::dawn-news :<- [::view] :<- [::dawn-seen] (fn [[v seen] _] (dawn-news v seen)))
@@ -445,14 +455,16 @@
 
 (rf/reg-sub ::ambience :<- [::phase] (fn [p _] (ambience p)))
 
-(def ^:private news-tones #{:death :verdict})
+(def ^:private news-tones #{:death :verdict :calm})
 
 (defn latest-news
   "The last thing that MATTERED, as the run of log entries that said it: who
    died, how the vote went, that the night was quiet. Bookkeeping in between is
    stepped over, so a reconnect after the verdict does not bury it; any other
-   kind of entry ends the run. At most three, oldest first — a Jäger's shot and
-   a lover's grief belong on one line, a whole game does not.
+   kind of entry ends the run, which is what keeps it to one moment — a
+   Jäger's shot and a lover's grief belong on one line, a whole game does not.
+   There used to be a cap of three as well, and it cut deaths off a busy
+   morning.
 
    This is what keeps a folded Chronik honest: the one line nobody should miss
    stays on screen."
@@ -463,7 +475,6 @@
     (->> from-news
          (remove #(= :muted (tone %)))
          (take-while #(news-tones (tone %)))
-         (take 3)
          reverse
          vec
          not-empty)))

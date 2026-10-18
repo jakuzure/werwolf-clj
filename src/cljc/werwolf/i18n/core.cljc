@@ -69,7 +69,8 @@
    :vote/resolved    :verdict
    :day/no-accusation :verdict
    :day/no-trial     :verdict
-   :night/quiet      :verdict
+   ;; Good news, not a ruling: it wore the verdict's ⚖ in the Chronik.
+   :night/quiet      :calm
    :game/ended       :verdict
    :game/abandoned   :verdict
    :game/reset       :night
@@ -101,7 +102,8 @@
    :nominate/passed  :muted
    :vote/cast        :muted
    :player/joined    :muted
-   :player/left      :muted
+   ;; Shown: somebody walking out of a game under way is news to the table.
+   :player/left      :plain
    :player/disconnected :muted
    :player/reconnected  :muted
    :jaeger/held-fire :muted})
@@ -165,7 +167,8 @@
    :lynch   :log/died-lynch
    :jaeger  :log/died-jaeger
    :weisser :log/died-weisser
-   :gm      :log/died-gm})
+   :gm      :log/died-gm
+   :left    :log/died-left})
 
 (def ^:private gm-action-keys
   "GM overrides that need a line of their own.
@@ -238,7 +241,10 @@
       ;; Published without the ids on purpose: THAT there are lovers is public,
       ;; WHO they are is not. See apply-event :amor/linked.
       :amor/linked         (t locale :log/amor-linked)
-      :night/quiet         (t locale (if (= 1 night) :log/night-quiet-first :log/night-quiet))
+      ;; One sentence for every quiet night. The first night had its own, "bleibt
+      ;; ruhig — niemand stirbt", which read like the rule even when the wolves
+      ;; had struck and the Hexe had saved their victim.
+      :night/quiet         (t locale :log/night-quiet)
       :night/ended         (t locale :log/night-ended)
       :day/began           (t locale :log/day-began)
       :player/ready        (t locale :log/ready (nm player))
@@ -310,17 +316,34 @@
       (t locale k names)
       (str (count run) "× " (log-line locale players (first run))))))
 
-(defn- told-twice?
+(defn told-twice?
   "A death the line before it has already told. The Jäger's shot names its
    target, and the :player/died that follows said it again: 'chris erschießt
    Emil', then 'Emil wurde vom Jäger erschossen'."
   [prev e]
-  (and (= :player/died (:type e)) (= :jaeger (:cause e))
-       (= :jaeger/shot (:type prev)) (= (:target prev) (:player e))))
+  (and (= :player/died (:type e))
+       (= (:target prev) (:player e))
+       (or (and (= :jaeger (:cause e)) (= :jaeger/shot (:type prev)))
+           ;; And the verdict: "Das Dorf richtet Emil", then "Emil wurde vom
+           ;; Dorf gerichtet".
+           (and (= :lynch (:cause e)) (= :vote/resolved (:type prev))))))
+
+(defn- told-next?
+  "A leave the next line tells better: walking out of a game under way is a
+   death with the card turned over, and \"hat die Runde verlassen\" right
+   before it said half of it first."
+  [e next]
+  (and (= :player/left (:type e))
+       (= :player/died (:type next)) (= :left (:cause next))
+       (= (:player e) (:player next))))
 
 (defn- drop-retold [log]
-  (keep (fn [[prev e]] (when-not (told-twice? prev e) e))
-        (map vector (cons nil log) log)))
+  (let [v (vec log)]
+    (keep-indexed (fn [i e]
+                    (when-not (or (told-twice? (get v (dec i)) e)
+                                  (told-next? e (get v (inc i))))
+                      e))
+                  v)))
 
 (defn chronicle
   "The raw log as display rows, newest first: {:text :tone :count}.

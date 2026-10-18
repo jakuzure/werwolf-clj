@@ -93,10 +93,14 @@
 
 (defn- death-reactions
   "Reactions triggered by pid dying. Order matters only in that both land on
-   the stack; the stack is drained LIFO by the phase machine."
-  [state pid]
+   the stack; the stack is drained LIFO by the phase machine.
+
+   Somebody who LEFT has no last move to make — a Jäger who walked out does not
+   shoot, a Bürgermeister who walked out names nobody — but his lover still
+   follows him."
+  [state pid cause]
   (let [role-id  (get-in state [:players pid :role])
-        on-death (roles/on-death-reaction role-id)
+        on-death (when-not (= :left cause) (roles/on-death-reaction role-id))
         lover    (other-lover state pid)]
     (cond-> state
       ;; Jäger fires even though he is already dead.
@@ -110,7 +114,7 @@
       ;; The Bürgermeister names who follows him. Keyed off the TITLE rather than
       ;; a role, because nobody is dealt this one — which is also why it is here
       ;; and not in the registry's :on-death.
-      (= pid (:mayor state))
+      (and (= pid (:mayor state)) (not= :left cause))
       (push-reaction {:type :reaction/mayor-succession :player pid}))))
 
 ;; --------------------------------------------------------- apply-event ---
@@ -179,9 +183,12 @@
     (-> state
         (update :players dissoc player)
         (publish {:type :player/left :player player}))
+    ;; Said as leaving, not as a dropped connection: the table read "abwesend"
+    ;; and waited for somebody who had walked out.
     (-> state
         (assoc-in [:players player :connected?] false)
-        (publish {:type :player/disconnected :player player}))))
+        (assoc-in [:players player :left?] true)
+        (publish {:type :player/left :player player}))))
 
 (defmethod apply-event :player/kicked
   ;; Removed by the host, which only happens in the lobby — so, like leaving
@@ -423,8 +430,12 @@
       (publish {:type :night/began :night night})))
 
 (defmethod apply-event :night/role-turn
+  ;; Each role gets the night's time to itself. The deadline used to run on
+  ;; from the role before: a Beschützer who took 44 of 45 seconds left the
+  ;; wolves one, and they were skipped. Clearing it lets the clock arm a fresh
+  ;; one for this turn — see timer/clock-events.
   [state {:keys [role]}]
-  (assoc state :night-cursor role))
+  (assoc state :night-cursor role :deadline nil))
 
 (defmethod apply-event :night/role-completed
   [state {:keys [role]}]
@@ -626,7 +637,7 @@
         ;; `:mayor` to decide whether a succession is owed. Clearing it first is
         ;; the obvious-looking order and it silently skipped the reaction — the
         ;; dying Bürgermeister was simply never asked.
-        (death-reactions player)
+        (death-reactions player cause)
         ;; The office empties the moment he dies, ahead of the succession
         ;; resolving. Leaving it pointing at a corpse would show the table a dead
         ;; Bürgermeister and, worse, keep weighting a vote he cannot cast. The
@@ -642,9 +653,12 @@
       (publish {:type :player/revived :player player})))
 
 (defmethod apply-event :reaction/popped
+  ;; The same for a stack of last moves — a dead Bürgermeister who was also the
+  ;; Jäger: the second one gets a clock of its own, not the first one's rest.
   [state _]
   ;; `pop` throws on an empty vector; a replay must never die on that.
-  (update state :reactions (fn [rs] (if (seq rs) (pop rs) (or rs [])))))
+  (cond-> (update state :reactions (fn [rs] (if (seq rs) (pop rs) (or rs []))))
+    (= :reaction (:phase state)) (assoc :deadline nil)))
 
 (defmethod apply-event :jaeger/shot
   [state {:keys [player target]}]
@@ -746,9 +760,13 @@
         (merge (select-keys state [:narrated? :timer? :password-hash :deck :host-absent?]))
         (assoc :players
                (into {}
-                     (map (fn [[pid p]]
-                            [pid (-> (select-keys p [:id :name :locale :connected? :absent-since])
-                                     (assoc :role nil :alive? true))]))
+                     (comp
+                      ;; Who walked out of the last game is not dealt into the
+                      ;; next: "Nochmal mit allen" means everybody still here.
+                      (remove (fn [[_ p]] (:left? p)))
+                      (map (fn [[pid p]]
+                             [pid (-> (select-keys p [:id :name :locale :connected? :absent-since])
+                                      (assoc :role nil :alive? true))])))
                      (:players state)))
         (publish {:type :game/reset}))))
 

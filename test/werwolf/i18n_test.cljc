@@ -92,7 +92,7 @@
   (testing "German and English put the pieces in different orders, so a cause
             must be a complete sentence rather than a suffix"
     (doseq [locale i18n/locales
-            cause [:werwolf :gift :liebe :lynch :jaeger :gm nil]]
+            cause [:werwolf :gift :liebe :lynch :jaeger :gm :left nil]]
       (let [line (i18n/log-line locale players
                                 {:type :player/died :player 0 :cause cause})]
         (is (str/includes? line "Anna") (str cause " in " locale))
@@ -189,6 +189,13 @@
         rows (i18n/chronicle :de players log {:show-all? false})]
     (is (= ["Anna erschießt Bob" "Anna wurde von den Werwölfen gerissen"] (map :text rows))
         "the shot names its target; the death after it would only repeat it")))
+
+(deftest the-verdict-is-told-once
+  (let [log  [{:type :vote/resolved :target 1 :tie? false}
+              {:type :player/died :player 1 :cause :lynch :role :werwolf}]
+        rows (i18n/chronicle :de players log {:show-all? false})]
+    (is (= 1 (count rows)) "the verdict names him; the death after it would only repeat it")
+    (is (str/includes? (:text (first rows)) "Bob"))))
 
 (deftest the-table-switches-read-both-ways
   (testing "each switch logs its new position, and both positions need a line"

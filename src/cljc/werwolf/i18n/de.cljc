@@ -243,6 +243,7 @@
    ;; -------------------------------------------------------------- game ---
    :game/dead          "tot"
    :game/absent        "abwesend"
+   :game/left          "gegangen"
 
    ;; ---------------------------------------------------------- absence ---
    ;;
@@ -264,6 +265,7 @@
    :game/log           "Chronik"
    :game/chat          "Gespräch"
    :game/chat-hint     "Nachricht schreiben…"
+   :game/chat-closed   "Gerade kannst du nicht schreiben"
    :game/waiting       "Warte auf die anderen…"
    :game/wolves-channel "Nur die Werwölfe hören dich"
    :game/dead-channel   "Nur die Toten hören dich"
@@ -304,6 +306,7 @@
    :sound/turn-off    "Signalton bei Nacht und Tag ausschalten"
    :sound/turn-on     "Signalton bei Nacht und Tag einschalten"
    :explain/setup       "Die Karten sind verteilt. Schau dir deine Rolle an — gleich beginnt die Nacht."
+   :explain/setup-narrator "Die Karten sind verteilt. Prüfe die Verteilung, dann beginne die Nacht."
    :explain/night       "Alle schlafen. Wer gerufen wird, wacht auf und handelt, ohne sich zu verraten."
    :explain/day-reveal  "Der Morgen graut. Gleich zeigt sich, was die Nacht angerichtet hat."
    :explain/election    "Wählt einen Bürgermeister. Seine Stimme zählt bei jeder Abstimmung doppelt."
@@ -354,7 +357,10 @@
    :record/won "gewonnen"
    :hexe/victim (fn [who] (str "🐺 Die Werwölfe haben " who " gewählt."))
    :hexe/victim-you "🐺 Die Werwölfe haben dich gewählt."
-   :hexe/no-victim "🐺 Die Werwölfe haben heute Nacht niemanden gewählt."
+   :hexe/no-victim "🐺 Heute Nacht stirbt niemand durch die Werwölfe."
+   :hexe/healed (fn [who] (str "✓ Du hast " who " gerettet."))
+   :hexe/healed-you "✓ Du hast dich selbst gerettet."
+   :hexe/done "Fertig"
    :ballot/title     "Abstimmung"
    :ballot/needed    (fn [n] (str "Verurteilt ab " n " Stimmen"))
    :ballot/none      "Noch hat niemand eine Stimme bekommen."
@@ -399,7 +405,6 @@
    :log/deck-auto     "Die Rollen richten sich wieder nach der Zahl der Mitspieler"
    :log/amor-linked   "Amor hat zwei Verliebte bestimmt"
    :log/night-began   "Die Nacht bricht an"
-   :log/night-quiet-first "Die erste Nacht bleibt ruhig — niemand stirbt"
    :log/night-quiet   "In dieser Nacht ist niemand gestorben"
    :log/night-ended   "Der Morgen graut"
    :log/day-began     "Das Dorf versammelt sich"
@@ -517,6 +522,7 @@
    :error/already-joined   "Du sitzt schon in dieser Runde"
    :error/room-full        "Der Raum ist voll"
    :error/name-required    "Bitte gib einen Namen ein"
+   :error/name-taken       "Diesen Namen gibt es in der Runde schon — nimm einen anderen"
    :error/code-required    "Bitte gib den Raumcode ein"
    :error/not-in-room      "Du sitzt nicht in dieser Runde"
    :error/unknown-player   "Diesen Platz gibt es nicht"

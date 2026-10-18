@@ -93,8 +93,10 @@
     (is (= "Stimmen: Name1 enthält sich, Name2 → Name1" (:votes (nth rows 23))))
     (is (nil? (:votes (first rows))) "only counts carry ballots")))
 
-(deftest a-quiet-first-night-says-so
-  (is (= "Die erste Nacht bleibt ruhig — niemand stirbt"
+(deftest a-quiet-night-reads-the-same-on-the-first
+  ;; The first night had its own sentence, "bleibt ruhig — niemand stirbt",
+  ;; which read like a rule even when the Hexe had just saved the wolves' victim.
+  (is (= "In dieser Nacht ist niemand gestorben"
          (:text (first (recap/round-lines :de players {:kind :night :n 1
                                                        :entries [{:type :night/quiet}]})))))
   (is (= "In dieser Nacht ist niemand gestorben"
@@ -134,3 +136,13 @@
             round (:rounds rc)
             row (recap/round-lines locale names round)]
       (is (not (untranslated? (:text row))) (str locale " " (pr-str row))))))
+
+(deftest a-death-already-told-is-not-told-again
+  (let [round {:kind :day :n 2
+               :entries [{:type :vote/resolved :target 1 :tie? false :votes {2 1 3 1}}
+                         {:type :player/died :player 1 :cause :lynch}
+                         {:type :jaeger/shot :player 1 :target 3}
+                         {:type :player/died :player 3 :cause :jaeger}]}
+        rows (recap/round-lines :de players round)]
+    (is (= 2 (count rows)) "the verdict and the shot each name their dead")
+    (is (= [:verdict :death] (map :tone rows)))))

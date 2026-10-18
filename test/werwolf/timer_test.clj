@@ -155,6 +155,21 @@
             (is (> (:deadline st) d)))
           (is (some #(= :phase/timed-out (:type %)) (:log st))))))))
 
+(deftest each-night-role-gets-its-own-clock
+  (testing "a role that acts late does not eat the next role's time: a slow
+            Beschützer used to leave the wolves one second, and they were skipped"
+    (with-ctx [ctx]
+      (let [room-id (table ctx 7)]
+        (room/submit! ctx room-id 0 {:type :start-game})
+        (let [d    (deadline ctx room-id)
+              late (- d 1000)]
+          (at! ctx late)
+          (room/submit! ctx room-id 0 {:type :gm/skip-role})
+          (is (= :night (phase ctx room-id)) "still the night, the next role's turn")
+          (is (= (- d late) 1000) "the first role took all but a second")
+          (is (> (deadline ctx room-id) (+ late 1000))
+              "and the next one gets a fresh clock, not that second"))))))
+
 (deftest an-expired-deadline-fires-only-once
   (testing "the bug this guards: :night/role-completed does not change the
             phase, so an uncleared deadline would fire again every tick"

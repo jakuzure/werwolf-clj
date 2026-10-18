@@ -113,7 +113,7 @@
             (set! (.-value @node) (or value "")))))
 
       :reagent-render
-      (fn [k placeholder & [{:keys [on-enter maxlength testid]}]]
+      (fn [k placeholder & [{:keys [on-enter maxlength testid disabled?]}]]
         (let [committed @(rf/subscribe [::sub/form-field k])
               gen       @(rf/subscribe [::sub/form-gen k])]
           (reset! want {:gen gen :value committed})
@@ -121,22 +121,24 @@
           ;; programmatic write on the next update.
           (when (nil? (:gen @seen)) (reset! seen {:gen gen}))
           [:input {:class "w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700
-                           focus:border-indigo-500 outline-none text-slate-100"
+                           focus:border-indigo-500 outline-none text-slate-100
+                           disabled:opacity-50 disabled:cursor-not-allowed"
                    ;; :default-value, never :value — React applies it on mount and
                    ;; then leaves the element alone, which is the entire point.
                    :default-value committed
                    :ref (fn [el] (reset! node el))
                    :placeholder placeholder
                    :data-testid testid
+                   :disabled (boolean disabled?)
                    :maxLength (or maxlength 24)
                    :on-change (fn [e] (rf/dispatch [::ev/form-set k (.. e -target -value)]))
                    :on-key-down #(when (and on-enter (= "Enter" (.-key %)))
                                    (rf/dispatch on-enter))}]))})))
 
 (defn- pill [label tone]
-  ;; Cut short rather than spill over: a badge wider than its card read as
-  ;; broken layout.
-  [:span {:class (str "inline-block max-w-full truncate align-top px-1.5 py-0.5 rounded "
+  ;; Never wider than its card: a badge that spilt over read as broken
+  ;; layout. It wraps between words instead.
+  [:span {:class (str "inline-block max-w-full align-top [overflow-wrap:anywhere] px-1.5 py-0.5 rounded "
                       "text-[10px] font-bold uppercase tracking-wide "
                       (case tone
                         :dead    "bg-rose-950 text-rose-300 "
@@ -700,7 +702,7 @@
           {:tone (if confirming-kick? :danger :quiet)
            :testid (str "kick-" id)}])
        (when assign?
-         [:select {:class "px-2 py-1.5 rounded-lg bg-slate-800 border border-violet-600
+         [:select {:class "w-full max-w-full px-2 py-1.5 rounded-lg bg-slate-800 border border-violet-600
                            text-sm text-slate-100 outline-none focus:border-violet-400"
                    :data-testid (str "assign-" id)
                    :value (some-> (get known id) name)
@@ -723,7 +725,7 @@
 
 (defn- player-card
   "One seat, rendered large enough to actually read at a glance."
-  [{:keys [id alive? connected?] pname :name}]
+  [{:keys [id alive? connected? left?] pname :name}]
   (let [me @(rf/subscribe [::sub/me-view])
         view @(rf/subscribe [::sub/view])
         narrator-info @(rf/subscribe [::sub/narrator-info])
@@ -803,7 +805,9 @@
                  :title done? :data-testid (str "done-" id)}
           "✓" [:span {:class "sr-only"} done?]])]
       [:div {:class "min-w-0 flex-1"}
-       [:div {:class (str "font-semibold truncate "
+       ;; Wraps, between words and with hyphens, never mid-syllable: "anywhere"
+       ;; broke "Hohenzoller|n"; truncating cut "Wilhelmine…" in half.
+       [:div {:class (str "font-semibold leading-tight break-words hyphens-auto "
                           (cond (not alive?)         "line-through text-slate-500"
                                 (false? connected?) "text-slate-400"))}
         pname
@@ -811,9 +815,11 @@
         ;; as an unexplained orange square. Unlike the dead, the name is not
         ;; struck through and the card keeps its colour: they may be back.
         (when (false? connected?)
-          [:span {:class "ml-1.5 text-xs font-normal text-slate-500"
+          ;; A line of its own, so it never splits the name or itself:
+          ;; "Wilhelmine a|bwesend".
+          [:span {:class "block text-xs font-normal text-slate-500"
                   :data-testid (str "absent-" id)}
-           (t :game/absent)])]]]
+           (t (if left? :game/left :game/absent))])]]]
       ;; Only what a glance at the card cannot already tell. No "du" (the
       ;; border says it) and no "tot" (the grey card and the struck name do).
       ;; A row of its own under the initial, the whole card wide: beside it, in
@@ -829,7 +835,11 @@
         (when (= id (:mayor view)) [pill (str "👑 " (t :badge/mayor)) :mayor])
         (when (contains? in-voice id)
           [:span {:title (t :voice/in-call)} [pill "🎧" :voice]])
-        (when role [pill (str (i18n/icon-of role) " " (role-name role)) :role])
+        ;; Not while the Spielleiter's select for this seat is showing it:
+        ;; the badge and the select said the same thing one above the other.
+        (when (and role (not (and (= :setup (:phase view))
+                                  (some #{id} (get @(rf/subscribe [::sub/targets]) :gm/reassign-role)))))
+          [pill (str (i18n/icon-of role) " " (role-name role)) :role])
         ;; His own lover, or — for the Spielleiter, whose notes name both — either.
         (when (or (= id (:lover me)) (some #{id} (:lovers narrator-info)))
           [:span {:title (t :badge/lover)} [pill "♥" :lover]])
@@ -886,6 +896,7 @@
   (let [actions @(rf/subscribe [::sub/actions])
         targets @(rf/subscribe [::sub/targets])
         arity   @(rf/subscribe [::sub/arity])
+        choices @(rf/subscribe [::sub/choices])
         players @(rf/subscribe [::sub/players])
         armed (:action (pending))
         confirm? (:confirm? (pending))
@@ -920,14 +931,20 @@
        ;; the night notes under the whole board, or show only as the card
        ;; lit up after "Heiltrank benutzen"; it belongs here, read first.
        (when (contains? actions :hexe-pass)
-         (let [victims (keep #(when (= :werwolf (:cause %)) (:player %))
-                             (:pending-deaths @(rf/subscribe [::sub/night-info])))
-               players @(rf/subscribe [::sub/players])
+         (let [{:keys [pending-deaths healed]} @(rf/subscribe [::sub/night-info])
+               victims (keep #(when (= :werwolf (:cause %)) (:player %)) pending-deaths)
                me (:id @(rf/subscribe [::sub/me-view]))]
            [:div {:class "text-sm font-semibold text-rose-200" :data-testid "hexe-victim"}
             (cond
+              ;; Saved: say so, rather than that nobody was chosen.
+              (some? healed)
+              [:span {:class "text-emerald-200"}
+               (if (= healed me) (t :hexe/healed-you) (t :hexe/healed (get-in players [healed :name])))]
               (= [me] victims) (t :hexe/victim-you)
               (seq victims) (t :hexe/victim (str/join ", " (map #(get-in players [% :name]) victims)))
+              ;; Not "the wolves chose nobody": they may have, and the
+              ;; Beschützer stood in front of them. What she knows is only
+              ;; that nobody is dying of them.
               :else (t :hexe/no-victim))]))
        ;; Cast, and still open to change: the buttons stay, but this is no
        ;; longer what the table is waiting for.
@@ -943,17 +960,37 @@
        (when confirm? [confirm-pick])
        [:div {:class (str "flex flex-wrap gap-2" (when confirm? " hidden"))}
        (for [a plain
-             :let [one (only a)]]
+             :let [one (only a)
+                   cs  (when-not (needs-target? a) (seq (get choices a)))]]
          ^{:key (str a)}
-         (if one
+         (cond
+           ;; A move that names a thing rather than a player — the Dieb's two
+           ;; cards from the middle — is one button per thing it may name. A
+           ;; single "Karte nehmen" sent no card at all and was refused, and
+           ;; the cards themselves were shown nowhere.
+           cs
+           [:<>
+            (for [c cs]
+              ^{:key (str c)}
+              [btn (t :target/direct (action-name a) (str (i18n/icon-of c) " " (role-name c)))
+               #(rf/dispatch [::ev/act-with a {(get proto/choice-key a :choice) c}])
+               {:tone :primary :testid (str "choice-" (name a) "-" (name c))}])]
+
+           one
            [btn (t :target/direct (action-name a) (get-in players [one :name]))
             #(rf/dispatch [::ev/act a one])
             {:tone :primary :testid (str "direct-" (name a))}]
+
+           :else
            ;; The ellipsis marks the buttons that do NOT act yet — they arm a
            ;; choice and wait for a player to be picked. Without it an immediate
            ;; "I'm done" and a two-step "Accuse…" looked identical, so a tap that
            ;; only changed the board's mode read as a tap that did nothing.
-           [btn (str (action-name a) (when (needs-target? a) " …"))
+           ;; The Hexe's "no potion" after she has just used one is "Fertig".
+           [btn (str (if (and (= :hexe-pass a) (some? (:healed @(rf/subscribe [::sub/night-info]))))
+                       (t :hexe/done)
+                       (action-name a))
+                     (when (needs-target? a) " …"))
             (if (needs-target? a)
               #(if (= armed a) (disarm!) (arm! a))
               #(rf/dispatch [::ev/act a]))
@@ -1195,13 +1232,14 @@
 
 (defn- log-icon [tone]
   (case tone
-    :death "☠" :verdict "⚖" :reveal "👁" :night "🌙" :day "☀"
+    :death "☠" :verdict "⚖" :calm "🕊" :reveal "👁" :night "🌙" :day "☀"
     :vote "🗳" :gm "🛠" "·"))
 
 (defn- log-classes [tone]
   (case tone
     :death   "text-rose-300 font-semibold "
     :verdict "text-amber-300 font-semibold "
+    :calm    "text-sky-200 font-semibold "
     :reveal  "text-emerald-300 "
     :night   "text-indigo-300 "
     :day     "text-sky-300 "
@@ -1282,10 +1320,12 @@
    up. Screen readers get every name either way."
   []
   (when-let [steps @(rf/subscribe [::sub/round-steps])]
-    [:ol {:class "flex items-center gap-1" :aria-label (t :stage/progress)}
+    ;; Wraps rather than squeezing: at a column's width "Morgen ·
+    ;; unterbrochen" pushed its neighbours over the connectors.
+    [:ol {:class "flex flex-wrap items-center gap-1" :aria-label (t :stage/progress)}
      (for [{:keys [step state interrupted?]} steps]
        ^{:key (str step)}
-       [:li {:class "flex items-center gap-1 min-w-0"
+       [:li {:class "flex items-center gap-1 shrink-0"
              :aria-current (when (= :current state) "step")}
         [:span {:class (str "flex items-center gap-1 rounded-full px-2 py-1 text-xs whitespace-nowrap "
                             (case state
@@ -1403,6 +1443,9 @@
           (and (= :discussion phase) (:trial? view))
           (t :explain/trial (:votes-needed view))
           (= :discussion phase) (t :explain/first-discussion)
+          ;; The Spielleiter has no card to look at; his part of the deal is
+          ;; checking it and opening the night.
+          (and (= :setup phase) narrator?) (t :explain/setup-narrator)
           :else (t (keyword "explain" (name (or phase :setup))))))]
 
      [host-absent-banner]
@@ -1412,7 +1455,9 @@
 
      [:div {:class "overflow-x-auto -mx-1 px-1"} [round-strip]]
 
-     (when-not (= :game-over phase) [latest-news])]))
+     ;; Not while the morning card is open: it tells the same news, larger,
+     ;; and the two read as the page repeating itself.
+     (when-not (or (= :game-over phase) @(rf/subscribe [::sub/dawn-news])) [latest-news])]))
 
 ;; -------------------------------------------------------------------- chat ---
 
@@ -1434,7 +1479,8 @@
      [:div {:class "flex-1 overflow-y-auto px-4 py-2 space-y-1 text-sm"}
       (for [[i m] (map-indexed vector msgs)]
         ^{:key i}
-        [:div
+        ;; A long word or a link breaks rather than running off the panel.
+        [:div {:class "[overflow-wrap:anywhere]"}
          [:span {:class (case (:channel m)
                           :wolves   "text-rose-400 font-semibold"
                           :dead     "text-slate-500 font-semibold"
@@ -1456,7 +1502,11 @@
               :game/dead-channel))])
       [:div {:class "flex gap-2"}
        [:div {:class "flex-1"}
-        [field :text (t :game/chat-hint) {:on-enter [::ev/send-chat] :maxlength 500}]]
+        ;; Closed when there is nobody you may talk to — the wolves' turn for
+        ;; everyone else, the Weißer Werwolf's own: typing a line only to be
+        ;; told "Jetzt darfst du nicht sprechen" was the old way to learn it.
+        [field :text (if allowed? (t :game/chat-hint) (t :game/chat-closed))
+         {:on-enter [::ev/send-chat] :maxlength 500 :disabled? (not allowed?)}]]
        [btn "→" #(rf/dispatch [::ev/send-chat]) {:disabled? (not allowed?)}]]]]))
 
 ;; -------------------------------------------------------------------- lobby ---
@@ -1494,14 +1544,20 @@
         role (:role me)]
     (cond
       (:narrator? me)
-      [:span {:class (str chip "border-violet-700 bg-violet-950/60 text-violet-100")}
-       [:span {:aria-hidden true} "📜"] (t :narrator/title)]
+      [:span {:class (str chip "border-violet-700 bg-violet-950/60 text-violet-100")
+              :title (t :narrator/title)}
+       [:span {:aria-hidden true} "📜"]
+       [:span {:class "sr-only sm:not-sr-only"} (t :narrator/title)]]
       role
       [:span {:class (str chip (if (:alive? me)
                                  "border-emerald-700 bg-emerald-950/60 text-emerald-100"
                                  "border-rose-900 bg-rose-950/40 text-rose-200 line-through"))
-              :data-testid "role-chip"}
-       [:span {:aria-hidden true} (i18n/icon-of role)] (role-name role)])))
+              :data-testid "role-chip"
+              :title (role-name role)}
+       ;; The icon alone on a phone: the name beside it squeezed the phase's
+       ;; title to "Bürgermeister…". The card says the name in full.
+       [:span {:aria-hidden true} (i18n/icon-of role)]
+       [:span {:class "sr-only sm:not-sr-only"} (role-name role)]])))
 
 (defn- bar-clock
   "The phase's time, in the corner where a clock is looked for. A paused clock
@@ -1576,7 +1632,10 @@
      [:div {:class "flex items-center gap-2 min-w-0 flex-1"}
       [:span {:class "text-2xl leading-none" :aria-hidden true} icon]
       [:div {:class "min-w-0"}
-       [:h2 {:class "text-lg font-bold leading-tight truncate"} title]
+       ;; Wraps and hyphenates rather than truncating: "Rollenverga…" and
+       ;; "Berat…" were what a phone showed of the one word that says where
+       ;; the game is.
+       [:h2 {:class "text-base sm:text-lg font-bold leading-tight hyphens-auto [overflow-wrap:anywhere]"} title]
        (when sub [:div {:class "text-xs text-slate-400 truncate"} sub])]]
      (into [:div {:class "flex items-center gap-1.5 shrink-0"}] right)
      [:div {:class "hidden lg:flex items-center gap-1.5 shrink-0"}
@@ -2217,7 +2276,9 @@
         picking? (boolean (or (pending) (tap-action)))
         on (fn [tabs order]
              (str "empty:hidden " order " " (when-not (contains? tabs tab) "max-lg:hidden")))]
-  [:div {:class "pb-20 lg:pb-0"}
+  ;; Room at the foot for the tabs, and for the turn dock above them when it
+  ;; shows, so neither covers the last thing on the page.
+  [:div {:class (if (and @(rf/subscribe [::sub/can-act?]) (not= :now tab)) "pb-36 lg:pb-0" "pb-20 lg:pb-0")}
    ;; The way out of a game under way lives in the bar, as far from the moves
    ;; as the screen allows, and two taps like the lobby's. Not at the end,
    ;; where the game-over panel has its own one-tap way out.

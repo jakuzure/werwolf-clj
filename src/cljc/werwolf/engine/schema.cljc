@@ -42,6 +42,10 @@
    ;; engine only records it and never reads a clock. Absent while connected,
    ;; and on any seat whose log predates the stamp.
    [:absent-since {:optional true} :int]
+   ;; Walked out of a game under way. Still seated — the card still matters —
+   ;; but gone for good, which the table should be able to tell from a phone
+   ;; that dropped its connection.
+   [:left? {:optional true} :boolean]
    [:locale [:enum :de :en]]
    ;; one-shot resources, e.g. {:heiltrank 1 :gifttrank 1}
    [:resources {:optional true} [:map-of :keyword :int]]

@@ -75,6 +75,11 @@
     (>= (count (e/participant-ids state))
         (:max-players state 18))          (err :room-full {})
     (str/blank? (str name))               (err :name-required {})
+    ;; Two "Anna"s at one table make every vote, every Chronik line and every
+    ;; card ambiguous. Case and spaces do not make a name different.
+    (some #(= (str/lower-case (str/trim (str name))) (str/lower-case (str (:name %))))
+          (vals (:players state)))
+    (err :name-taken {})
     :else [{:type :player/joined
             :player player
             :name (str/trim (str name))
@@ -86,12 +91,23 @@
   ;; phone, and there is nothing to wait for. Same consequences as the clock
   ;; noticing — see `phases/host-absent-events`. In the lobby the seat simply
   ;; passes on (room/succession), and at :game-over nobody needs him.
+  ;;
+  ;; A PLAYER who walks out of a game under way leaves it: dead, card turned
+  ;; over, cause :left. Kept alive, he was waited on for moves he would never
+  ;; make, counted towards every majority, and once condemned in absentia; a
+  ;; wolf who walked out would have kept the game open for ever. He gets no
+  ;; last move — he is not there to make it — but a lover still follows him,
+  ;; as after any death. Not the Spielleiter, who holds no card and no life.
   [state {:keys [player]}]
   (if (contains? (:players state) player)
-    (into [{:type :player/left :player player}]
-          (when (and (= player (:host state))
-                     (not (#{:lobby :game-over} (:phase state))))
-            (phases/host-absent-events state)))
+    (-> [{:type :player/left :player player}]
+        (into (when (and (not (#{:lobby :game-over} (:phase state)))
+                         (get-in state [:players player :alive?])
+                         (not= player (e/narrator state)))
+                [{:type :player/died :player player :cause :left}]))
+        (into (when (and (= player (:host state))
+                         (not (#{:lobby :game-over} (:phase state))))
+                (phases/host-absent-events state))))
     (err :not-in-room {:player player})))
 
 (defmethod handle :set-locale

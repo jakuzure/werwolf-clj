@@ -127,6 +127,17 @@
 
 ;; ------------------------------------------------------- day bookkeeping ---
 
+(declare legal-targets)
+
+(defn- white-wolf-alone?
+  "No wolf left for the Weißer Werwolf to take: his only answer would be to
+   pass, so — like the Hexe without potions — his turn ends as it starts. The
+   QA game called him for a turn of \"Heute keinen Wolf reißen\" as the last
+   wolf standing, and with a clock that cost the table 45 seconds a night."
+  [state]
+  (every? #(empty? (legal-targets state % :weisser-kill))
+          (e/living-with-role state :weisser-werwolf)))
+
 (defn- ready-done?
   "Every living player has said they are finished talking."
   [state]
@@ -378,6 +389,10 @@
            :hexe
            (when (hexe-exhausted? state)
              [{:type :night/role-completed :role :hexe}])
+
+           :weisser-werwolf
+           (when (white-wolf-alone? state)
+             [{:type :night/role-completed :role :weisser-werwolf}])
 
            nil)
 
@@ -827,7 +842,11 @@
           ;; He may decline, like the Hexe and the Jäger: removing a wolf tonight
           ;; is a judgement about timing, and a role whose only option is to act
           ;; has no decision to make.
-          :weisser-werwolf #{:weisser-kill :weisser-pass :chat}
+          ;; No :chat in his own turn. His words would go to the pack's
+          ;; channel while the night strip says the Weißer Werwolf is the one
+          ;; awake — so anything said now gives him away to the wolves he is
+          ;; about to turn on. He talks with them in the pack's turn.
+          :weisser-werwolf #{:weisser-kill :weisser-pass}
           ;; Wolves may talk among themselves at night (private room at M7).
           ;; The whole pack votes, the white one included — see `night-actor?`.
           :werwolf (if (contains? (get-in state [:night-actions :werewolf-votes] {}) pid)
