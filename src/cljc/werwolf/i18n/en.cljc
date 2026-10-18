@@ -237,6 +237,8 @@
    :absence/claim-hint "Anyone at the table can take over as game master."
    :absence/clock-hint "The clock has taken over: every phase ends on its time limit until the game master is back."
    :game/your-role     "Your role"
+   :bar/menu           "Menu"
+   :bar/room           "Room"
    :game/in-love       "You are in love with"
    :game/heiltrank     "Healing potion"
    :game/gifttrank     "Poison"
