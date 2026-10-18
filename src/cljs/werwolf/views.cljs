@@ -135,7 +135,6 @@
                       (case tone
                         :dead    "bg-rose-950 text-rose-300 "
                         :absent  "bg-amber-950 text-amber-300 "
-                        :you     "bg-indigo-600 text-white "
                         :host    "bg-violet-800 text-violet-100 "
                         :role    "bg-emerald-900 text-emerald-200 "
                         :votes   "bg-slate-600 text-slate-100 "
@@ -635,7 +634,16 @@
         ;; be safe under the plan's permission table, where the wolves' absence
         ;; from the main room identifies them. See werwolf.media.
         in-voice @(rf/subscribe [::sub/in-voice])
-        talking? (sub/speaking? @(rf/subscribe [::sub/speaking]) id)]
+        talking? (sub/speaking? @(rf/subscribe [::sub/speaking]) id)
+        lobby?   (= :lobby (:phase view))
+        ballot?  (and (= :discussion (:phase view)) (:trial? view))
+        ;; Each "done" mark only in the phase it answers. The sets outlive their
+        ;; phase in the view, so a card at the end of a day read "Fertig · Hat
+        ;; gewählt · Hat gewählt" — three stale ticks saying nothing about now.
+        done?    (cond
+                   (and ballot? (contains? (:votes view) id)) (t :badge/decided)
+                   (and (= :discussion (:phase view)) (not (:trial? view))
+                        (contains? (set (:ready view)) id))   (t :badge/ready))]
     [:div {:class (str "rounded-xl border-2 p-3 transition select-none "
                        (cond
                          picked?      "border-amber-400 bg-amber-500/20 "
@@ -656,39 +664,53 @@
       ;; one element on the card whose position never moves as pills wrap.
       ;; Not the seat number, which it used to be: 0, 1, 2 is the server's
       ;; bookkeeping, and on the table it read like a ranking or a turn order.
-      [:div {:class (str "shrink-0 w-8 h-8 rounded-full grid place-items-center font-bold "
-                         (if alive? "bg-slate-700 text-slate-100" "bg-slate-800 text-slate-500")
-                         (when talking? " ring-2 ring-emerald-400 "))
-             :aria-hidden true}
-       (initial pname)]
+      ;;
+      ;; The small states sit on its rim rather than in the badge row: a ✓
+      ;; once this player has answered what the phase asks, and 📴 while they
+      ;; are away. Words for those made every card a row of tags.
+      [:div {:class "relative shrink-0"}
+       [:div {:class (str "w-8 h-8 rounded-full grid place-items-center font-bold "
+                          (if alive? "bg-slate-700 text-slate-100" "bg-slate-800 text-slate-500")
+                          (when talking? " ring-2 ring-emerald-400 "))
+              :aria-hidden true}
+        (initial pname)]
+       (when done?
+         [:span {:class "absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-emerald-600
+                         text-white text-[10px] leading-none grid place-items-center"
+                 :title done? :data-testid (str "done-" id)}
+          "✓" [:span {:class "sr-only"} done?]])
+       ;; 📴 rather than a plain dot, which nobody could read without asking.
+       (when (false? connected?)
+         [:span {:class "absolute -top-1.5 -right-1.5 text-xs leading-none"
+                 :title (t :game/absent) :data-testid (str "absent-" id)}
+          [:span {:aria-hidden true} "📴"]
+          [:span {:class "sr-only"} (t :game/absent)]])]
       [:div {:class "min-w-0 flex-1"}
        [:div {:class (str "font-semibold truncate "
                           (when-not alive? "line-through text-slate-500"))}
         pname]
-       [:div {:class "flex flex-wrap gap-1 mt-1"}
-        (when me? [pill (t :game/you) :you])
+       ;; Only what a glance at the card cannot already tell. No "du" (the
+       ;; border says it) and no "tot" (the grey card and the struck name do).
+       [:div {:class "flex flex-wrap gap-1 mt-1 empty:hidden"}
         (cond
-          sl?                  [pill (t :narrator/title) :host]
-          (= id (:host view))  [pill (t :badge/host) :host])
+          sl?  [pill (t :narrator/title) :host]
+          ;; A host who plays has a seat like anyone's and no say in the game,
+          ;; only the room's switches — which matter in the lobby alone.
+          (and lobby? (= id (:host view))) [pill (t :badge/host) :host])
         ;; The office is public by design — the entire point of it is that the
         ;; table knows whose vote counts twice.
-        (when (= id (:mayor view)) [pill (t :badge/mayor) :mayor])
-        (when-not alive? [pill (t :game/dead) :dead])
-        (when (false? connected?) [pill (t :game/absent) :absent])
-        (when (contains? in-voice id) [pill (str "🎧 " (t :voice/in-call)) :voice])
+        (when (= id (:mayor view)) [pill (str "👑 " (t :badge/mayor)) :mayor])
+        (when (contains? in-voice id)
+          [:span {:title (t :voice/in-call)} [pill "🎧" :voice]])
         (when role [pill (str (i18n/icon-of role) " " (role-name role)) :role])
         ;; His own lover, or — for the Spielleiter, whose notes name both — either.
         (when (or (= id (:lover me)) (some #{id} (:lovers narrator-info)))
-          [pill (t :badge/lover) :lover])
-        (when (pos? n-votes)
-          [pill (str n-votes " " (t (if (= 1 n-votes) :badge/vote :badge/votes))) :votes])
-        ;; Each "done" mark only in the phase it answers. The sets outlive their
-        ;; phase in the view, so a card at the end of a day read "Fertig · Hat
-        ;; gewählt · Hat gewählt" — three stale ticks saying nothing about now.
-        (when (= :discussion (:phase view))
-          (if (:trial? view)
-            (when (contains? (:votes view) id) [pill (t :badge/decided) :ready])
-            (when (contains? (set (:ready view)) id) [pill (t :badge/ready) :ready])))]
+          [:span {:title (t :badge/lover)} [pill "♥" :lover]])
+        ;; Only while the ballot is open. The votes stay in the state until the
+        ;; next day begins, so the condemned carried "3 Stimmen" through the
+        ;; whole night after.
+        (when (and ballot? (pos? n-votes))
+          [pill (str n-votes " " (t (if (= 1 n-votes) :badge/vote :badge/votes))) :votes])]
        [card-controls id]]]]))
 
 (defn- player-grid

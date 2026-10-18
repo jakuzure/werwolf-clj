@@ -229,7 +229,6 @@
    :setup/your-card   "Your card may still change until the first night."
 
    ;; -------------------------------------------------------------- game ---
-   :game/you           "you"
    :game/dead          "dead"
    :game/absent        "away"
 
@@ -330,8 +329,8 @@
    :badge/vote        "vote"
    :badge/ready       "done"
    :badge/decided     "has chosen"
-   :badge/mayor       "BM"
-   :badge/host        "GM"
+   :badge/mayor       "Mayor"
+   :badge/host        "Host"
    :badge/lover       "in love"
    :badge/waiting-for "Still waiting on"
 
