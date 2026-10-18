@@ -40,13 +40,16 @@
       "dev"))
 
 (defn running-commit
-  "The commit of the server that is running: the `werwolf.commit` property,
-   which the nix wrapper passes, else the one compiled in.
+  "The commit of the server that is running: WERWOLF_COMMIT in its
+   environment, else the one compiled in, else \"unknown\".
 
-   The nix build compiles the app with a stand-in for the commit, so the
-   expensive part of it is keyed on the code alone and a rebase that changes
-   nothing rebuilds nothing; only the small wrapper around it knows the
-   revision. See nix/package.nix."
+   The package carries no commit at all, so the same code is the same package
+   on every commit that does not change it: the NixOS module puts the commit in
+   the service's environment instead (and the preview controller in the pod's).
+   The nix build compiles with a stand-in, `@werwolf-commit@`, which must never
+   be shown; a run from source (bb dev, the browser suite) has none in its
+   environment and compiles git's answer in."
   []
-  (or (not-empty (System/getProperty "werwolf.commit"))
-      (build-commit)))
+  (or (not-empty (System/getenv "WERWOLF_COMMIT"))
+      (let [c (build-commit)] (when-not (str/starts-with? c "@") c))
+      "unknown"))

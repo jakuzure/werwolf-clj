@@ -76,6 +76,12 @@
     (testing "the heap leaves room for the JVM's own memory under the limit"
       (is (= "-Xmx88m" (get-in (env d) ["JDK_JAVA_OPTIONS" :value]))))
     (is (= "abc" (get-in d [:metadata :annotations :werwolf-previews/sha])))
+    (testing "the commit goes in as the environment: the image carries none"
+      (is (= "abc" (get-in (env d) ["WERWOLF_COMMIT" :value])))
+      (is (= "0123456" (get-in (env (some #(when (= "Deployment" (:kind %)) %)
+                                          (k8s/manifests config (assoc preview :sha "0123456789abcdef"))))
+                               ["WERWOLF_COMMIT" :value]))
+          "shortened as git shortens it"))
     (testing "rooms of its own on the shared LiveKit"
       (is (= "pr-42-" (get-in (env d) ["LIVEKIT_ROOM_PREFIX" :value])))
       (is (= "livekit" (get-in (env d) ["MEDIA_PROVIDER" :value]))))

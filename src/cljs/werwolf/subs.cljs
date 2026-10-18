@@ -304,6 +304,7 @@
        :abstained (count (filter (comp nil? val) votes))})))
 
 (rf/reg-sub ::ballot :<- [::view] (fn [v _] (ballot v)))
+(rf/reg-sub ::build (fn [db _] (:build db)))
 
 (defn table-record
   "The table's record across its games, for the end screen: one row per

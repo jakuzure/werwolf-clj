@@ -64,3 +64,11 @@
       (slurp-body resp)
       (is (= 200 (:status resp)) uri)
       (is (= type (get-in resp [:headers "Content-Type"])) uri))))
+
+(deftest the-server-says-which-build-it-is
+  (testing "the start page asks: the bundle carries no commit"
+    (let [resp (GET "/api/build")
+          body (:body resp)]
+      (is (= 200 (:status resp)))
+      (is (= "application/json" (get-in resp [:headers "content-type"])))
+      (is (re-matches #"\{\"version\":\"[0-9][^\"]*\",\"commit\":\"[0-9a-z]+\"\}" body) body))))

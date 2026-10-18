@@ -81,8 +81,23 @@
 
 (declare stored-dawn)
 
-(rf/reg-event-db ::init (fn [_ _] (assoc initial-db :sound/on? (chime/stored-on?)
-                                          :dawn/seen (stored-dawn))))
+(rf/reg-event-fx ::init (fn [_ _] {:db (assoc initial-db :sound/on? (chime/stored-on?)
+                                               :dawn/seen (stored-dawn))
+                                   ::fetch-build true}))
+
+(rf/reg-fx
+ ::fetch-build
+ ;; Which build is running, for the start page's footer: the server's answer,
+ ;; since the bundle carries no commit. A failure leaves the bundle's version.
+ (fn [_]
+   (try
+     (-> (js/fetch "/api/build")
+         (.then #(.json %))
+         (.then #(rf/dispatch [::build (js->clj % :keywordize-keys true)]))
+         (.catch (fn [_] nil)))
+     (catch :default _ nil))))
+
+(rf/reg-event-db ::build (fn [db [_ b]] (assoc db :build (select-keys b [:version :commit]))))
 
 (rf/reg-event-fx
  ::connected

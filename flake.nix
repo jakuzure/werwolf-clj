@@ -32,11 +32,11 @@
     {
       packages = forAll (system: pkgs: rec {
         werwolf = pkgs.callPackage ./nix/package.nix {
-          commit = self.shortRev or self.dirtyShortRev or "unknown";
           # package.json is the single source of the version; release-please
-          # bumps it when a release PR is merged. The commit is appended so two
-          # builds between releases never share a name.
-          version = "${(builtins.fromJSON (builtins.readFile ./package.json)).version}+${self.shortRev or self.dirtyShortRev or "unknown"}";
+          # bumps it when a release PR is merged. No commit: the same code is
+          # the same package on every commit (see nix/package.nix), and the
+          # module below tells the service which commit it is.
+          version = (builtins.fromJSON (builtins.readFile ./package.json)).version;
         };
         default = werwolf;
         # The PR preview controller (previews/, nix/previews-module.nix).
@@ -60,6 +60,7 @@
         imports = [ ./nix/module.nix ];
         services.werwolf.package =
           lib.mkDefault self.packages.${pkgs.stdenv.hostPlatform.system}.werwolf;
+        services.werwolf.commit = lib.mkDefault (self.shortRev or self.dirtyShortRev or null);
       };
       nixosModules.default = self.nixosModules.werwolf;
 

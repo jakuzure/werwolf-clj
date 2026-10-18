@@ -97,9 +97,12 @@
   [pod-memory]
   (max 32 (quot (- pod-memory non-heap) (* 1024 1024))))
 
-(defn- env [{:keys [livekit pod-memory]} n]
+(defn- env [{:keys [livekit pod-memory]} n sha]
   (into [(secret-env "TOKEN_SECRET" (object-name n) "token-secret")
-         {:name "JDK_JAVA_OPTIONS" :value (str "-Xmx" (heap-mib pod-memory) "m")}]
+         {:name "JDK_JAVA_OPTIONS" :value (str "-Xmx" (heap-mib pod-memory) "m")}
+         ;; Which commit this preview is, for its start page: the image carries
+         ;; none, so the same code is the same image on every commit.
+         {:name "WERWOLF_COMMIT" :value (subs (str sha) 0 (min 7 (count (str sha))))}]
         (if livekit
           [{:name "MEDIA_PROVIDER" :value "livekit"}
            {:name "LIVEKIT_URL" :value (:url livekit)}
@@ -137,7 +140,7 @@
                      [{:name "werwolf"
                        :image image
                        :imagePullPolicy "IfNotPresent"
-                       :env (env config pr)
+                       :env (env config pr sha)
                        :ports [{:containerPort 8080}]
                        :resources {:requests {:memory pod-memory-quantity}
                                    :limits {:memory pod-memory-quantity}}

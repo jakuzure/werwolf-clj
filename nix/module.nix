@@ -55,6 +55,18 @@ in
       description = "The werwolf package. The flake's nixosModules.werwolf sets this.";
     };
 
+    commit = mkOption {
+      type = types.nullOr types.str;
+      default = null;
+      example = "eb90632";
+      description = ''
+        The commit the package was built from, shown on the start page and in
+        the log. The package itself carries none, so the same code is the same
+        store path on every commit; the flake's nixosModules.werwolf sets this
+        to its own revision.
+      '';
+    };
+
     domain = mkOption {
       type = types.str;
       example = "werwolf-chrz.duckdns.org";
@@ -178,6 +190,8 @@ in
           MEDIA_PROVIDER = if voice.enable then "livekit" else "noop";
         } // lib.optionalAttrs voice.enable {
           LIVEKIT_URL = "wss://${cfg.domain}/livekit";
+        } // lib.optionalAttrs (cfg.commit != null) {
+          WERWOLF_COMMIT = cfg.commit;
         } // cfg.settings;
 
         serviceConfig = {

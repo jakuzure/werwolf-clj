@@ -35,7 +35,6 @@
 , zip
 , unzip
 , version
-, commit
 }:
 
 let
@@ -174,11 +173,8 @@ let
     derivationArgs.env.PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = "1";
   };
 
-  # The bundle shows "v<version> · <commit>", baked in by werwolf.build-info at
-  # compile time. Compiled with the real commit, the bundle would be rebuilt by
-  # every commit whatever it touched; compiled with this stand-in, it is rebuilt
-  # only when the frontend changes, and the server derivation writes the commit
-  # over the stand-in in the compiled output.
+  # Compiled into the app below in place of the commit, so the build is keyed
+  # on the code alone: werwolf.build-info/running-commit never shows it.
   commitPlaceholder = "@werwolf-commit@";
 
   frontend = stdenv.mkDerivation {
@@ -198,8 +194,6 @@ let
       (lib.fileset.intersection resources ../resources/public)
     ];
     nativeBuildInputs = [ jdk clj nodejs_22 ];
-
-    WERWOLF_COMMIT = commitPlaceholder;
 
     buildPhase = ''
       runHook preBuild
@@ -223,19 +217,14 @@ let
       runHook postInstall
     '';
   };
-  # The release version without the "+<commit>" the flake appends.
-  release = lib.head (lib.splitString "+" version);
-
-  # werwolf's own AOT classes, resources and the frontend in one small jar —
-  # compiled with the commit stand-in, like the frontend, and so keyed on the
-  # code alone. The commit used to be compiled in, and every commit built its
-  # own: the preview of a branch, the PR's merge commit and main after the
-  # merge each compiled the very same code again, because each was a different
-  # revision. Now a rebase or a merge that changes nothing finds this in the
-  # cache, and only the wrapper below is built per commit.
+  # werwolf's own AOT classes, resources and the frontend in one small jar,
+  # keyed on the code alone. The commit used to be compiled in, and every
+  # commit built its own: the preview of a branch, the PR's merge commit and
+  # main after the merge each compiled the very same code again, because each
+  # was a different revision.
   app = stdenv.mkDerivation {
     pname = "werwolf-clj-app";
-    version = release;
+    inherit version;
 
     src = source [
       ../deps.edn
@@ -266,35 +255,16 @@ let
     '';
   };
 in
-# The server as it is deployed, for one commit: the app jar with the commit
-# written over the stand-in where the bundle shows it, and the wrapper, which
-# also hands it to the server for its log (werwolf.build-info/running-commit).
-# Seconds to build; everything heavy is in `app`, `libs` and `frontend`.
+# The server: the app jar and the wrapper that runs it. Nothing in it names a
+# commit, so a commit that changes no code — CI, docs, a rebase, a merge — is
+# the very same store path, and is never built or fetched twice. Which commit
+# is running is the deployment's business: the NixOS module sets WERWOLF_COMMIT
+# in the service's environment, the preview controller in the pod's.
 stdenv.mkDerivation {
   pname = "werwolf-clj";
   inherit version;
 
   dontUnpack = true;
-  nativeBuildInputs = [ zip unzip ];
-
-  # Only the bundle's files carry the stand-in. The compiled server class
-  # carries it too, but a class file's strings are length-prefixed and cannot
-  # be patched in place; the server reads the property instead.
-  buildPhase = ''
-    runHook preBuild
-    cp ${app}/share/java/werwolf-clj.jar werwolf-clj.jar
-    chmod u+w werwolf-clj.jar
-    mkdir bundle
-    unzip -q werwolf-clj.jar 'public/*' -d bundle
-    (cd bundle
-     files=$(grep -rlF '${commitPlaceholder}' public || true)
-     [ -n "$files" ] || { echo "no ${commitPlaceholder} in the bundle" >&2; exit 1; }
-     for f in $files; do
-       substituteInPlace "$f" --replace-fail '${commitPlaceholder}' '${commit}'
-     done
-     zip -q ../werwolf-clj.jar $files)
-    runHook postBuild
-  '';
 
   # Same memory cap the Dockerfile uses: a fraction of whatever the service is
   # allowed, so a systemd MemoryMax is respected instead of overrun.
@@ -303,13 +273,13 @@ stdenv.mkDerivation {
   # werwolf.main is AOT-compiled with :gen-class.
   installPhase = ''
     runHook preInstall
-    install -Dm644 werwolf-clj.jar $out/share/java/werwolf-clj.jar
-    classpath="$out/share/java/werwolf-clj.jar:$(paste -sd: ${libs}/share/werwolf-clj/classpath)"
+    mkdir -p $out/share/java $out/bin
+    ln -s ${app}/share/java/werwolf-clj.jar $out/share/java/werwolf-clj.jar
+    classpath="${app}/share/java/werwolf-clj.jar:$(paste -sd: ${libs}/share/werwolf-clj/classpath)"
 
-    mkdir -p $out/bin
     cat > $out/bin/werwolf-clj <<EOF
     #!${runtimeShell}
-    exec "${jdk}/bin/java" -XX:MaxRAMPercentage=75 -Dwerwolf.commit=${commit} \\
+    exec "${jdk}/bin/java" -XX:MaxRAMPercentage=75 \\
       -cp "$classpath" \\
       werwolf.main "\$@"
     EOF
@@ -318,7 +288,7 @@ stdenv.mkDerivation {
   '';
 
   # jdk: the preview image (nix/preview-image.nix) must run on the same one.
-  passthru = { inherit app frontend libs sqlite-jdbc jdk commit; };
+  passthru = { inherit app frontend libs sqlite-jdbc jdk; };
 
   meta = {
     description = "Browser-based Werwolf game server";
