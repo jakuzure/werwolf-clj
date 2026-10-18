@@ -8,12 +8,13 @@
 
 (defn- plan [s] (mapv (juxt :role :state) (view/night-plan s)))
 
-(def ^:private six
-  "The automatic deck for six: a wolf, Seherin, Hexe, Jäger, Amor, a villager."
-  {0 :dorfbewohner 1 :werwolf 2 :hexe 3 :seherin 4 :amor 5 :jaeger})
+(def ^:private seven
+  "The automatic deck for seven: two wolves, Seherin, Hexe, Jäger, Amor, a
+   villager."
+  {0 :dorfbewohner 1 :werwolf 2 :hexe 3 :seherin 4 :amor 5 :jaeger 6 :werwolf})
 
 (deftest the-night-is-listed-in-calling-order
-  (let [s (tu/game-with six)]
+  (let [s (tu/game-with seven)]
     (is (= [[:amor :current] [:seherin :todo] [:werwolf :todo] [:hexe :todo]] (plan s)))
     (let [s (-> s
                 (exec! {:type :amor-link :player 4 :a 0 :b 5})
@@ -21,18 +22,19 @@
       (is (= [[:amor :done] [:seherin :done] [:werwolf :current] [:hexe :todo]] (plan s))))
     (testing "and everybody sees the same list: it names roles, never players"
       (is (= (:night-plan (engine/view-for s 0)) (:night-plan (engine/view-for s 1))))
-      (doseq [pid (range 6)] (is (nil? (engine/redaction-leaks? s pid)) (str pid))))))
+      (doseq [pid (range 7)] (is (nil? (engine/redaction-leaks? s pid)) (str pid))))))
 
 (deftest a-peaceful-first-night-lists-who-wakes
   (is (= [[:amor :current] [:seherin :todo]]
-         (plan (tu/game-with six {:first-night-kill? false})))))
+         (plan (tu/game-with seven {:first-night-kill? false})))))
 
 (deftest a-dead-role-is-not-called-and-not-listed
   (testing "a death turns the card over, so its absence from the night is public"
-    (let [s (-> (tu/game-with six)
+    (let [s (-> (tu/game-with seven)
                 (exec! {:type :amor-link :player 4 :a 0 :b 5})
                 (exec! {:type :seherin-inspect :player 3 :target 1})
                 (exec! {:type :werewolf-vote :player 1 :target 3})
+                (exec! {:type :werewolf-vote :player 6 :target 3})
                 (exec! {:type :hexe-pass :player 2}))
           s (reduce #(exec! %1 {:type :vote-abstain :player %2}) s (tu/alive s))]
       (is (= 2 (:night s)))

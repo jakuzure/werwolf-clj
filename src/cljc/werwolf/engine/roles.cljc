@@ -219,8 +219,12 @@
 (def default-composition
   "Number of werewolves by player count, following common Düsterwald practice.
    The remaining seats are filled with the special village roles (in this
-   priority order) and then plain Dorfbewohner."
-  {5 1, 6 1, 7 2, 8 2, 9 2, 10 2, 11 3, 12 3, 13 3, 14 3, 15 4, 16 4, 17 4, 18 4})
+   priority order) and then plain Dorfbewohner.
+
+   Two from six: one wolf against a Seherin, a Hexe, a Jäger and Amor was found
+   in the first look and his victim saved — a six-player game the village won
+   by default."
+  {5 1, 6 2, 7 2, 8 2, 9 2, 10 2, 11 3, 12 3, 13 3, 14 3, 15 4, 16 4, 17 4, 18 4})
 
 (def ^:const dieb-from
   "Table size at which a Dieb is dealt.
