@@ -1022,8 +1022,9 @@
           mallory (mk-sink)
           bob     (mk-sink)
           t0      1000000
-          try!    (fn [sink pw t] (room/join! ctx room-id {:name "M" :password pw
-                                                           :sink sink :now-ms t}))]
+          ;; One name per socket: a table refuses a second "M".
+          try!    (fn [sink pw t] (room/join! ctx room-id {:name (if (identical? sink bob) "Bob" "Mallory")
+                                                           :password pw :sink sink :now-ms t}))]
       (dotimes [i 5]
         (is (= :wrong-password (:error (try! mallory "falsch" (+ t0 i))))))
       (testing "the sixth guess in a minute is not even checked"

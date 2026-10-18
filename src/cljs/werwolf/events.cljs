@@ -651,6 +651,11 @@
     ;; overwrite a newer. This is precisely what :seq is for.
     (and n (:view/seq db) (< n (:view/seq db))) db
     :else (cond-> (assoc db :view view :view/seq n :screen :room)
+            ;; Out of a finished game into the next: the old chat goes with it,
+            ;; as it does on the server — see room/commit!.
+            (and (= :game-over (get-in db [:view :phase]))
+                 (not= :game-over (:phase view)))
+            (assoc :chat [])
             ;; The server has caught up with the last stepper tap, or the lobby
             ;; is over and there is nothing left to choose.
             (or (= (:deck view) (:deck/draft db))

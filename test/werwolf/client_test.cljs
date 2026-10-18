@@ -1005,6 +1005,26 @@
     (is (= [died] (sub/dawn-news v "ABCD:1")) "yesterday's reading does not count")
     (is (nil? (sub/dawn-news (assoc v :phase :night) nil)) "only while the day is young")))
 
+(deftest the-second-morning-tells-only-its-own-night
+  (let [d1 {:type :player/died :player 1 :cause :werwolf :role :jaeger}
+        d2 {:type :player/died :player 2 :cause :werwolf :role :hexe}
+        v  {:room-id "ABCD" :phase :discussion :night 2
+            :log [{:type :night/began :night 1} {:type :night/ended} d1 {:type :day/began}
+                  {:type :night/began :night 2} {:type :night/ended} d2 {:type :day/began}]}]
+    (is (= [d2] (sub/dawn-news v nil)))))
+
+(deftest a-busy-morning-loses-nobody
+  ;; The wolves' victim, a lover following them, the Jäger's shot and its
+  ;; victim: four entries, and the card used to keep the last three.
+  (let [entries [{:type :player/died :player 1 :cause :werwolf :role :jaeger}
+                 {:type :player/died :player 2 :cause :liebe :role :amor}
+                 {:type :jaeger/shot :player 1 :target 3}
+                 {:type :player/died :player 3 :cause :jaeger :role :seherin}]
+        v {:room-id "ABCD" :phase :election :night 1
+           :log (into [{:type :night/began :night 1} {:type :night/ended}] entries)}]
+    (is (= entries (sub/dawn-news v nil)))
+    (is (= entries (sub/latest-news (:log v))) "nor does the Zuletzt line")))
+
 (deftest the-table-record-ranks-wins-then-games
   (let [v {:players {1 {:name "Anna"} 2 {:name "Bert"} 3 {:name "Cem"}}
            :stats {:games 3

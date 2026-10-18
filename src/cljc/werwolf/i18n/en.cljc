@@ -242,6 +242,7 @@
    ;; -------------------------------------------------------------- game ---
    :game/dead          "dead"
    :game/absent        "away"
+   :game/left          "left"
 
    ;; ---------------------------------------------------------- absence ---
    :absence/title      (fn [n] (str "The game master (" n ") is away"))
@@ -259,6 +260,7 @@
    :game/log           "Chronicle"
    :game/chat          "Talk"
    :game/chat-hint     "Write a message…"
+   :game/chat-closed   "You cannot write right now"
    :game/waiting       "Waiting for the others…"
    :game/wolves-channel "Only the werewolves can hear you"
    :game/dead-channel   "Only the dead can hear you"
@@ -300,6 +302,7 @@
    :sound/turn-off    "Turn off the nightfall and daybreak chime"
    :sound/turn-on     "Turn on the nightfall and daybreak chime"
    :explain/setup       "The cards are dealt. Look at your role — the night begins shortly."
+   :explain/setup-narrator "The cards are dealt. Check the deal, then begin the night."
    :explain/night       "Everyone is asleep. Whoever is called wakes up and acts without giving themselves away."
    :explain/day-reveal  "Dawn breaks. You are about to learn what the night has done."
    :explain/election    "Elect a mayor. Their vote counts twice in every ballot."
@@ -350,7 +353,10 @@
    :record/won "won"
    :hexe/victim (fn [who] (str "🐺 The werewolves chose " who "."))
    :hexe/victim-you "🐺 The werewolves chose you."
-   :hexe/no-victim "🐺 The werewolves chose nobody tonight."
+   :hexe/no-victim "🐺 Nobody is dying of the werewolves tonight."
+   :hexe/healed (fn [who] (str "✓ You saved " who "."))
+   :hexe/healed-you "✓ You saved yourself."
+   :hexe/done "Done"
    :ballot/title     "The vote"
    :ballot/needed    (fn [n] (str "Condemned at " n " votes"))
    :ballot/none      "Nobody has a vote yet."
@@ -394,7 +400,6 @@
    :log/deck-auto     "The roles follow the number of players again"
    :log/amor-linked   "Amor has chosen two lovers"
    :log/night-began   "Night falls"
-   :log/night-quiet-first "The first night passes quietly — nobody dies"
    :log/night-quiet   "Nobody died during the night"
    :log/night-ended   "Dawn breaks"
    :log/day-began     "The village gathers"
@@ -510,6 +515,7 @@
    :error/already-joined   "You are already in this game"
    :error/room-full        "The room is full"
    :error/name-required    "Please enter a name"
+   :error/name-taken       "Somebody in this game already has that name — pick another"
    :error/code-required    "Please enter the room code"
    :error/not-in-room      "You are not in this game"
    :error/unknown-player   "No such seat"

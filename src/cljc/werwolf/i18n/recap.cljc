@@ -84,7 +84,11 @@
    the public log never carried for the first two, and the one a table most
    wants to argue about afterwards."
   [locale players round]
-  (vec (for [entry (:entries round)
+  ;; A death the entry before it already told — the Jäger's shot, the
+  ;; village's verdict — is left out, as in the Chronik: "chris erschießt
+  ;; Emil" then "Emil wurde vom Jäger erschossen" said one thing twice.
+  (vec (for [[prev entry] (map vector (cons nil (:entries round)) (:entries round))
+             :when (not (i18n/told-twice? prev entry))
              :let [[icon tone text] (line locale players entry round)]]
          (cond-> {:icon icon :tone tone :text text}
            (seq (:votes entry))
@@ -98,7 +102,7 @@
 (def ^:private known-causes
   "Causes with a phrase of their own. Anything else — a cause a newer engine
    invented — still reads as a death rather than as a missing key."
-  #{:werwolf :gift :liebe :lynch :jaeger :weisser :gm})
+  #{:werwolf :gift :liebe :lynch :jaeger :weisser :gm :left})
 
 (defn fate-text
   "How it ended for one player: survived, or the cause and the round."

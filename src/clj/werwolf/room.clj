@@ -137,8 +137,11 @@
                ;; Players, not seats: a Spielleiter takes no card, so he neither
                ;; fills the table nor counts towards it — the same count
                ;; `handle :join` refuses on.
+               ;; Somebody CONNECTED, not merely seated: a lobby whose last
+               ;; tab closed kept its seats until the sweep, and sat in the
+               ;; list for minutes as a room nobody would ever answer in.
                (when (and (= :lobby (:phase s))
-                          (seq (:players s))
+                          (some :connected? (vals (:players s)))
                           (< (count (engine/participant-ids s)) (:max-players s 18)))
                  (cond-> {:room-id     (:room-id s)
                           :players     (count (engine/participant-ids s))
@@ -248,7 +251,11 @@
                   (update :seq + (count events)))]
        (swap! (:rooms ctx) update room-id merge
               (cond-> (select-keys r' [:state :seq])
-                activity? (assoc :last-activity now)))
+                activity? (assoc :last-activity now)
+                ;; A rematch starts with an empty chat: the last game's wolves'
+                ;; whispers were still on the screen of somebody who is a
+                ;; villager now, and a reconnect would replay them.
+                (some #(= :game/reset (:type %)) events) (assoc :chat [])))
        (remember-recap! ctx room-id)
        (broadcast! ctx (room-of ctx room-id))
        ;; Last, and still under the lock: the clock gets to react to the new

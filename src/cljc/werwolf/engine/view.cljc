@@ -209,7 +209,8 @@
   {:id         (:id p)
    :name       (:name p)
    :alive?     (:alive? p)
-   :connected? (:connected? p)})
+   :connected? (:connected? p)
+   :left?      (boolean (:left? p))})
 
 (defn- night-view
   "Night bookkeeping a player may see.
@@ -235,15 +236,25 @@
           (assoc :protected (get-in state [:night-actions :protected])))
         {})
       (cond-> {}
-        ;; Wolves coordinate openly among themselves.
-        (and alive? (= :werwolf role-id))
+        ;; Wolves coordinate openly among themselves — the whole pack, the
+        ;; Weißer Werwolf included: he votes with them, so he must see where
+        ;; the votes stand. Asking for :werwolf alone left him voting blind.
+        (and alive? (= :werewolf (e/team-of-player state pid)))
         (assoc :werewolf-votes (get-in state [:night-actions :werewolf-votes] {}))
 
         ;; The Hexe must see the pending victim to decide on the heal.
         (and alive? (= :hexe role-id) (= :hexe cursor)
              (:sees-pending-deaths? (roles/role :hexe)))
         (assoc :pending-deaths (mapv #(select-keys % [:player :cause])
-                                     (:pending-deaths state)))))))
+                                     (:pending-deaths state)))
+
+        ;; And whom she saved tonight, if anybody. The heal takes the victim
+        ;; off the list above, which without this read as "the wolves chose
+        ;; nobody" a second after she had saved somebody. Her own act, so it
+        ;; tells her nothing she did not already know.
+        (and alive? (= :hexe role-id) (= :hexe cursor)
+             (some? (get-in state [:night-actions :hexe-heal])))
+        (assoc :healed (get-in state [:night-actions :hexe-heal]))))))
 
 ;; --------------------------------------------------------------- view ---
 

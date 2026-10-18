@@ -131,8 +131,10 @@ test.describe('a real game', () => {
     const target = (seer + 1) % pages.length;
     await seerPage.getByTestId(`seat-${target}`).click();
 
+    // Distinct players, not frames: every view after her look repeats what she
+    // learned, and a turn's fresh clock is one more view.
     await expect
-      .poll(() => foreignRoles(frames[seer], myIdFrom(frames[seer])).length,
+      .poll(() => new Set(foreignRoles(frames[seer], myIdFrom(frames[seer])).map((r) => r.pid)).size,
             { timeout: 15_000, message: 'the Seherin learns the role she looked at' })
       .toBe(1);
 
