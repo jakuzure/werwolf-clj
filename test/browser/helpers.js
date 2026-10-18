@@ -78,7 +78,7 @@ const DE = {
   start: 'Spiel starten',
   leave: 'Runde verlassen',
   leaveConfirm: 'Wirklich verlassen?',
-  voiceJoin: 'Sprache beitreten',
+  voiceJoin: 'Sprachchat beitreten',
   mute: 'Stumm schalten',
   unmute: 'Stummschaltung aufheben',
   voiceLeave: 'Verlassen',

@@ -126,7 +126,7 @@ test.describe('a real game', () => {
     const seerPage = pages[seer];
 
     // She acts first at night — order 100, ahead of the wolves.
-    await seerPage.getByRole('button', { name: 'Rolle aufdecken', exact: false }).click();
+    await seerPage.getByRole('button', { name: 'Rolle ansehen', exact: false }).click();
     // Arming shows the pick-a-player bar; then any other seat will do.
     const target = (seer + 1) % pages.length;
     await seerPage.getByTestId(`seat-${target}`).click();

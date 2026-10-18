@@ -55,7 +55,7 @@
    ;; ------------------------------------------------------------- lobby ---
    :lobby/title       "Lobby"
    :lobby/players     "Players"
-   :lobby/count       (fn [n mx mn] (str n " / " mx " players · it is most fun with " mn " or more"))
+   :lobby/count       (fn [n mx mn] (str n " / " mx " players" (when (< n mn) (str " · it is most fun with " mn " or more"))))
    :lobby/start       "Start the game"
    :lobby/need-more   "Waiting for more players"
    ;; The host may start below the recommended size. A nudge, not a gate: four
@@ -68,8 +68,8 @@
    :lobby/leave-confirm "Really leave?"
    :lobby/leave-cancel  "Stay"
    :lobby/mode               "Narrator"
-   :lobby/mode-narrated      "With a narrator: they do not play, see every role and guide the table through the game."
-   :lobby/mode-players       "Without a narrator: the game master plays along, with their switches on the side."
+   :lobby/mode-narrated      "The narrator gets no card, sees every role and guides the table through the game."
+   :lobby/mode-players       "The narrator plays along; their switches sit on the side."
    :lobby/narrator-is        (fn [n] (str "Narrator: " n))
    :lobby/you-narrate        "You are the narrator — you are dealt no role."
    :lobby/narrate            "I will narrate"
@@ -78,8 +78,8 @@
    :lobby/timer-switch-on    "Turn the time limit on"
    :lobby/timer-switch-off   "Turn the time limit off"
    :lobby/password           "Password"
-   :lobby/mode-short-narrated "With a narrator"
-   :lobby/mode-short-players "Everyone plays"
+   :lobby/mode-short-narrated "does not play"
+   :lobby/mode-short-players "plays along"
    :lobby/timer-short-on "on"
    :lobby/timer-short-off "off"
    :lobby/password-short-on "set"
@@ -96,7 +96,7 @@
    :lobby/password-change    "Change password"
    :lobby/password-clear     "Remove password"
    :lobby/make-narrator      "Make narrator"
-   :lobby/make-host          "Hand over the game master role"
+   :lobby/make-host          "Make narrator"
 
    ;; The roles. Only the special cards are chosen — villagers fill whatever
    ;; is left, so they are not a decision anybody makes.
@@ -104,7 +104,8 @@
    :deck/auto           "Automatic"
    :deck/custom         "Custom"
    :deck/auto-hint      "The roles follow the number of players."
-   :deck/custom-hint    "The game master has chosen the roles."
+   :deck/custom-hint    "The narrator has chosen the roles."
+   :deck/custom-hint-own "You have chosen the roles."
    :deck/fill           "fill the remaining seats"
    :deck/centre         "Middle (for the Dieb)"
    :deck/in-game        "In play"
@@ -152,13 +153,13 @@
 
    ;; ----------------------------------------------------------- actions ---
    :action/start-game      "Start the game"
-   :action/play-again      "Play again with this table"
+   :action/play-again      "Again with everyone"
    :action/leave           "Leave"
    :action/set-locale      "Language"
    :action/chat            "Say"
    :action/ready           "I'm done"
    :action/amor-link       "Choose the lovers"
-   :action/seherin-inspect "Reveal a role"
+   :action/seherin-inspect "Look at a role"
    :action/werewolf-vote   "Choose the victim"
    :action/beschuetzer-protect "Guard"
    :action/weisser-kill    "Tear apart a wolf"
@@ -170,33 +171,33 @@
    :action/hexe-pass       "Use neither potion"
    :action/jaeger-shoot    "Take the shot"
    :action/jaeger-pass     "Hold your fire"
-   :action/elect           "Elect as Bürgermeister"
+   :action/elect           "Elect as mayor"
    :action/elect-abstain   "Abstain"
    :action/mayor-appoint   "Name a successor"
    :action/mayor-decline   "Name nobody"
    :action/vote            "Condemn"
    :action/vote-abstain    "Abstain"
    :action/begin-night     "Begin the first night"
-   :action/advance-phase   "Next phase (GM)"
-   :action/claim-host      "Take over as game master"
-   :action/gm-toggle-narrated "Narrator mode (GM)"
-   :action/gm-toggle-timer "Time limit on/off (GM)"
-   :action/gm-transfer-host "Hand over the game master role (GM)"
-   :action/gm-set-deck     "Choose roles (GM)"
-   :action/gm-auto-deck    "Automatic roles (GM)"
-   :action/gm-force-kill   "Kill (GM)"
-   :action/gm-revive       "Revive (GM)"
-   :action/gm-skip-role    "Skip role (GM)"
-   :action/gm-set-phase    "Set phase (GM)"
-   :action/gm-reassign-role "Reassign role (GM)"
-   :action/gm-pause        "Pause the clock (GM)"
-   :action/gm-resume       "Resume the clock (GM)"
-   :action/gm-add-time     "+60 s (GM)"
+   :action/advance-phase   "Next phase"
+   :action/claim-host      "Become narrator"
+   :action/gm-toggle-narrated "Narrator mode"
+   :action/gm-toggle-timer "Time limit on/off"
+   :action/gm-transfer-host "Hand over the narrator role"
+   :action/gm-set-deck     "Choose roles"
+   :action/gm-auto-deck    "Automatic roles"
+   :action/gm-force-kill   "Kill"
+   :action/gm-revive       "Revive"
+   :action/gm-skip-role    "Skip role"
+   :action/gm-set-phase    "Set phase"
+   :action/gm-reassign-role "Reassign role"
+   :action/gm-pause        "Pause the clock"
+   :action/gm-resume       "Resume the clock"
+   :action/gm-add-time     "+60 s"
 
    ;; ---------------------------------------------------------- removing ---
    ;; The host takes somebody out of the lobby: a ghost seat, a typo, a host
    ;; who was replaced while away. Two taps, like leaving.
-   :action/gm-kick    "Remove (GM)"
+   :action/gm-kick    "Remove"
    :kick/button       "Remove"
    :kick/confirm      "Really remove?"
    :log/kicked        (fn [n] (str n " was removed from the game"))
@@ -213,8 +214,8 @@
    :gm/confirm        "Sure?"
    :gm/clock          "Clock"
    :gm/nothing        "Nothing to control right now."
-   :gm/timer-on       "Turn the time limit on (GM)"
-   :gm/timer-off      "Turn the time limit off (GM)"
+   :gm/timer-on       "Turn the time limit on"
+   :gm/timer-off      "Turn the time limit off"
 
    ;; ---------------------------------------------------------- narrator ---
    :narrator/title    "Narrator"
@@ -245,9 +246,9 @@
    :game/left          "left"
 
    ;; ---------------------------------------------------------- absence ---
-   :absence/title      (fn [n] (str "The game master (" n ") is away"))
-   :absence/claim-hint "Anyone at the table can take over as game master."
-   :absence/clock-hint "The clock has taken over: every phase ends on its time limit until the game master is back."
+   :absence/title      (fn [n] (str "The narrator (" n ") is away"))
+   :absence/claim-hint "Anyone at the table can become narrator."
+   :absence/clock-hint "The clock has taken over: every phase ends on its time limit until the narrator is back."
    :game/your-role     "Your role"
    :bar/menu           "Menu"
    :bar/room           "Room"
@@ -266,9 +267,8 @@
    :game/dead-channel   "Only the dead can hear you"
    :game/narrator-channel "Everyone hears you — you are the narrator"
    :game/paused         "Clock paused"
-   :game/new-round      "Back — new game"
-   :game/over-hint      "Every role is revealed now."
-   :game/play-again-wait "The host can start another round with all of you."
+   :game/new-round      "Back to the start"
+   :game/play-again-wait "The narrator can start another game with all of you."
    :game/dead-hint      "You are dead — you are only watching now."
 
    ;; ------------------------------------------------------------- turn ---
@@ -306,15 +306,17 @@
    :explain/night       "Everyone is asleep. Whoever is called wakes up and acts without giving themselves away."
    :explain/day-reveal  "Dawn breaks. You are about to learn what the night has done."
    :explain/election    "Elect a mayor. Their vote counts twice in every ballot."
-   :explain/discussion  "Talk it over: who do you not trust? Say when you are done."
+   :explain/discussion  "Talk it over: who do you not trust? Once you have said enough, tap “I'm done”."
    :explain/trial       (fn [_] "Talk it over and vote on who is condemned. You can change your vote until everyone has voted.")
    :explain/first-discussion "Nobody votes today. Talk about the night and about whom you trust. Once you have said enough, tap “I'm done” – when everyone is, night falls."
    :explain/day-resolve "The verdict falls."
    :explain/reaction    "Someone who just died has one last move. Everyone waits for them."
+   :explain/reaction-jaeger "The Jäger has died and takes one last shot. Everyone waits for it."
+   :explain/reaction-mayor "The mayor has died and names who takes over the office."
    :step/night       "Night"
    :step/day-reveal  "Dawn"
    :step/election    "Election"
-   :step/discussion  "Debate"
+   :step/discussion  "Discussion"
    :step/day-resolve "Verdict"
 
    ;; ------------------------------------------------------------ voice ---
@@ -326,8 +328,8 @@
    :voice/in-call        "in call"
    :voice/in-call-list   "In the call"
    :voice/nobody-in-call "Nobody is in the call yet."
-   :voice/title          "Voice"
-   :voice/join           "🎧 Join voice"
+   :voice/title          "Voice chat"
+   :voice/join           "🎧 Join voice chat"
    :voice/joining        "Connecting…"
    :voice/leave          "Leave"
    :voice/mute           "Mute"
@@ -368,7 +370,7 @@
    :badge/ready       "done"
    :badge/decided     "has chosen"
    :badge/mayor       "Mayor"
-   :badge/host        "Host"
+   :badge/host        "Narrator"
    :badge/lover       "in love"
    :badge/waiting-for "Still waiting on"
 
@@ -383,20 +385,20 @@
    :log/left          (fn [n] (str n " left the game"))
    :log/disconnected  (fn [n] (str n " is away"))
    :log/reconnected   (fn [n] (str n " is back"))
-   :log/host-changed  (fn [n] (str n " is now the game master"))
-   :log/host-claimed  (fn [n] (str n " takes over as game master"))
-   :log/host-absent   (fn [n] (str "The game master (" n ") is away"))
+   :log/host-changed  (fn [n] (str n " is now the narrator"))
+   :log/host-claimed  (fn [n] (str n " becomes the narrator"))
+   :log/host-absent   (fn [n] (str "The narrator (" n ") is away"))
    :log/host-returned (fn [n] (str n " is back and running the game again"))
    :log/game-started  "The first night falls"
    :log/game-started-setup "The cards are dealt — the narrator is preparing the first night"
-   :log/narrated-on   "The game master narrates and does not play"
-   :log/narrated-off  "The game master plays along"
+   :log/narrated-on   "The narrator guides the game and does not play"
+   :log/narrated-off  "The narrator plays along"
    :log/timer-on      "The clock is running — every phase has a time limit"
-   :log/timer-off     "The clock is off — the game master sets the pace"
-   :log/timer-on-absent "The clock takes over — without a game master every phase ends on its time limit"
+   :log/timer-off     "The clock is off — the narrator sets the pace"
+   :log/timer-on-absent "The clock takes over — without a narrator every phase ends on its time limit"
    :log/room-locked   "The room is now password protected"
    :log/room-unlocked "The room no longer needs a password"
-   :log/deck-set      (fn [d] (str "The game master chooses the roles: " d))
+   :log/deck-set      (fn [d] (str "The narrator chooses the roles: " d))
    :log/deck-auto     "The roles follow the number of players again"
    :log/amor-linked   "Amor has chosen two lovers"
    :log/night-began   "Night falls"
@@ -417,7 +419,8 @@
    :log/died-lynch    (fn [n] (str n " was condemned by the village"))
    :log/died-jaeger   (fn [n] (str n " was shot by the Jäger"))
    :log/died-weisser  (fn [n] (str n " was torn apart by the Weißer Werwolf"))
-   :log/died-gm       (fn [n] (str n " was removed by the game master"))
+   :log/died-gm       (fn [n] (str n " was removed by the narrator"))
+   :log/died-left (fn [n] (str n " left the game and is out"))
    :log/died          (fn [n] (str n " died"))
 
    :log/revived       (fn [n] (str n " lives again"))
@@ -430,10 +433,10 @@
    :log/no-majority   "No majority — the village condemns nobody"
    ;; The election. Public, because the entire point of the office is that the
    ;; table knows whose vote counts twice.
-   :log/mayor-elected   (fn [n] (str n " was elected Bürgermeister"))
-   :log/mayor-none      "The village could not agree on a Bürgermeister"
-   :log/mayor-appointed (fn [n] (str n " takes over as Bürgermeister"))
-   :log/mayor-vacated   "The office of Bürgermeister is left empty"
+   :log/mayor-elected   (fn [n] (str n " was elected mayor"))
+   :log/mayor-none      "The village could not agree on a mayor"
+   :log/mayor-appointed (fn [n] (str n " takes over as mayor"))
+   :log/mayor-vacated   "The office of mayor is left empty"
    :log/nominated     (fn [n] (str n " stands accused"))
    :log/timed-out     (fn [p] (str "Time ran out for " p))
    ;; What the game master actually did. Only for the overrides that would
@@ -443,12 +446,12 @@
    ;; The new role is deliberately NOT here. The whole table reads the
    ;; chronicle — that an override happened concerns everyone, what the card now
    ;; says concerns one player. See `handle :gm/reassign-role`.
-   :log/gm-forced     "The game master intervenes"
-   :log/gm-skip-role  (fn [r] (str "The game master skips the " r))
-   :log/gm-set-phase  (fn [p] (str "The game master sets the phase to " p))
-   :log/gm-reassign-role (fn [n] (str n " was given a new role by the game master"))
-   :log/gm-advance-phase (fn [p] (str "The game master ends: " p))
-   :log/clock-paused  "The game master pauses the clock"
+   :log/gm-forced     "The narrator intervenes"
+   :log/gm-skip-role  (fn [r] (str "The narrator skips the " r))
+   :log/gm-set-phase  (fn [p] (str "The narrator sets the phase to " p))
+   :log/gm-reassign-role (fn [n] (str n " was given a new role by the narrator"))
+   :log/gm-advance-phase (fn [p] (str "The narrator ends: " p))
+   :log/clock-paused  "The narrator pauses the clock"
    :log/clock-resumed "The clock is running again"
    :log/win-village   "The village wins"
    :log/win-werewolf  "The werewolves win"
@@ -480,11 +483,12 @@
    :recap/cause-lynch  "condemned by the village"
    :recap/cause-jaeger "shot by the Jäger"
    :recap/cause-weisser "torn apart by the Weißer Werwolf"
-   :recap/cause-gm     "removed by the game master"
+   :recap/cause-gm     "removed by the narrator"
+   :recap/cause-left "left the game"
    :recap/cause-other  "died"
    :recap/dealt        (fn [r] (str "dealt " r))
    :recap/lover        "in love"
-   :recap/mayor        "Bürgermeister"
+   :recap/mayor        "Mayor"
    :recap/dieb-took    (fn [n r] (str n " takes the " r " card"))
    :recap/dieb-kept    (fn [n] (str n " stays the Dieb"))
    :recap/amor-linked  (fn [a b] (str "Amor makes " a " and " b " fall in love"))
@@ -498,7 +502,7 @@
    :recap/hexe-healed  (fn [n t] (str n " saves " t " with the healing potion"))
    :recap/hexe-poisoned (fn [n t] (str n " poisons " t))
    :recap/nominated    (fn [by t] (str by " accuses " t))
-   :recap/gm-reassigned (fn [n from to] (str "The game master swaps " n "'s card: " from " → " to))
+   :recap/gm-reassigned (fn [n from to] (str "The narrator swaps " n "'s card: " from " → " to))
    :recap/votes        (fn [v] (str "Votes: " v))
    :recap/abandoned    "Nobody came back — the game was ended without a winner"
 
@@ -529,7 +533,7 @@
    :error/not-allowed      "You cannot do that right now"
    :error/invalid-target   "That target is not allowed"
    :error/already-in-room  "You are already in a game"
-   :error/not-host         "Only the game master can do that"
+   :error/not-host         "Only the narrator can do that"
    :error/password-required "This room has a password — please enter it"
    :error/wrong-password    "Wrong password"
    :error/too-many-attempts "Too many attempts — please wait a minute"

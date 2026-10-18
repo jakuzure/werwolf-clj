@@ -15,7 +15,7 @@ const { expect } = require('@playwright/test');
 
 const ACT = {
   start:        /^Spiel starten/,
-  inspect:      /^Rolle aufdecken/,
+  inspect:      /^Rolle ansehen/,
   eat:          /^Opfer wählen/,
   guard:        /^Schützen/,
   hexePass:     /^Keinen Trank benutzen/,

@@ -361,6 +361,11 @@
      ;; Only surfaced when this player is the one who owes a reaction.
      :awaiting-reaction (when (and reaction (= pid (:player reaction)))
                           (:type reaction))
+     ;; WHICH last move the table waits for, for everybody: the dead player's
+     ;; card is turned over at death, so "der Jäger legt an" reveals nothing.
+     ;; Only while one is awaited: a Bürgermeister whose death ended the game
+     ;; leaves his succession on the stack, and the end screen has no use for it.
+     :reaction-type (when (= :reaction (:phase state)) (:type reaction))
 
      ;; ---- night bookkeeping, narrowly scoped ----
      :night-info  (night-view state pid)
