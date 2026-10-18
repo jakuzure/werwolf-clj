@@ -406,26 +406,37 @@
 
       :else (fire! action picks'))))
 
+(defn- confirm-pick
+  "The second tap for a move that kills, inside the card that holds the moves.
+   Red, and it names the player, so what is about to happen is read before it
+   happens.
+
+   It used to be a bar across the top of the page, while every card on the
+   board still glowed orange. A Jäger who tapped Fritz saw the board asking
+   again, tapped Dora to answer it, and his time ran out on the second
+   question: the answer to the first had been a scroll away."
+  []
+  (let [{:keys [action picks]} (pending)
+        players @(rf/subscribe [::sub/players])]
+    [:div {:class "rounded-lg bg-rose-600 text-white px-3 py-3 space-y-2 shadow-lg"
+           :data-testid "confirm-pick"}
+     [:div {:class "font-bold"}
+      (t :target/confirm (action-name action) (get-in players [(first picks) :name]))]
+     [:div {:class "flex flex-wrap gap-2"}
+      [btn (t :target/yes) #(fire! action picks) {:tone :inverse :testid "confirm-yes"}]
+      [btn (t :target/repick) #(rf/dispatch [::ev/form-set :pending {:action action :picks []}])
+       {:tone :ghost}]]]))
+
 (defn- target-prompt
-  "The mode indicator. Without this, arming an action was invisible and the
-   player was left wondering why the board had stopped responding."
+  "The mode indicator while a move waits for its player. Without this, arming an
+   action was invisible and the player was left wondering why the board had
+   stopped responding. Sticky under the top bar, not behind it. The second tap
+   of a killing move is not here but in the move's own card: `confirm-pick`."
   []
   (when-let [{:keys [action picks confirm?]} (pending)]
-    (let [arity (get @(rf/subscribe [::sub/arity]) action 1)
-          players @(rf/subscribe [::sub/players])]
-      (if confirm?
-        ;; The second tap. Red, and it names the player, so what is about to
-        ;; happen is read before it happens.
-        [:div {:class "sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3
-                       rounded-lg bg-rose-600 text-white px-4 py-3 shadow-lg"
-               :data-testid "confirm-pick"}
-         [:div {:class "font-bold"}
-          (t :target/confirm (action-name action) (get-in players [(first picks) :name]))]
-         [:div {:class "flex gap-2"}
-          [btn (t :target/repick) #(rf/dispatch [::ev/form-set :pending {:action action :picks []}])
-           {:tone :ghost}]
-          [btn (t :target/yes) #(fire! action picks) {:tone :inverse :testid "confirm-yes"}]]]
-      [:div {:class "sticky top-0 z-10 flex items-center justify-between gap-3
+    (let [arity (get @(rf/subscribe [::sub/arity]) action 1)]
+      (when-not confirm?
+      [:div {:class "sticky top-16 z-20 flex items-center justify-between gap-3
                      rounded-lg bg-amber-500 text-slate-900 px-4 py-3 shadow-lg"}
        [:div
         [:div {:class "font-bold"} (action-name action)]
@@ -718,7 +729,7 @@
         narrator-info @(rf/subscribe [::sub/narrator-info])
         known @(rf/subscribe [::sub/known-roles])
         votes @(rf/subscribe [::sub/votes])
-        {armed :action :keys [picks]} (pending)
+        {armed :action :keys [picks confirm?]} (pending)
         ;; Nothing armed: a tap still makes the one move that wants a player.
         ;; Such a card invites the tap, but the board is not put into a mode —
         ;; the others are not dimmed, nothing has been chosen yet.
@@ -752,7 +763,10 @@
     [:div {:class (str "rounded-xl border-2 p-3 transition select-none "
                        (cond
                          picked?      "border-amber-400 bg-amber-500/20 "
-                         (and selectable? implicit)
+                         ;; Asked to confirm: the question is in the moves'
+                         ;; card. Another card may still be tapped to choose
+                         ;; again, but none of them calls for it.
+                         (and selectable? (or implicit confirm?))
                          (str (if me? "border-indigo-500 " "border-slate-600 ")
                               "bg-slate-800 cursor-pointer hover:border-amber-400 hover:bg-slate-700 ")
                          selectable?  "border-amber-400 bg-slate-800 cursor-pointer hover:bg-slate-700 "
@@ -874,6 +888,7 @@
         arity   @(rf/subscribe [::sub/arity])
         players @(rf/subscribe [::sub/players])
         armed (:action (pending))
+        confirm? (:confirm? (pending))
         needs-target? (fn [a] (seq (get targets a)))
         ;; The one player a move can go to, when there is only one: the Hexe's
         ;; healing potion on the wolves' victim. Named on the button, so the
@@ -925,7 +940,8 @@
        (when (and (not armed) (tap-action))
          [:div {:class "text-sm opacity-90" :data-testid "tap-hint"}
           (str "👆 " (t :target/tap))])
-       [:div {:class "flex flex-wrap gap-2"}
+       (when confirm? [confirm-pick])
+       [:div {:class (str "flex flex-wrap gap-2" (when confirm? " hidden"))}
        (for [a plain
              :let [one (only a)]]
          ^{:key (str a)}
