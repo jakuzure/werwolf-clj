@@ -291,9 +291,7 @@
    :explain/day-reveal  "Dawn breaks. You are about to learn what the night has done."
    :explain/election    "Elect a mayor. Their vote counts twice in every ballot."
    :explain/discussion  "Talk it over: who do you not trust? Say when you are done."
-   :explain/trial       (fn [n] (str "Talk it over and vote: who should be condemned? "
-                                     "Only someone with at least " n " votes is. "
-                                     "You can change your vote until everyone has voted."))
+   :explain/trial       (fn [_] "Talk it over and vote on who is condemned. You can change your vote until everyone has voted.")
    :explain/first-discussion "Get to know each other. Nobody is accused today — say when you are done, and the night falls."
    :explain/day-resolve "The verdict falls."
    :explain/reaction    "Someone who just died has one last move. Everyone waits for them."
@@ -328,6 +326,11 @@
    :target/hint       "Click a player below"
 
    ;; ------------------------------------------------------------ badges ---
+   :ballot/title     "The vote"
+   :ballot/needed    (fn [n] (str "Condemned at " n " votes"))
+   :ballot/none      "Nobody has a vote yet."
+   :ballot/mayor     "The mayor's vote counts twice"
+   :ballot/abstained (fn [n] (str n (if (= 1 n) " abstention" " abstentions")))
    :badge/votes       "votes"
    :badge/vote        "vote"
    :badge/ready       "done"

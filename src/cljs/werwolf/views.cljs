@@ -1713,6 +1713,34 @@
       [:div {:class "flex flex-wrap gap-2" :data-testid "game-leave"}
        [leave-button]])))
 
+(defn- ballot-panel
+  "The day's vote at a glance: a bar for everybody with votes, filling towards
+   the majority it takes, so the table sees who is close and how close. The
+   card badges said \"3 Stimmen\" and left the reader to know the threshold."
+  []
+  (when-let [{:keys [needed rows abstained]} @(rf/subscribe [::sub/ballot])]
+    [:section {:class "rounded-xl border border-amber-800/60 bg-amber-950/20 p-3 space-y-2"
+               :data-testid "ballot"}
+     [:div {:class "flex items-baseline justify-between gap-2"}
+      [:h3 {:class "text-sm font-bold text-amber-200"} (str "⚖️ " (t :ballot/title))]
+      [:span {:class "text-xs text-amber-200/80"} (t :ballot/needed needed)]]
+     (if (empty? rows)
+       [:p {:class "text-sm text-slate-400"} (t :ballot/none)]
+       [:ul {:class "space-y-1.5"}
+        (for [{:keys [id name count mayor?]} rows
+              :let [enough? (>= count needed)]]
+          ^{:key id}
+          [:li {:data-testid (str "ballot-" id)}
+           [:div {:class "flex justify-between text-sm"}
+            [:span {:class "truncate"} name (when mayor? [:span {:title (t :ballot/mayor)} " 👑"])]
+            [:span {:class (str "font-mono " (if enough? "text-rose-300" "text-slate-300"))}
+             (str count " / " needed)]]
+           [:div {:class "h-2 rounded-full bg-slate-800 overflow-hidden"}
+            [:div {:class (str "h-full rounded-full " (if enough? "bg-rose-500" "bg-amber-500"))
+                   :style {:width (str (min 100 (* 100 (/ count needed))) "%")}}]]])])
+     (when (pos? abstained)
+       [:p {:class "text-xs text-slate-400"} (t :ballot/abstained abstained)])]))
+
 (defn game []
   ;; On a phone this is one column, and its ORDER is a design decision rather
   ;; than a side effect of the desktop grid. It used to be: role, actions, GM
@@ -1748,6 +1776,8 @@
    [:div {:class "flex flex-col gap-4 lg:grid lg:grid-cols-5 lg:gap-4"}
     [:div {:class "contents lg:block lg:col-span-3 lg:space-y-4"}
      [:div {:class "order-1 empty:hidden"} [game-over-panel]]
+     ;; First on a phone during the vote: it is what everybody is watching.
+     [:div {:class "order-1 empty:hidden"} [ballot-panel]]
      [:div {:class "order-3 empty:hidden"} [me-panel]]
      ;; On your turn the task jumps above your role card, straight under the
      ;; stage that says it is your turn: the answer to "what do I do" should not

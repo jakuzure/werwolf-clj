@@ -931,3 +931,17 @@
   (is (= :hexe (sub/next-up [{:role :seherin :state :done} {:role :werwolf :state :current}
                              {:role :hexe :state :todo}])))
   (is (nil? (sub/next-up [{:role :hexe :state :current}]))))
+
+(deftest the-ballot-counts-as-the-verdict-does
+  (let [v {:phase :discussion :trial? true :votes-needed 3 :mayor 4
+           :players {1 {:name "Anna"} 2 {:name "Bert"} 3 {:name "Cem"} 4 {:name "Dana"}}
+           :votes {1 2, 3 2, 4 3, 2 nil}}]
+    (is (= {:needed 3
+            :rows [{:id 2 :name "Bert" :count 2 :mayor? false}
+                   {:id 3 :name "Cem" :count 2 :mayor? true}]
+            :abstained 1}
+           (sub/ballot v))
+        "the Bürgermeister's vote counts twice, abstentions are counted apart")
+    (testing "only while the ballot is open"
+      (is (nil? (sub/ballot (assoc v :trial? false))))
+      (is (nil? (sub/ballot (assoc v :phase :night)))))))
