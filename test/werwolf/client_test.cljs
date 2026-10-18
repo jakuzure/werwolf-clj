@@ -915,3 +915,19 @@
       (is (true? (sub/voted? (assoc view :votes {1 nil}))) "an abstention too")
       (is (false? (sub/voted? (assoc view :trial? false :votes {1 2})))
           "the first day has no ballot to have cast"))))
+
+(deftest asleep-is-night-with-nothing-to-do-and-not-your-turn
+  (let [v {:phase :night :night-cursor :hexe :me {:id 1 :alive? true :role :seherin}}]
+    (is (true? (sub/asleep? v false)))
+    (is (false? (sub/asleep? v true)) "with a move to make you are awake")
+    (is (false? (sub/asleep? (assoc v :phase :discussion) false)))
+    (is (false? (sub/asleep? (assoc-in v [:me :alive?] false) false)) "the dead watch")
+    (is (false? (sub/asleep? (assoc-in v [:me :narrator?] true) false)))
+    (testing "a wolf who has voted waits for the pack, awake"
+      (is (false? (sub/asleep? (assoc v :night-cursor :werwolf :me {:id 1 :alive? true :role :werwolf}) false)))
+      (is (false? (sub/asleep? (assoc v :night-cursor :werwolf :me {:id 1 :alive? true :role :weisser-werwolf}) false))))))
+
+(deftest next-up-is-the-first-role-still-to-come
+  (is (= :hexe (sub/next-up [{:role :seherin :state :done} {:role :werwolf :state :current}
+                             {:role :hexe :state :todo}])))
+  (is (nil? (sub/next-up [{:role :hexe :state :current}]))))

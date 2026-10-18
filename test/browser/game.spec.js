@@ -177,8 +177,13 @@ test.describe('a real game', () => {
     await expect(de.getByText('Chronik').first()).toBeVisible();
     await expect(en.getByText('Chronicle').first()).toBeVisible();
 
-    // And names are DATA, not language: Anna is Anna in both.
-    await expect(de.getByText('Anna').first()).toBeVisible();
-    await expect(en.getByText('Anna').first()).toBeVisible();
+    // And names are DATA, not language: Anna is Anna in both. At night a
+    // sleeping player's board is folded away, so open it the way they would.
+    for (const p of [de, en]) {
+      const folded = p.getByTestId('board-folded');
+      if (await folded.count()) await folded.locator('summary').click();
+    }
+    await expect(de.getByTestId('seat-0').getByText('Anna')).toBeVisible();
+    await expect(en.getByTestId('seat-0').getByText('Anna')).toBeVisible();
   });
 });

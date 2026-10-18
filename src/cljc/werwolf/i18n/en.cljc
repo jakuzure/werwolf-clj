@@ -276,8 +276,11 @@
    ;; Kept free of "the village" and "werewolves" for the same reason as in
    ;; German: those words belong to outcomes.
    :stage/round       (fn [n] (str "Round " n))
-   :stage/called      (fn [role] (str "Called: " role))
-   :stage/call        (fn [role] (str "Call: " role))
+   :stage/called-label "Tonight calls"
+   :stage/call-label "Call, in order"
+   :turn/asleep "You are asleep"
+   :turn/asleep-next (fn [role] (str "Next up: " role))
+   :board/show (fn [n] (str "Show the board (" n ")"))
    :stage/latest      "Latest"
    :stage/progress    "Round progress"
    :stage/interrupted "interrupted"

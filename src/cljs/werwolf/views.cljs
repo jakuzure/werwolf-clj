@@ -438,6 +438,8 @@
         waiting  @(rf/subscribe [::sub/waiting-for])
         me       @(rf/subscribe [::sub/me-view])
         narrator? @(rf/subscribe [::sub/narrator?])
+        asleep?  @(rf/subscribe [::sub/asleep?])
+        plan     @(rf/subscribe [::sub/night-plan])
         deal-problem (:deal-problem @(rf/subscribe [::sub/narrator-info]))]
     (when-not (#{:lobby :game-over} phase)
       (let [[tone headline detail]
@@ -465,6 +467,14 @@
               can-act?
               ["border-emerald-500 bg-emerald-950/50 text-emerald-100"
                (t :turn/yours) (t :turn/hint)]
+
+              ;; Asleep: what the night is doing and what comes next, which is
+              ;; all a sleeping player can use.
+              asleep?
+              ["border-indigo-800 bg-indigo-950/40 text-indigo-100"
+               (str "😴 " (t :turn/asleep))
+               (when-let [r (sub/next-up plan)]
+                 (t :turn/asleep-next (role-name r)))]
 
               :else
               ["border-slate-700 bg-slate-900/60 text-slate-400"
@@ -723,10 +733,19 @@
    it the table heard a voice with no seat to put it to."
   []
   (let [view @(rf/subscribe [::sub/view])
-        narrator (:narrator view)]
-    [:div {:class "grid sm:grid-cols-2 gap-2"}
-     (for [[id p] (sort-by (fn [[id]] [(if (= id narrator) 0 1) id]) (:players view))]
-       ^{:key id} [player-card (assoc p :id id)])]))
+        narrator (:narrator view)
+        asleep? @(rf/subscribe [::sub/asleep?])
+        grid [:div {:class "grid sm:grid-cols-2 gap-2"}
+              (for [[id p] (sort-by (fn [[id]] [(if (= id narrator) 0 1) id]) (:players view))]
+                ^{:key id} [player-card (assoc p :id id)])]]
+    ;; Folded while you sleep: a whole board nobody may touch is noise at
+    ;; night. One tap opens it, for whoever wants to brood over it anyway.
+    (if asleep?
+      [:details {:class "group" :data-testid "board-folded"}
+       [:summary {:class "cursor-pointer select-none text-sm text-slate-400 hover:text-slate-200 py-1"}
+        (t :board/show (count (:players view)))]
+       [:div {:class "mt-2"} grid]]
+      grid)))
 
 ;; ------------------------------------------------------------------ actions ---
 
@@ -755,6 +774,9 @@
       ;; At the end there is nothing left to do for anyone, and the stage says
       ;; so with the winner; repeating it as a grey shrug is noise.
       (and (empty? plain) (= :game-over @(rf/subscribe [::sub/phase]))) nil
+
+      ;; At night the turn banner already says "you are asleep".
+      (and (empty? plain) (= :night @(rf/subscribe [::sub/phase]))) nil
 
       (empty? plain)
       [:div {:class "text-sm text-slate-500"} (t :game/nothing-to-do)]
@@ -1167,6 +1189,31 @@
          [:span {:class "text-slate-100"}
           (str/join " · " (map :text (reverse rows)))]]))))
 
+(defn- night-strip
+  "The night as the narrator would run it: every role it calls tonight, in
+   order, the one being called lit up and the finished ones ticked. Only the
+   role used to be shown, so nobody could tell how far the night had come or
+   that the Hexe was still to wake. Built by the server from public facts
+   alone — see view/night-plan."
+  [narrator?]
+  (let [plan @(rf/subscribe [::sub/night-plan])]
+    [:div {:class "space-y-1" :data-testid "night-strip"}
+     ;; The Spielleiter reads it as his cue, everybody else as news.
+     [:div {:class "text-xs text-slate-400"} (t (if narrator? :stage/call-label :stage/called-label))]
+     [:ol {:class "flex flex-wrap items-center gap-1.5"}
+      (for [{:keys [role state]} plan]
+        ^{:key (str role)}
+        [:li {:class (str "inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-sm "
+                          (case state
+                            :current "bg-indigo-900/80 border border-indigo-500 text-indigo-50 font-semibold"
+                            :done    "text-slate-500 line-through decoration-slate-600"
+                            "text-slate-300 border border-slate-700"))
+              :aria-current (when (= :current state) "step")
+              :data-state (name state)}
+         (when (= :done state) [:span {:aria-hidden true} "✓"])
+         [:span {:aria-hidden true} (i18n/icon-of role)]
+         (role-name role)])]]))
+
 (defn phase-stage
   "Where are we, what is happening, and what just happened — one panel, first on
    every screen.
@@ -1239,11 +1286,7 @@
      [host-absent-banner]
 
      (when (and (= :night phase) cursor)
-       [:div {:class "inline-flex items-center gap-2 rounded-lg bg-indigo-900/70 border border-indigo-600/60
-                      px-3 py-1.5 text-sm font-semibold text-indigo-100"}
-        ;; The Spielleiter reads this as his cue, everybody else as news.
-        (t (if narrator? :stage/call :stage/called)
-           (str (i18n/icon-of cursor) " " (role-name cursor)))])
+       [night-strip narrator?])
 
      [:div {:class "overflow-x-auto -mx-1 px-1"} [round-strip]]
 
