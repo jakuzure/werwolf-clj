@@ -38,3 +38,15 @@
             out))
         (catch Exception _ nil))
       "dev"))
+
+(defn running-commit
+  "The commit of the server that is running: the `werwolf.commit` property,
+   which the nix wrapper passes, else the one compiled in.
+
+   The nix build compiles the app with a stand-in for the commit, so the
+   expensive part of it is keyed on the code alone and a rebase that changes
+   nothing rebuilds nothing; only the small wrapper around it knows the
+   revision. See nix/package.nix."
+  []
+  (or (not-empty (System/getProperty "werwolf.commit"))
+      (build-commit)))
