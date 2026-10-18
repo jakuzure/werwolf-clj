@@ -80,4 +80,6 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=20s --retries=3 \
 # MaxRAMPercentage rather than a fixed -Xmx: the container's limit is the only
 # number that matters, and hardcoding a heap size here would be wrong on every
 # host but the one it was chosen for.
-ENTRYPOINT ["java", "-XX:MaxRAMPercentage=75", "-jar", "/app/werwolf.jar"]
+#
+# --enable-native-access for sqlite-jdbc's native library: see nix/package.nix.
+ENTRYPOINT ["java", "-XX:MaxRAMPercentage=75", "--enable-native-access=ALL-UNNAMED", "-jar", "/app/werwolf.jar"]

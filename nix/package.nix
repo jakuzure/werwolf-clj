@@ -296,6 +296,11 @@ stdenv.mkDerivation {
   #
   # `-cp … werwolf.main` is what `-jar` did with the uberjar's Main-Class:
   # werwolf.main is AOT-compiled with :gen-class.
+  #
+  # --enable-native-access for sqlite-jdbc, which loads its native library
+  # with System::load: a restricted method from JDK 24 on, warned about now
+  # and to be blocked in a future release. Every jar is on the classpath, so
+  # ALL-UNNAMED is exactly the code this server runs.
   installPhase = ''
     runHook preInstall
     mkdir -p $out/share/java $out/bin
@@ -305,7 +310,7 @@ stdenv.mkDerivation {
 
     cat > $out/bin/werwolf-clj <<EOF
     #!${runtimeShell}
-    exec "${jdk}/bin/java" -XX:MaxRAMPercentage=75 \\
+    exec "${jdk}/bin/java" -XX:MaxRAMPercentage=75 --enable-native-access=ALL-UNNAMED \\
       -cp "$classpath" \\
       werwolf.main "\$@"
     EOF
