@@ -1,5 +1,5 @@
 # The werwolf server: a small app jar plus a wrapper script that runs it on a
-# headless JDK 25, with every library on the classpath as its own store path.
+# headless JDK 25, its libraries copied into one directory beside it.
 #
 # Not an uberjar, deliberately. An uberjar is a fresh 38 MB store path per
 # release of which over 90% never changes: sqlite-jdbc's native libraries alone
@@ -12,13 +12,21 @@
 #                   build/ only, so it is built once per dependency set.
 #   frontend        shadow-cljs release + tailwind. Keyed on the frontend's own
 #                   sources, so a server-only change does not rebuild it.
-#   werwolf-clj     werwolf's own AOT classes, resources and the frontend in one
-#                   small jar (build/build.clj `app`), and bin/werwolf-clj.
+#   deps            every library jar, in classpath order, in one directory.
+#                   Built from `libs` alone, so a commit that only touches src/
+#                   keeps the same store path.
+#   app             werwolf's own AOT classes, resources and the frontend in one
+#                   small jar (build/build.clj `app`). Keyed on the code alone.
+#   werwolf-clj     bin/werwolf-clj, which runs `app` against `deps`.
 #
-# The library jars themselves are the fixed-output fetches clj-nix makes from
-# deps-lock.json: the wrapper names them directly, so the closure holds exactly
-# the jars the server runs with, and a jar's store path only changes when its
-# version does.
+# Every path the server runs with is a DIRECTORY, which is what lets the PR
+# preview image (nix/preview-image.nix) be this very package: nix-snapshotter
+# can only mount directory store paths (nix-snapshotter#183), and the library
+# jars as clj-nix fetches them are one FILE store path each. So they are copied
+# into `deps`, and what k3s pulls for a preview is exactly what the service
+# needs, nothing twice. The price: a dependency bump fetches the whole `deps`
+# (about 23 MiB) rather than the one jar that changed — as the previews always
+# did.
 #
 # Built entirely offline. Maven artifacts come from deps-lock.json (clj-nix's
 # mk-deps-cache), npm packages from package-lock.json (importNpmLock).
@@ -165,6 +173,23 @@ let
     '';
   };
 
+  # Jars are copied WITHOUT their store hash: Nix's reference scanner finds a
+  # hash anywhere in an output, file names included, and would put every
+  # single-jar store path back into the closure.
+  deps = runCommand "werwolf-clj-deps" { } ''
+    mkdir -p $out/lib
+    i=0
+    while read -r jar; do
+      i=$((i + 1))
+      name=$(basename "$jar")
+      # a numbered name keeps the classpath order visible and two jars that
+      # happen to share a file name apart
+      dest=$out/lib/$(printf '%03d' "$i")-''${name#*-}
+      cp -L "$jar" "$dest"
+      echo "$dest" >> $out/classpath
+    done < ${libs}/share/werwolf-clj/classpath
+  '';
+
   nodeModules = importNpmLock.buildNodeModules {
     npmRoot = source [ ../package.json ../package-lock.json ];
     nodejs = nodejs_22;
@@ -275,7 +300,8 @@ stdenv.mkDerivation {
     runHook preInstall
     mkdir -p $out/share/java $out/bin
     ln -s ${app}/share/java/werwolf-clj.jar $out/share/java/werwolf-clj.jar
-    classpath="${app}/share/java/werwolf-clj.jar:$(paste -sd: ${libs}/share/werwolf-clj/classpath)"
+    # An explicit classpath rather than lib/*: libs.jar has to come first.
+    classpath="${app}/share/java/werwolf-clj.jar:$(paste -sd: ${deps}/classpath)"
 
     cat > $out/bin/werwolf-clj <<EOF
     #!${runtimeShell}
@@ -287,8 +313,7 @@ stdenv.mkDerivation {
     runHook postInstall
   '';
 
-  # jdk: the preview image (nix/preview-image.nix) must run on the same one.
-  passthru = { inherit app frontend libs sqlite-jdbc jdk; };
+  passthru = { inherit app deps frontend libs sqlite-jdbc jdk; };
 
   meta = {
     description = "Browser-based Werwolf game server";
