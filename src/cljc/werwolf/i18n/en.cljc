@@ -322,6 +322,9 @@
    :target/pick-one   "Choose a target"
    :target/pick-two   "Choose two targets"
    :target/chosen-one "First one chosen — now the second"
+   :target/confirm (fn [action who] (str action ": " who "?"))
+   :target/repick "Choose again"
+   :target/yes "Yes, do it"
    :target/cancel     "Cancel"
    :target/hint       "Click a player below"
 

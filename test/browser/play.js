@@ -45,6 +45,12 @@ async function pickTarget(page, seat) {
   await page.getByText(TARGET_PROMPT).first()
     .waitFor({ state: 'visible', timeout: 10_000 });
   await page.getByTestId(`seat-${seat}`).click();
+  // A move that kills — the wolves' vote, poison, a shot — asks for a second
+  // tap before it is sent. Anything else has already been sent by now.
+  const yes = page.getByTestId('confirm-yes');
+  if (await yes.waitFor({ state: 'visible', timeout: 1_500 }).then(() => true, () => false)) {
+    await yes.click();
+  }
 }
 
 /** Click an action if this page is offering it RIGHT NOW. */
