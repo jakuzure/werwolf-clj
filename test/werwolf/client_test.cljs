@@ -112,6 +112,21 @@
       (is (nil? (:me db')))
       (is (nil? (:view db')) "and the stale game must not stay on screen"))))
 
+(deftest a-stale-seat-from-an-earlier-visit-goes-quietly
+  (testing "refused while the page is still on the start screen: no banner"
+    (doseq [code ev/fatal-errors]
+      (let [db' (apply* db {:type :server/error :code code})]
+        (is (= :landing (:screen db')))
+        (is (nil? (:error db')) (str code " answered nobody's tap"))))
+    (is (:werwolf.ws/forget-seat
+         (ev/server-message-fx {:db db} [::ev/server-message {:type :server/error :code :seat-gone}]))
+        "and the dead seat is still forgotten"))
+  (testing "lost while sitting in the room: that is news, and said"
+    (let [db' (apply* db
+                      {:type :server/welcome :room-id "ABCD" :player-id 0 :host? true}
+                      {:type :server/error :code :seat-gone})]
+      (is (= :seat-gone (:error db'))))))
+
 (deftest an-ordinary-rejection-keeps-you-in-the-game
   (testing "an illegal move is a message, not a logout"
     (let [db' (apply* db
