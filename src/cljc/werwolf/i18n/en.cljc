@@ -247,7 +247,6 @@
    :game/chat          "Talk"
    :game/chat-hint     "Write a message…"
    :game/waiting       "Waiting for the others…"
-   :game/nothing-to-do "Nothing for you to do right now."
    :game/wolves-channel "Only the werewolves can hear you"
    :game/dead-channel   "Only the dead can hear you"
    :game/narrator-channel "Everyone hears you — you are the narrator"
@@ -266,11 +265,10 @@
    ;; "Spielleiter" stays German for the same reason the role names do: a mixed
    ;; table has to be able to say it out loud and be understood by everyone at it.
    :turn/yours   "Your turn"
-   :turn/hint    "Choose an action below"
+   :turn/hint    "Choose your move"
    :turn/urgent  "Everyone is waiting for you"
    :turn/calling (fn [role] (str "The Spielleiter calls: " role))
    :turn/narrating "You are running the game"
-   :turn/task      "Your move"
 
    ;; ------------------------------------------------------------ stage ---
    ;;
@@ -329,6 +327,8 @@
    :target/yes "Yes, do it"
    :target/cancel     "Cancel"
    :target/hint       "Click a player below"
+   :target/direct (fn [action who] (str action ": " who))
+   :target/tap "Or just tap a player"
 
    ;; ------------------------------------------------------------ badges ---
    :dawn/title "Day breaks"
@@ -345,6 +345,7 @@
    :ballot/abstained (fn [n] (str n (if (= 1 n) " abstention" " abstentions")))
    :badge/votes       "votes"
    :badge/vote        "vote"
+   :badge/your-vote   "your vote"
    :badge/ready       "done"
    :badge/decided     "has chosen"
    :badge/mayor       "Mayor"
