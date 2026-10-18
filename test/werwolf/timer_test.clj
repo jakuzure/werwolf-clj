@@ -537,3 +537,16 @@
               (is (not (:host-absent? st)))
               (is (engine/timed? st))
               (is (contains? (engine/legal-actions st 0) :gm/toggle-timer)))))))))
+
+(deftest a-new-phase-never-inherits-the-last-ones-clock
+  (testing "the first day's talk follows the election by :day/began, the night
+            after it by :night/began; each starts with no deadline, so the
+            timer arms its full length instead of the rest of the last one's"
+    (is (nil? (:deadline (engine/apply-event {:phase :election :night 1 :deadline 123}
+                                             {:type :day/began}))))
+    (is (nil? (:deadline (engine/apply-event {:phase :discussion :night 1 :deadline 123}
+                                             {:type :night/began :night 2}))))
+    (is (= [{:type :phase/deadline :at (+ t0 300000)}]
+           (timer/clock-events game-cfg t0 (engine/apply-event {:phase :election :night 1 :deadline 123
+                                                                 :players {1 {:connected? true}}}
+                                                                {:type :day/began}))))))
