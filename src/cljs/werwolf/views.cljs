@@ -315,7 +315,8 @@
      [how-to-play]
      ;; Which build is running: the first question when a friend reports a bug.
      [:div {:class "text-center text-xs text-slate-600" :data-testid "app-version"}
-      (str "v" build-info/version " · " build-info/commit)]]))
+      (let [{:keys [version commit]} @(rf/subscribe [::sub/build])]
+        (str "v" (or version build-info/version) (when commit (str " · " commit))))]]))
 
 ;; ---------------------------------------------------------------- targeting ---
 ;;

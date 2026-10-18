@@ -57,7 +57,7 @@ let
     mkdir -p $out/bin
     cat > $out/bin/werwolf <<EOF
     #!${runtimeShell}
-    exec "${jdk}/bin/java" -XX:MaxRAMPercentage=75 -Dwerwolf.commit=${werwolf.passthru.commit} \\
+    exec "${jdk}/bin/java" -XX:MaxRAMPercentage=75 \\
       -cp "$out/share/java/werwolf-clj.jar:$(paste -sd: ${deps}/classpath)" \\
       werwolf.main "\$@"
     EOF

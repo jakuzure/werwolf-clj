@@ -10,6 +10,7 @@
             [clojure.string :as str]
             [clojure.tools.logging :as log]
             [reitit.ring :as ring]
+            [werwolf.build-info :refer [package-version running-commit]]
             [werwolf.protocol :as protocol]
             [werwolf.ws :as ws]))
 
@@ -17,6 +18,18 @@
   {:status 200
    :headers {"content-type" "text/plain"}
    :body "ok"})
+
+(defn build
+  "Which build this server is, for the start page's footer. Asked of the
+   server rather than compiled into the bundle, because the bundle no longer
+   knows its commit: see werwolf.build-info/running-commit."
+  [_req]
+  {:status 200
+   :headers {"content-type" "application/json"
+             "cache-control" "no-cache"}
+   ;; Both are [0-9a-z.+-] by construction; pr-str quotes them as JSON does.
+   :body (str "{\"version\":" (pr-str (package-version))
+              ",\"commit\":" (pr-str (running-commit)) "}")})
 
 (defn index [_req]
   (if-let [r (io/resource "public/index.html")]
@@ -107,6 +120,7 @@
 (defn router [deps]
   (ring/router
    [["/health" {:get health}]
+    ["/api/build" {:get build}]
     ["/api/ws" {:get (ws-handler deps)}]
     ["/" {:get (wrap-revalidate index)}]]))
 
