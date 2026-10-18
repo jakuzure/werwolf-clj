@@ -684,6 +684,14 @@
     (and (= :already-in-room code) (:me db))
     (assoc db :seat/pending? false)
 
+    ;; Not seated yet, so this answers the stored seat's resume as the page
+    ;; loaded: the room was retired while the tab was away. Nobody asked for
+    ;; anything, so there is nothing to refuse — forget the seat (see
+    ;; `server-message-fx`) and show the start page as if it had never been.
+    ;; A red "Dein Platz existiert nicht mehr" over it read as a fault.
+    (and (fatal-errors code) (nil? (:me db)))
+    (assoc db :seat/pending? false)
+
     :else
     ;; :seat/pending? is released for every refusal, these included — a retry
     ;; with the password is a NEW request, and a lock left held would drop it as
