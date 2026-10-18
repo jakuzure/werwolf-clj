@@ -81,9 +81,18 @@
 
 (declare stored-dawn)
 
-(rf/reg-event-fx ::init (fn [_ _] {:db (assoc initial-db :sound/on? (chime/stored-on?)
-                                               :dawn/seen (stored-dawn))
-                                   ::fetch-build true}))
+(rf/reg-event-fx ::init (fn [_ [_ invited]]
+                          {:db (cond-> (assoc initial-db :sound/on? (chime/stored-on?)
+                                              :dawn/seen (stored-dawn))
+                                 ;; Arrived by a shared link: the code is filled
+                                 ;; in, and the start page leads with joining.
+                                 ;; A plain write: no field is mounted yet to
+                                 ;; be told about it — see `form-put`.
+                                 invited (-> (assoc-in [:form :code] invited)
+                                             (assoc :invited invited)))
+                           ::fetch-build true}))
+
+(rf/reg-event-db ::dismiss-invite (fn [db _] (dissoc db :invited)))
 
 (rf/reg-fx
  ::fetch-build
@@ -596,6 +605,9 @@
 (defmethod handle-server :server/welcome [db {:keys [room-id player-id host?]}]
   (assoc db
          :screen :room
+         ;; The invitation is used up; back at the start page it is the
+         ;; ordinary one again.
+         :invited nil
          :error nil
          :seat/pending? false
          ;; A new room numbers its views from its own beginning, so the previous

@@ -290,7 +290,31 @@
   ;; Greyed out while a create or join is unanswered. The events already drop a
   ;; second tap; this is so the first one visibly took.
   (let [pending? @(rf/subscribe [::sub/seat-pending?])
-        ask-password? @(rf/subscribe [::sub/join-password?])]
+        ask-password? @(rf/subscribe [::sub/join-password?])
+        invited @(rf/subscribe [::sub/invited])]
+    (if invited
+      ;; Arrived by a shared link: one name and one tap, the rest of the page
+      ;; a tap further away for whoever wanted something else.
+      [:div {:class "max-w-sm mx-auto mt-16 space-y-6" :data-testid "invited"}
+       [:div {:class "flex justify-center"} [language-switch]]
+       [:h1 {:class "text-3xl font-bold text-center"} (t :app/title)]
+       [:p {:class "text-center text-slate-300"}
+        (t :landing/invited) " "
+        [:span {:class "font-mono tracking-widest text-indigo-300"} invited]]
+       [:div {:class "space-y-3"}
+        [field :name (t :landing/name) {:on-enter [::ev/join-room]}]
+        (when ask-password?
+          [field :join-password (t :landing/join-password)
+           {:on-enter [::ev/join-room] :maxlength 64 :testid "join-password"}])
+        [:button {:class "w-full px-4 py-3 rounded-xl text-base font-bold bg-indigo-600 hover:bg-indigo-500 text-white
+                          disabled:opacity-40"
+                  :disabled pending?
+                  :on-click #(rf/dispatch [::ev/join-room])}
+         (t :landing/join)]]
+       [:button {:class "w-full text-sm text-slate-500 hover:text-slate-200 underline"
+                 :on-click #(rf/dispatch [::ev/dismiss-invite])}
+        (t :landing/not-invited)]
+       [how-to-play]]
     [:div {:class "max-w-sm mx-auto mt-16 space-y-8"}
      [:div {:class "flex justify-center"} [language-switch]]
      [:h1 {:class "text-3xl font-bold text-center"} (t :app/title)]
@@ -320,7 +344,7 @@
      ;; Which build is running: the first question when a friend reports a bug.
      [:div {:class "text-center text-xs text-slate-600" :data-testid "app-version"}
       (let [{:keys [version commit]} @(rf/subscribe [::sub/build])]
-        (str "v" (or version build-info/version) (when commit (str " · " commit))))]]))
+        (str "v" (or version build-info/version) (when commit (str " · " commit))))]])))
 
 ;; ---------------------------------------------------------------- targeting ---
 ;;
@@ -1562,9 +1586,11 @@
 
 (defn- table-settings
   "How this table will play: with a Spielleiter or without, with a clock or
-   without. Everybody reads it — joining a game whose host will not be playing
-   is worth knowing before the cards are dealt — and only the host gets the
-   switches, because only the host is offered the actions."
+   without, with a password or open. Everybody reads it — joining a game whose
+   host will not be playing is worth knowing before the cards are dealt — and
+   only the host gets the switches, because only the host is offered the
+   actions. One line each, the value in a word: the sentences that explained
+   every setting made this the longest thing in the lobby."
   []
   (let [actions   @(rf/subscribe [::sub/actions])
         narrated? @(rf/subscribe [::sub/narrated?])
@@ -1572,26 +1598,32 @@
         narrator? @(rf/subscribe [::sub/narrator?])
         host?     @(rf/subscribe [::sub/host?])
         locked?   @(rf/subscribe [::sub/locked?])
-        row (fn [label text switch]
-              [:div {:class "flex flex-wrap items-center justify-between gap-2"}
-               [:div {:class "min-w-0"}
-                [:span {:class "font-semibold text-violet-200"} (str label ": ")]
-                [:span {:class "text-slate-300"} text]]
-               switch])]
-    [:div {:class "rounded-xl border border-violet-800/60 bg-violet-950/20 p-3 space-y-2 text-sm"}
+        row (fn [label value switch & [hint]]
+              [:div {:class "py-2 space-y-1"}
+               [:div {:class "flex flex-wrap items-center justify-between gap-2"}
+                [:div {:class "min-w-0"}
+                 [:span {:class "text-slate-400"} (str label " · ")]
+                 [:span {:class "font-semibold text-slate-100"} value]]
+                switch]
+               (when hint [:p {:class "text-xs text-slate-400"} hint])])]
+    [:div {:class "rounded-xl border border-slate-700 bg-slate-900/60 px-3 py-1 divide-y divide-slate-800 text-sm"
+           :data-testid "table-settings"}
      ;; Said to the Spielleiter in so many words — including the one who just
      ;; inherited the seat because the previous host walked out.
      (when narrator?
-       [:div {:class "font-semibold text-violet-100" :data-testid "you-narrate"}
+       [:div {:class "py-2 font-semibold text-violet-100" :data-testid "you-narrate"}
         (str "📜 " (t :lobby/you-narrate))])
      [row (t :lobby/mode)
-      (t (if narrated? :lobby/mode-narrated :lobby/mode-players))
+      (t (if narrated? :lobby/mode-short-narrated :lobby/mode-short-players))
       (when (contains? actions :gm/toggle-narrated)
         [btn (t (if narrated? :lobby/play-along :lobby/narrate))
          #(rf/dispatch [::ev/act :gm/toggle-narrated])
-         {:tone :quiet :testid "toggle-narrated"}])]
+         {:tone :quiet :testid "toggle-narrated"}])
+      ;; The one setting that changes who plays, so the one that says what it
+      ;; means.
+      (t (if narrated? :lobby/mode-narrated :lobby/mode-players))]
      [row (t :lobby/timer)
-      (t (if timer? :lobby/timer-on :lobby/timer-off))
+      (t (if timer? :lobby/timer-short-on :lobby/timer-short-off))
       (when (contains? actions :gm/toggle-timer)
         [btn (t (if timer? :lobby/timer-switch-off :lobby/timer-switch-on))
          #(rf/dispatch [::ev/act :gm/toggle-timer])
@@ -1600,12 +1632,12 @@
      ;; box, and the server checks that again, since the host is the one thing
      ;; here that is not an engine action the view could offer.
      [row (t :lobby/password)
-      (str (when locked? "🔒 ") (t (if locked? :lobby/password-on :lobby/password-off)))
+      (if locked? (str "🔒 " (t :lobby/password-short-on)) (t :lobby/password-short-off))
       (when (and host? locked?)
         [btn (t :lobby/password-clear) #(rf/dispatch [::ev/clear-password])
          {:tone :quiet :testid "clear-password"}])]
      (when host?
-       [:div {:class "flex gap-2"}
+       [:div {:class "py-2 flex gap-2"}
         [:div {:class "flex-1 min-w-0"}
          [field :lobby-password (t :lobby/password-new)
           {:maxlength 64 :testid "lobby-password" :on-enter [::ev/set-password]}]]
@@ -1741,68 +1773,132 @@
          [:span (str " · " (t :deck/centre) ": "
                      (i18n/deck-summary (lc) (into {} centre)))])])))
 
-(defn lobby []
-  (let [view @(rf/subscribe [::sub/view])
-        me @(rf/subscribe [::sub/me])
+(defn- invite-link [code]
+  (str (.-origin js/location) "/?join=" code))
+
+(defn- share!
+  "The phone's own share sheet where there is one — WhatsApp, Signal, a text —
+   and the clipboard where there is not. A link rather than the code alone:
+   it opens the start page with the code already filled in."
+  [code]
+  (let [url (invite-link code)]
+    (if (exists? js/navigator.share)
+      (-> (.share js/navigator #js {:title (t :app/title) :text (t :lobby/invite-text code) :url url})
+          (.catch (fn [_] nil)))
+      (some-> js/navigator.clipboard
+              (.writeText url)
+              (.then #(rf/dispatch [::ev/form-set :copied code]))
+              (.catch (fn [_] nil))))))
+
+(defn- invite-card
+  "The room code, large, and the way to hand it out. Next to each other,
+   because the two are handed out together."
+  []
+  (let [code (:room-id @(rf/subscribe [::sub/me]))
+        view @(rf/subscribe [::sub/view])
+        copied? (= code (:copied @(rf/subscribe [::sub/form])))]
+    [:section {:class "rounded-xl border border-slate-700 bg-slate-900/60 p-4 flex flex-wrap items-center justify-between gap-3"
+               :data-testid "invite"}
+     [:div
+      [:div {:class "text-xs uppercase tracking-wide text-slate-400"} (t :lobby/share)]
+      [:div {:class "font-mono text-4xl tracking-[0.3em] text-indigo-300"} code]
+      (when (:locked? view)
+        [:div {:class "text-xs text-slate-400" :data-testid "lobby-locked"}
+         (str "🔒 " (t :landing/locked))])]
+     [btn (if copied? (str "✓ " (t :lobby/link-copied)) (str "🔗 " (t :lobby/share-link)))
+      #(share! code) {:tone :ghost :testid "share-link"}]]))
+
+(defn- guest-card
+  "What a guest is waiting for, and on whom. The host sees the switches and
+   the start button; everybody else saw the same lobby without them and was
+   left to guess whether anything was expected of them."
+  []
+  (let [host? @(rf/subscribe [::sub/host?])
+        view  @(rf/subscribe [::sub/view])
+        host  (get-in view [:players (:host view) :name])]
+    (when (and (not host?) host)
+      [:section {:class "rounded-xl border-2 border-emerald-700 bg-emerald-950/40 px-4 py-3"
+                 :data-testid "guest-card"}
+       [:div {:class "font-bold text-emerald-100"} (t :lobby/you-are-in)]
+       [:div {:class "text-sm text-emerald-100/80"} (t :lobby/host-starts host)]])))
+
+(defn- start-dock
+  "The start, or why there is none yet. Pinned to the foot of a phone's
+   screen like the moves are in the game, so the host never has to scroll
+   past the deck to find it."
+  []
+  (let [view    @(rf/subscribe [::sub/view])
         actions @(rf/subscribe [::sub/actions])
-        host? @(rf/subscribe [::sub/host?])
+        host?   @(rf/subscribe [::sub/host?])
         ;; The people who will be dealt a card. The Spielleiter is in the room
         ;; but not at the table, and the server counts the same way when it
         ;; decides whether the game may start.
         table (count (remove #(= % (:narrator view)) (keys (:players view))))]
-    [:div {:class "space-y-4"}
-     [:div {:class "flex flex-wrap items-baseline justify-between gap-2"}
-      [:h2 {:class "text-2xl font-bold"} (t :lobby/title)]
-      [:div {:class "text-right"}
-       [:div {:class "text-xs uppercase tracking-wide text-slate-400"} (t :lobby/share)]
-       [:div {:class "font-mono text-3xl tracking-[0.3em] text-indigo-300"} (:room-id me)]
-       ;; Next to the code, because the two are handed out together.
-       (when (:locked? view)
-         [:div {:class "text-xs text-slate-400" :data-testid "lobby-locked"}
-          (str "🔒 " (t :landing/locked))])
-       [:div {:class "flex justify-end mt-1"} [language-switch]]]]
-     ;; The count against the CEILING, with the recommendation beside it. It was
-     ;; "2 / 5", the minimum in the place where a maximum goes, and was read as
-     ;; a five-player cap on an eighteen-seat table.
-     [:div {:class "text-sm text-slate-400"}
-      (t :lobby/count table (:max-players view 18) (:min-players view 5))]
-     [table-settings]
-     [host-absent-banner]
-     [roles-panel]
-     [player-grid]
-     [:div {:class "space-y-2"}
-      [:div {:class "flex flex-wrap items-center gap-3"}
-       (cond
-         (contains? actions :start-game)
-         [btn (t :lobby/start) #(rf/dispatch [::ev/act :start-game])]
+    [:div {:class "space-y-1 max-lg:-mx-4 max-lg:px-4 max-lg:py-3
+                   max-lg:bg-slate-950/95 max-lg:backdrop-blur max-lg:border-t max-lg:border-slate-800"
+           :style {:padding-bottom "max(0.75rem, env(safe-area-inset-bottom))"}}
+     (cond
+       (contains? actions :start-game)
+       [:button {:class "w-full px-4 py-3 rounded-xl text-base font-bold bg-indigo-600 hover:bg-indigo-500 text-white"
+                 :on-click #(rf/dispatch [::ev/act :start-game])}
+        (t :lobby/start)]
 
-         ;; The deck, not the head count, is what stops this table. Saying
-         ;; "waiting for more players" here would send the host to wait for
-         ;; people when what he has to do is take a role out. The reason itself
-         ;; is said once, at the foot of the Rollen panel: right under the
-         ;; steppers that caused it and fix it, where every player reads it too.
-         ;; Here it was a second copy, a whole player grid further down.
-         (and host? (:deck-problem view))
-         nil
+       ;; The deck, not the head count, is what stops this table. Saying
+       ;; "waiting for more players" here would send the host to wait for
+       ;; people when what he has to do is take a role out. The reason itself
+       ;; is said once, at the foot of the Rollen panel, right under the
+       ;; steppers that caused it and fix it.
+       (and host? (:deck-problem view))
+       [:p {:class "text-sm text-amber-300 text-center"} (t :lobby/fix-deck)]
 
-         :else
-         [:span {:class "text-sm text-slate-500"}
-          (if host? (t :lobby/need-more) (t :game/waiting))])
-       [leave-button]]
-      ;; The host may start under the recommended size, so say so rather than
-      ;; letting a start button next to "3 / 5" look like a bug. Derived from
-      ;; the offer, not from a rule of its own: if the server did not offer
-      ;; :start-game, the table is below the deck's floor and there is nothing
-      ;; to recommend.
-      (when (and (contains? actions :start-game)
-                 (< table (:min-players view 5)))
-        [:p {:class "text-xs text-amber-400/90"}
-         (t :lobby/below-recommended (:min-players view))])]
-     ;; The lobby is where a call gets joined in practice — everyone is arriving,
-     ;; nobody is mid-decision, and sorting out microphones before the deal beats
-     ;; doing it during the first night.
-     [voice-panel]
-     [chat-panel]]))
+       :else
+       [:p {:class "text-sm text-slate-400 text-center"}
+        (if host? (t :lobby/need-more) (t :game/waiting))])
+     ;; The host may start under the recommended size, so say so rather than
+     ;; letting a start button next to "3 / 5" look like a bug. Derived from
+     ;; the offer, not from a rule of its own: if the server did not offer
+     ;; :start-game, the table is below the deck's floor and there is nothing
+     ;; to recommend.
+     (when (and (contains? actions :start-game)
+                (< table (:min-players view 5)))
+       [:p {:class "text-xs text-amber-400/90 text-center"}
+        (t :lobby/below-recommended (:min-players view))])]))
+
+(defn lobby []
+  ;; The same frame as the game: the bar on top, one column on a phone, three
+  ;; on a wide screen — the table on the left, the invitation, the settings
+  ;; and the start in the middle, the call and the talk on the right — so
+  ;; starting the game changes what is in the columns, not where things are.
+  ;;
+  ;; The call comes second on a phone, straight under the code: the lobby is
+  ;; where a call gets joined in practice — everyone is arriving, nobody is
+  ;; mid-decision, and sorting out microphones before the deal beats doing it
+  ;; during the first night.
+  (let [view @(rf/subscribe [::sub/view])
+        table (count (remove #(= % (:narrator view)) (keys (:players view))))]
+    [:div
+     [top-bar {:icon "🚪" :title (t :lobby/title) :leave? true}]
+     [:div {:class "flex flex-col gap-4 lg:grid lg:items-start lg:gap-5
+                    lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_minmax(0,1fr)]"}
+      [:div {:class "contents lg:flex lg:flex-col lg:gap-3"}
+       ;; The count against the CEILING, with the recommendation beside it. It
+       ;; was "2 / 5", the minimum in the place where a maximum goes, and was
+       ;; read as a five-player cap on an eighteen-seat table.
+       [:div {:class "max-lg:order-4 text-sm text-slate-400"}
+        (t :lobby/count table (:max-players view 18) (:min-players view 5))]
+       [:div {:class "max-lg:order-4"} [player-grid]]]
+      [:div {:class "contents lg:flex lg:flex-col lg:gap-4"}
+       [:div {:class "max-lg:order-1"} [invite-card]]
+       [:div {:class "max-lg:order-3 empty:hidden"} [guest-card]]
+       [:div {:class "max-lg:order-3 empty:hidden"} [host-absent-banner]]
+       [:div {:class "max-lg:order-5"} [table-settings]]
+       [:div {:class "max-lg:order-6"} [roles-panel]]
+       ;; Sticky on the flex item itself: inside a wrapper of its own height
+       ;; it would have nowhere to stick.
+       [:div {:class "max-lg:order-last max-lg:sticky max-lg:bottom-0 max-lg:z-20"} [start-dock]]]
+      [:div {:class "contents lg:flex lg:flex-col lg:gap-4"}
+       [:div {:class "max-lg:order-2 empty:hidden"} [voice-panel]]
+       [:div {:class "max-lg:order-7"} [chat-panel]]]]]))
 
 ;; --------------------------------------------------------------------- game ---
 
