@@ -1,5 +1,5 @@
 {
-  "lock-version": 4,
+  "lock-version": 5,
   "git-deps": [],
   "mvn-deps": [
     {
@@ -311,11 +311,6 @@
       "mvn-path": "com/github/seancorfield/next.jdbc/1.3.1118/next.jdbc-1.3.1118.pom",
       "mvn-repo": "https://repo.clojars.org/",
       "hash": "sha256-kjrKCtp4rAXY3eZXZQABApyEge1kyahbC7M/+1keEKs="
-    },
-    {
-      "mvn-path": "com/google/code/findbugs/jsr305/3.0.2/jsr305-3.0.2.pom",
-      "mvn-repo": "https://repo1.maven.org/maven2/",
-      "hash": "sha256-GYidvfGyVLJgGl7mRbgUepdGRIgil2hMeYr+XWPXjf4="
     },
     {
       "mvn-path": "com/google/google/5/google-5.pom",
@@ -786,11 +781,6 @@
       "mvn-path": "meta-merge/meta-merge/1.0.0/meta-merge-1.0.0.pom",
       "mvn-repo": "https://repo.clojars.org/",
       "hash": "sha256-sAogZY/OzCvRNBAx85T1LWjFP7SAxEVBNMyqwgTqWTE="
-    },
-    {
-      "mvn-path": "metosin/malli/0.20.1/malli-0.20.1.pom",
-      "mvn-repo": "https://repo.clojars.org/",
-      "hash": "sha256-B+fEOtVMMuJa8MZjN10cdiwuZE/4Lbb9nCn6LYIaa8g="
     },
     {
       "mvn-path": "metosin/malli/0.20.3/malli-0.20.3.jar",
