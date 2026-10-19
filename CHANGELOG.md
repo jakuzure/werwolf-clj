@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.8.0](https://github.com/jakuzure/werwolf-clj/compare/v0.7.0...v0.8.0) (2026-10-19)
+
+
+### Features
+
+* Prometheus metrics, a NixOS option and a Grafana dashboard ([84ed4b7](https://github.com/jakuzure/werwolf-clj/commit/84ed4b7edf277fde604ed030215abef0289b96c3))
+* the village votes on the first day too, as Düsterwald does ([ba45504](https://github.com/jakuzure/werwolf-clj/commit/ba45504066cf49c070eea0ceaec391b87e733f07))
+* **ui:** a QR code of the invitation link in the lobby ([a977089](https://github.com/jakuzure/werwolf-clj/commit/a977089b715f202c0a59cd37dc40b37bd7d19707))
+* **ui:** a top bar with the phase, your card and the clock ([e4cc532](https://github.com/jakuzure/werwolf-clj/commit/e4cc532307fc0d343dda348d60383cb4924ed36f))
+* **ui:** make a move where the question is asked, with fewer taps ([cd71cb5](https://github.com/jakuzure/werwolf-clj/commit/cd71cb52096fad08115ecda55d3a960179772b44))
+* **ui:** tabs on a phone, three columns on a wide screen ([41137b7](https://github.com/jakuzure/werwolf-clj/commit/41137b776baee80c77969aad851a7730b233ff09))
+* **ui:** the lobby in the game's frame, with a link to invite people ([b7a127b](https://github.com/jakuzure/werwolf-clj/commit/b7a127bbc2d80ca65caec65b4e41274c4107cdf1))
+* **ui:** what the QA game suggested beyond its bugs ([0a0b03e](https://github.com/jakuzure/werwolf-clj/commit/0a0b03ea8eff7b82ef89743e65a7fa34db8a64c1))
+
+
+### Bug Fixes
+
+* allow sqlite-jdbc's native access on JDK 25 ([5641e1d](https://github.com/jakuzure/werwolf-clj/commit/5641e1da5ebaf2d6c5902571dd8133b74b286f12))
+* **build:** regenerate deps-lock.json with the pinned clj-nix ([5f28f5a](https://github.com/jakuzure/werwolf-clj/commit/5f28f5abf321dcfdc5a93b9ffceca889f68fe4d8))
+* **client:** a seat from an earlier visit that is gone goes quietly ([e018655](https://github.com/jakuzure/werwolf-clj/commit/e018655586e5eb98633ef45dce956516bae6ffac))
+* give the first day's talk its own clock, not the election's ([47e35ce](https://github.com/jakuzure/werwolf-clj/commit/47e35ce34144d41b38b9b5d16b3f2db70d2e6982))
+* **i18n:** one word for the Spielleiter, and no sentence said twice ([f4d85d8](https://github.com/jakuzure/werwolf-clj/commit/f4d85d834945e7c92fc96557fcb472c729f0ab5c))
+* **ui:** confirm a killing move where you made it ([fc8c93c](https://github.com/jakuzure/werwolf-clj/commit/fc8c93c1a92c6e39f94fb17499aecd8829ae34f3))
+* **ui:** every death told once, and day one reads plainly ([6e3b744](https://github.com/jakuzure/werwolf-clj/commit/6e3b744d3aa4f5d348c9edcec77db3f98b408195))
+* **ui:** tell the Hexe the wolves' victim up front, and reword day one ([b7bc833](https://github.com/jakuzure/werwolf-clj/commit/b7bc833a7916ac1e246042e1efd65d285f9811fe))
+* what the QA games with every role found broken ([07eaab6](https://github.com/jakuzure/werwolf-clj/commit/07eaab6ee46c8d15b1341b80b687b7282fcea16a))
+
 ## [0.7.0](https://github.com/jakuzure/werwolf-clj/compare/v0.6.0...v0.7.0) (2026-10-18)
 
 
