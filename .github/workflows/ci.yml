@@ -22,12 +22,25 @@ permissions:
 # merge) cancels the run it replaces: nobody reads the outdated one's result.
 # Never on main, where every commit's build is pushed to Cachix and may be the
 # one lain is pinned to.
+#
+# Except for the run GitHub starts when this workflow itself pushes a
+# regenerated deps-lock.json to a Renovate branch (actor github-actions[bot]).
+# That run gets a group of its own and does nothing — see the jobs' `if` — or
+# it would cancel the very run that pushed, before that run built the preview
+# the PR is waiting for. It cannot build the preview itself: a run the
+# workflow token started triggers no workflow_run, so preview-renovate.yml
+# never hears of it.
+#
+# Not a skip keyword in the bot's commit message: GitHub reads those anywhere
+# in a message, and a squash merge copies the commit messages into main's —
+# which then skipped main's own build.
 concurrency:
-  group: ci-${{ github.event.pull_request.number || github.ref }}
+  group: ci-${{ github.event.pull_request.number || github.ref }}${{ github.actor == 'github-actions[bot]' && '-bot' || '' }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   build:
+    if: github.event_name != 'pull_request' || github.actor != 'github-actions[bot]'
     runs-on: ubuntu-26.04
     # CACHIX_AUTH_TOKEN is a secret of the `cachix` environment, which only main
     # may use; everywhere else this is empty, i.e. no environment and no token,
@@ -80,13 +93,8 @@ jobs:
           else
             git config user.name  "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            # [skip ci]: this run already builds and previews with the new
-            # lock. Without it GitHub starts a second run for the bot's push,
-            # held for approval, which on approval cancels this one (PR runs
-            # cancel the one they replace) — and, started by the workflow
-            # token, its own success never reaches preview-renovate.yml. The
-            # PR then had a green build and no preview.
-            git commit -m "chore(deps): regenerate deps-lock.json [skip ci]" -- deps-lock.json
+            # The run this push starts does nothing; see `concurrency` above.
+            git commit -m "chore(deps): regenerate deps-lock.json" -- deps-lock.json
             git push
           fi
 
@@ -97,8 +105,8 @@ jobs:
       # the updated dependencies' build and so must never hold the Cachix token.
       # It builds the image and hands over its closure, and preview-renovate.yml,
       # which runs nothing from it, pushes it and sets the status. Built here
-      # because only this run sees the regenerated deps-lock.json: the push of
-      # it says [skip ci], so it starts no run of its own — see above.
+      # because only this run sees the regenerated deps-lock.json: the run its
+      # push starts does nothing — see `concurrency` above.
       - name: Build the preview image on Renovate branches
         if: github.event_name == 'pull_request' && startsWith(github.event.pull_request.head.ref, 'renovate/')
         run: |
@@ -116,7 +124,7 @@ jobs:
           compression-level: 0
 
   test:
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' && github.actor != 'github-actions[bot]'
     runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -148,7 +156,7 @@ jobs:
   # Node is here to prove a seed plays the same game on both platforms, which
   # the pinned fingerprints check, and the JVM already plays them all.
   test-cljs:
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' && github.actor != 'github-actions[bot]'
     runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -178,7 +186,7 @@ jobs:
         run: nix shell nixpkgs#babashka nixpkgs#clojure nixpkgs#jdk21_headless nixpkgs#nodejs_22 -c bb test:cljs
 
   browser:
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' && github.actor != 'github-actions[bot]'
     runs-on: ubuntu-26.04
     timeout-minutes: 20
     # A service container rather than `docker run` in a step, so the image is
