@@ -26,6 +26,7 @@
    runs instantly at whatever simulated instant it likes. Nothing here sleeps."
   (:require [clojure.tools.logging :as log]
             [werwolf.engine.core :as engine]
+            [werwolf.bots :as bots]
             [werwolf.room :as room])
   (:import (java.util.concurrent Executors ScheduledExecutorService ThreadFactory TimeUnit)))
 
@@ -108,7 +109,11 @@
   ([game-cfg] (hook game-cfg #(System/currentTimeMillis)))
   ([game-cfg clock]
    (fn [ctx room-id]
-     (reconcile! ctx game-cfg room-id (clock)))))
+     (let [now (clock)]
+       (reconcile! ctx game-cfg room-id now)
+       ;; And the bots' turns, from the same instant: they are paced like the
+       ;; clock and stop with it when nobody is here.
+       (bots/rearm! ctx game-cfg room-id now)))))
 
 (defn fire!
   "Resolve one room if its deadline has passed. Returns true if it fired."
@@ -209,7 +214,11 @@
                     ;; Absence first: in a narrated game it may switch the clock
                     ;; on, and the reconcile that follows arms it at once.
                     (notice-absence! ctx room-id now-ms)
-                    (fire! ctx room-id now-ms)
+                    (let [fired? (fire! ctx room-id now-ms)]
+                      ;; The bots move on the tick as well: a turn armed by
+                      ;; the last commit fires once its instant has passed.
+                      (bots/step! ctx room-id now-ms)
+                      fired?)
                     (catch Throwable t
                       ;; One sick room must never stop the clock for the others.
                       (log/error t "timer failed for room" room-id)

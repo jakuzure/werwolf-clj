@@ -410,7 +410,10 @@
   [state]
   (let [host (:host state)]
     (when-not (get-in state [:players host])
-      (when-let [heir (first (sort (keys (:players state))))]
+      ;; Never a bot: a bot host could not start the game or advance a phase,
+      ;; and the room would be waiting on a seat with nobody behind it.
+      (when-let [heir (first (sort (remove #(get-in state [:players % :bot?])
+                                           (keys (:players state)))))]
         [{:type :host/changed :host heir}]))))
 
 (defn- settle-host!
@@ -687,8 +690,13 @@
    `pid` comes from the verified token, never from the payload: the `:player`
    key is overwritten before the engine sees it, so a hand-crafted frame cannot
    act as somebody else. This is the one line that makes impersonation
-   impossible rather than merely unlikely."
-  [ctx room-id pid cmd]
+   impossible rather than merely unlikely.
+
+   `:activity? false` is for the bots: a bot moving is not somebody being
+   there, and counting it would keep a table of bots alive forever — see
+   `commit!` for the clock that once did the same."
+  ([ctx room-id pid cmd] (submit! ctx room-id pid cmd {}))
+  ([ctx room-id pid cmd {:keys [activity?] :or {activity? true}}]
   (with-room ctx room-id
     (fn [r]
       (if-not (get-in (:state r) [:players pid])
@@ -696,7 +704,7 @@
         (let [res (engine/execute (:state r) (assoc cmd :player pid))]
           (if (engine/error? res)
             res
-            (do (commit! ctx r (:events res) (:state res))
+            (do (commit! ctx r (:events res) (:state res) activity?)
                 (settle-host! ctx room-id)
                 (when (= :leave (:type cmd))
                   (release-seat! ctx room-id pid :server/left))
@@ -706,7 +714,28 @@
                 ;; it only reaches seated players.
                 (when (= :gm/kick (:type cmd))
                   (release-seat! ctx room-id (:target cmd) :server/kicked))
-                {:ok? true})))))))
+                {:ok? true}))))))))
+
+;; -------------------------------------------------------------- scheduling ---
+;;
+;; Notes the bots' scheduler keeps on the room map: when the phase began and
+;; when each bot is due. On the room map and never in state or the log,
+;; because when a bot moves is this server's business and what it does is the
+;; game's. See werwolf.bots.
+
+(defn scheduling
+  "What the scheduler keeps and needs: which phase it last saw and when that
+   began, which bot is due when, and the event sequence the next decision is
+   seeded from."
+  [ctx room-id]
+  (select-keys (room-of ctx room-id) [:phase :phase-since :bots :seq]))
+
+(defn schedule!
+  "Replace the scheduler's notes: the phase it saw, when that began, and the
+   bot due times (pid -> epoch ms)."
+  [ctx room-id notes]
+  (swap! (:rooms ctx) update room-id
+         #(when % (merge % (select-keys notes [:phase :phase-since :bots])))))
 
 ;; ------------------------------------------------------------------- recap ---
 ;;
