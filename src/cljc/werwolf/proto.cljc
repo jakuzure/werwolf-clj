@@ -46,6 +46,8 @@
     ;; The Spielleiter's: ending the setup step, and arranging the table.
     :begin-night
     :gm/toggle-narrated :gm/toggle-timer :gm/transfer-host :gm/kick
+    ;; Seating a bot, so one person can test a whole game alone.
+    :gm/add-bot
     :gm/set-deck :gm/auto-deck
     :gm/force-kill :gm/revive :gm/skip-role :gm/set-phase :gm/reassign-role
     :gm/pause :gm/resume :gm/add-time})

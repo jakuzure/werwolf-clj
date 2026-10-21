@@ -10,6 +10,7 @@
    at night, dead players among themselves) is a transport concern handled by the
    room layer. The engine only reports whether chatting is currently allowed."
   (:require [clojure.string :as str]
+            [werwolf.engine.bot :as bot]
             [werwolf.engine.events :as e]
             [werwolf.engine.phases :as phases]
             [werwolf.engine.roles :as roles]
@@ -532,6 +533,26 @@
     (not (valid-target? state player :gm/kick target))
     (err :invalid-target {:target target})
     :else [{:type :player/kicked :player target}]))
+
+(defmethod handle :gm/add-bot
+  ;; The host seats a bot — a seat the server plays, so one person can test a
+  ;; whole game alone. Lobby only, and only while there is room; see
+  ;; `phases/host-actions`. The seat number is the engine's own rule
+  ;; (events/next-seat), never a seat still taken; the name comes from a fixed
+  ;; list, skipping whatever is already at the table the same way `:join`
+  ;; would refuse it, so a bot can never trip the duplicate-name rule.
+  [state {:keys [player]}]
+  (if-not (allowed? state player :gm/add-bot)
+    (err :not-allowed {:action :gm/add-bot})
+    (let [taken (into #{} (map #(str/lower-case (str/trim (str (:name %))))) (vals (:players state)))
+          name  (bot/next-name taken)]
+      (if (nil? name)
+        (err :room-full {})
+        [{:type :player/joined
+          :player (e/next-seat state)
+          :name name
+          :locale (get-in state [:players player :locale] :de)
+          :bot? true}]))))
 
 (defmethod handle :claim-host
   ;; Taking the seat of a host who has gone missing. Who may, and when, is

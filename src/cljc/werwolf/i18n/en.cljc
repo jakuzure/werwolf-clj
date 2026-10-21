@@ -202,6 +202,7 @@
    ;; The host takes somebody out of the lobby: a ghost seat, a typo, a host
    ;; who was replaced while away. Two taps, like leaving.
    :action/gm-kick    "Remove"
+   :action/gm-add-bot "Add a bot"
    :kick/button       "Remove"
    :kick/confirm      "Really remove?"
    :log/kicked        (fn [n] (str n " was removed from the game"))
