@@ -73,5 +73,14 @@
            ;; where that is safe, and a narrated game hands its pace to the
            ;; clock. Long enough for a phone to find its signal again.
            :host-grace-secs #long #or [#env HOST_GRACE_SECS 45]
+           ;; Bots, for testing alone. How long a bot waits before a move, so
+           ;; a human can see it land (ms); and by day, how long it waits for
+           ;; the humans: no sooner than the floor after the phase began, no
+           ;; later than the patience, in between as soon as every living
+           ;; human has answered. The floor is for a Spielleiter or a dead
+           ;; human, who hold no vote but are watching.
+           :bot-delay-ms      #long #or [#env BOT_DELAY_MS 1500]
+           :bot-floor-secs    #long #or [#env BOT_FLOOR_SECS 10]
+           :bot-patience-secs #long #or [#env BOT_PATIENCE_SECS 45]
            :min-players     #long #or [#env MIN_PLAYERS 5]
            :max-players     #long #or [#env MAX_PLAYERS 18]}}
