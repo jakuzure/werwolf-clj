@@ -80,6 +80,8 @@
    :lobby/narrate            "Ich leite das Spiel"
    :lobby/play-along         "Ich spiele mit"
    :lobby/timer              "Zeitlimit"
+   :lobby/bots               "Bots"
+   :lobby/bots-hint          "Bots spielen mit, damit du auch allein testen kannst."
    :lobby/timer-switch-on    "Zeitlimit einschalten"
    :lobby/timer-switch-off   "Zeitlimit ausschalten"
    :lobby/password           "Passwort"

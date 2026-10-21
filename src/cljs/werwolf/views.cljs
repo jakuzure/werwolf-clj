@@ -772,8 +772,12 @@
 
 (defn- player-card
   "One seat, rendered large enough to actually read at a glance."
-  [{:keys [id alive? connected? left?] pname :name}]
-  (let [me @(rf/subscribe [::sub/me-view])
+  [{:keys [id alive? left? bot?] pname :name :as seat}]
+  (let [;; A bot has no socket, so the wire says it is not connected — which
+        ;; is true, and is not what "abwesend" means. Nobody is coming back to
+        ;; that seat because nobody left it; the card stays in full colour.
+        connected? (if bot? true (:connected? seat))
+        me @(rf/subscribe [::sub/me-view])
         view @(rf/subscribe [::sub/view])
         narrator-info @(rf/subscribe [::sub/narrator-info])
         known @(rf/subscribe [::sub/known-roles])
@@ -1746,6 +1750,7 @@
         narrator? @(rf/subscribe [::sub/narrator?])
         host?     @(rf/subscribe [::sub/host?])
         locked?   @(rf/subscribe [::sub/locked?])
+        players   @(rf/subscribe [::sub/players])
         row (fn [label value switch & [hint]]
               [:div {:class "py-2 space-y-1"}
                [:div {:class "flex flex-wrap items-center justify-between gap-2"}
@@ -1776,6 +1781,17 @@
         [btn (t (if timer? :lobby/timer-switch-off :lobby/timer-switch-on))
          #(rf/dispatch [::ev/act :gm/toggle-timer])
          {:tone :quiet :testid "toggle-timer"}])]
+     ;; Seats the server plays, so one person can test a whole game alone.
+     ;; The button is drawn from `:actions` like the switches above: the
+     ;; server offers it to the host while the table has room, and to nobody
+     ;; else. Removing a bot is the seat's own menu, like any seat.
+     [row (t :lobby/bots)
+      (str (count (filter :bot? (vals players))))
+      (when (contains? actions :gm/add-bot)
+        [btn (action-name :gm/add-bot)
+         #(rf/dispatch [::ev/act :gm/add-bot])
+         {:tone :quiet :testid "add-bot"}])
+      (t :lobby/bots-hint)]
      ;; The lock. Everybody reads whether there is one; only the host gets the
      ;; box, and the server checks that again, since the host is the one thing
      ;; here that is not an engine action the view could offer.

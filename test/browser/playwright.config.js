@@ -92,6 +92,11 @@ module.exports = defineConfig({
       DISCUSSION_SECS: '3600',
       NIGHT_SECS: '3600',
       REACTION_SECS: '3600',
+      // Bots move almost at once and wait for nobody: the bots spec watches a
+      // game play itself, and nothing else seats a bot.
+      BOT_DELAY_MS: '200',
+      BOT_FLOOR_SECS: '0',
+      BOT_PATIENCE_SECS: '0',
       // Voice. The suite skips its audio tests when this is unreachable rather
       // than failing, so `bb test:browser` is useful without LiveKit running —
       // except under WERWOLF_REQUIRE_LIVEKIT, which CI sets; see liveKitUp.
