@@ -8,6 +8,7 @@
    pretend — and that seat numbers are issued by the engine from the log, so a
    kicked seat's number (and its reconnect token) is never handed to a bot."
   (:require [clojure.test :refer [deftest is testing]]
+            [werwolf.engine.bot :as bot]
             [werwolf.engine.core :as engine]
             [werwolf.engine.events :as e]
             [werwolf.engine.phases :as phases]
@@ -106,3 +107,74 @@
   (is (contains? proto/command-types :gm/add-bot))
   (is (= "Bot hinzufügen" (i18n/action-name :de :gm/add-bot)))
   (is (= "Add a bot" (i18n/action-name :en :gm/add-bot))))
+
+;; ----------------------------------------------------------------- policy ---
+;;
+;; `decide` takes the seat's redacted view and a seed, never state. That is the
+;; whole fairness guarantee, and it is structural: whatever the view does not
+;; carry, the bot cannot know.
+
+(def cast {0 :dorfbewohner 1 :seherin 2 :werwolf 3 :hexe 4 :jaeger 5 :amor 6 :werwolf})
+
+(deftest decide-draws-only-on-the-view
+  (let [s (tu/game-with cast) v (view/view-for s 5)]
+    (is (= :amor-link (:type (bot/decide v 1))))
+    (is (= 5 (:player (bot/decide v 1))))))
+
+(deftest nothing-to-do-means-nil
+  (let [s (tu/game-with cast)]
+    (is (nil? (bot/decide (view/view-for s 0) 1)) "a villager at night holds only chat")))
+
+(deftest wolves-coordinate-and-never-eat-their-own
+  (let [pack (-> (tu/game-with cast) (exec! {:type :amor-link :player 5 :a 0 :b 4})
+                 (exec! {:type :seherin-inspect :player 1 :target 0}))]   ; the wolves' turn
+    (testing "the first wolf picks, and never a wolf"
+      (doseq [seed (range 20)]
+        (let [c (bot/decide (view/view-for pack 2) seed)]
+          (is (= :werewolf-vote (:type c)))
+          (is (not (#{2 6} (:target c)))))))
+    (testing "the second wolf follows the first"
+      (let [s (exec! pack {:type :werewolf-vote :player 2 :target 3})]
+        (is (= {:type :werewolf-vote :player 6 :target 3} (bot/decide (view/view-for s 6) 1)))))))
+
+(deftest the-hexe-saves-herself-and-her-lover-always
+  (let [at-hexe (fn [victim] (-> (tu/game-with cast)
+                                 (exec! {:type :amor-link :player 5 :a 3 :b 4})
+                                 (exec! {:type :seherin-inspect :player 1 :target 0})
+                                 (exec! {:type :werewolf-vote :player 2 :target victim})
+                                 (exec! {:type :werewolf-vote :player 6 :target victim})))]
+    (doseq [seed (range 10)]
+      (is (= {:type :hexe-heal :player 3 :target 3} (bot/decide (view/view-for (at-hexe 3) 3) seed)))
+      (is (= {:type :hexe-heal :player 3 :target 4} (bot/decide (view/view-for (at-hexe 4) 3) seed))))
+    (testing "otherwise she heals about a third of the time and never poisons on night 1"
+      (let [cmds (map #(bot/decide (view/view-for (at-hexe 0) 3) %) (range 60))]
+        (is (< 5 (count (filter #(= :hexe-heal (:type %)) cmds)) 40))
+        (is (empty? (filter #(= :hexe-poison (:type %)) cmds)))
+        (is (every? #(#{:hexe-heal :hexe-pass} (:type %)) cmds))))))
+
+(deftest the-day-vote-follows-knowledge-then-the-crowd-then-chance
+  (let [day (tu/day-with cast)]
+    (testing "the Seherin votes the wolf she found"
+      (let [s (tu/knowing day 1 {2 :werwolf})]
+        (is (= {:type :vote :player 1 :target 2} (bot/decide (view/view-for s 1) 7)))))
+    (testing "a villager follows the leading target"
+      (let [s (-> day (exec! {:type :vote :player 1 :target 4}) (exec! {:type :vote :player 2 :target 4}))]
+        (is (= {:type :vote :player 0 :target 4} (bot/decide (view/view-for s 0) 7)))))
+    (testing "a wolf never follows the crowd onto a wolf"
+      (let [s (-> day (exec! {:type :vote :player 1 :target 6}) (exec! {:type :vote :player 3 :target 6}))]
+        (is (not= 6 (:target (bot/decide (view/view-for s 2) 7))))
+        (is (not= 2 (:target (bot/decide (view/view-for s 2) 7))))))
+    (testing "never the lover, never abstain, never twice"
+      (let [s (tu/in-love day 0 4)]
+        (doseq [seed (range 20)]
+          (let [c (bot/decide (view/view-for s 0) seed)]
+            (is (= :vote (:type c)))
+            (is (not= 4 (:target c)))))
+        (is (nil? (bot/decide (view/view-for (exec! s {:type :vote :player 0 :target 1}) 0) 1)))))))
+
+(deftest every-offer-becomes-a-legal-command
+  ;; Across many seeds and many seats, whatever decide returns, the engine accepts.
+  (doseq [seed (range 30) pid (range 7)]
+    (let [s (tu/game-with cast) v (view/view-for s pid)]
+      (when-let [c (bot/decide v seed)]
+        (is (not (engine/error? (engine/execute s c))) (pr-str c))))))

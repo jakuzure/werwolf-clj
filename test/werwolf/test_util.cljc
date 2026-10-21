@@ -115,6 +115,28 @@
 
 (defn count-log [state type] (count (filter #(= type (:type %)) (:log state))))
 
+(defn day-with
+  "A started game walked past night 1 to the first day's open ballot, with the
+   given {player-id role-id} assignment. Night 1 is skipped role by role with
+   the host's GM override, so no card has acted and nobody has died: the day
+   under test starts with a full table and no knowledge beyond the deal."
+  [assignments]
+  (loop [s (game-with assignments), guard 0]
+    (if (and (= :night (:phase s)) (< guard 12))
+      (recur (exec! s {:type :gm/skip-role :player 0}) (inc guard))
+      (do (assert (= :discussion (:phase s)) (str "expected the day, got " (:phase s)))
+          s))))
+
+(defn knowing
+  "`pid` has learned `roles` ({player-id role-id}), as the Seherin does."
+  [state pid roles]
+  (update-in state [:players pid :knows] merge roles))
+
+(defn in-love
+  "Seats `a` and `b` are the lovers."
+  [state a b]
+  (assoc state :lovers #{a b}))
+
 (defn advance-to-vote
   "The day's ballot opens with the day itself, so there is nowhere to walk to:
    kept so a test reads as 'and now the village votes'."
