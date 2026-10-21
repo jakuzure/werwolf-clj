@@ -8,14 +8,16 @@
 
    `handle-server` is pure, so none of this needs a browser, a socket or
    localStorage."
-  (:require [cljs.test :refer [deftest is testing]]
+  (:require [cljs.test :refer [async deftest is testing]]
             [clojure.string :as str]
+            [goog.object :as gobj]
             [werwolf.chime :as chime]
             [werwolf.config :as cfg]
             [werwolf.events :as ev]
             [werwolf.i18n.core :as i18n]
             [werwolf.proto :as proto]
             [werwolf.subs :as sub]
+            [werwolf.wake :as wake]
             ;; Required for its side effect of being COMPILED. Nothing here
             ;; calls into it — rendering needs a DOM — but the test build
             ;; otherwise never sees the view layer at all, and a client that
@@ -1043,3 +1045,116 @@
         "wins first, then games played; a seat no longer at the table is left out")
     (is (= [[:dorfbewohner 2] [:werwolf 1]] (:roles (second rows))) "most-held card first")
     (is (nil? (sub/table-record (dissoc v :stats))))))
+
+;; -------------------------------------------------------------- wake lock ---
+
+(deftest the-screen-is-held-while-a-game-runs-here
+  (testing "not in the lobby: a phone going dark before the deal costs nothing"
+    (is (false? (wake/wanted? (apply* seated (view-msg 1 :lobby 0))))))
+  (testing "from the deal on, through every night and day"
+    (is (true? (wake/wanted? (apply* seated (view-msg 2 :setup 0)))))
+    (is (true? (wake/wanted? (apply* seated (view-msg 3 :night 1)))))
+    (is (true? (wake/wanted? (apply* seated (view-msg 4 :discussion 1))))))
+  (testing "let go once the game is over"
+    (is (false? (wake/wanted? (apply* seated (view-msg 5 :game-over 2))))))
+  (testing "and never without a seat"
+    (is (false? (wake/wanted? db)))
+    (is (false? (wake/wanted? (:db (ev/leave-fx {:db (apply* seated (view-msg 3 :night 1))} nil)))))))
+
+(defn- hold-of
+  "What a message tells the screen lock, run through the real fx layer: true
+   to hold, false to let go, nil for nothing."
+  [db msg]
+  (:werwolf.wake/hold (ev/server-message-fx {:db db} [nil msg])))
+
+(deftest the-fx-layer-holds-the-screen-with-the-seat
+  (let [in-lobby (apply* seated (view-msg 1 :lobby 0))
+        at-night (apply* in-lobby (view-msg 2 :night 1))]
+    (is (false? (hold-of seated (view-msg 1 :lobby 0))))
+    (is (true? (hold-of in-lobby (view-msg 2 :setup 0))) "the deal starts the game")
+    (is (true? (hold-of at-night (view-msg 3 :night 1)))
+        "said again on every view: a reload or a reconnect has no transition to
+         notice, and the effect only acts on a change")
+    (is (false? (hold-of at-night (view-msg 4 :game-over 1))))
+    (testing "every way out of a room lets go"
+      (is (false? (:werwolf.wake/hold (ev/leave-fx {:db at-night} nil))))
+      (is (false? (hold-of at-night {:type :server/kicked :room-id "ABCD"})))
+      (is (false? (hold-of at-night {:type :server/left :room-id "ABCD"})))
+      (is (false? (hold-of at-night {:type :server/error :code :seat-gone}))))
+    (testing "a rejected move is not a way out"
+      (is (true? (hold-of at-night {:type :server/error :code :not-your-turn}))))
+    (testing "a view dropped as stale changes nothing"
+      (is (true? (hold-of at-night (view-msg 1 :game-over 1)))))
+    (testing "chat has nothing to say about it"
+      (is (nil? (hold-of at-night {:type :room/chat :text "hi"}))))))
+
+(defn- fake-wake-lock
+  "A navigator.wakeLock that writes what is asked of it to `log`: the kind
+   requested, and :release for each sentinel let go. `refuse?` makes requests
+   fail, as a browser does on a low battery or from a hidden tab. `dropped`
+   receives the sentinel's release listener, so a test can play the browser
+   taking the lock back when the tab goes to the background."
+  [log refuse? dropped]
+  #js {:request
+       (fn [kind]
+         (swap! log conj kind)
+         (if @refuse?
+           (js/Promise.reject (js/Error. "refused"))
+           (js/Promise.resolve
+            #js {:release          (fn [] (swap! log conj :release) (js/Promise.resolve))
+                 :addEventListener (fn [_ f] (reset! dropped f))})))})
+
+(defn- settle
+  "A macrotask later, so every promise the effect chained has run."
+  []
+  (js/Promise. (fn [ok] (js/setTimeout ok 0))))
+
+(deftest the-screen-lock-is-asked-for-once-and-let-go
+  (async done
+    (let [log     (atom [])
+          refuse? (atom false)
+          dropped (atom nil)
+          visible (atom nil)
+          doc     #js {:visibilityState  "visible"
+                       :addEventListener (fn [ev f] (when (= "visibilitychange" ev) (reset! visible f)))}]
+      (set! (.-wakeLock js/navigator) (fake-wake-lock log refuse? dropped))
+      (gobj/set js/globalThis "document" doc)
+      (wake/install!)
+      (-> (settle)
+          (.then (fn [] (wake/hold! true) (settle)))
+          (.then (fn [] (is (= ["screen"] @log) "asked once a game runs")
+                        (wake/hold! true) (settle)))
+          (.then (fn [] (is (= ["screen"] @log) "and not again while held")
+                        ;; The tab went to the background: the browser let go by
+                        ;; itself, and the tab has now come back.
+                        (@dropped) (@visible) (settle)))
+          (.then (fn [] (is (= ["screen" "screen"] @log) "asked again when the tab comes back")
+                        (wake/hold! false) (settle)))
+          (.then (fn [] (is (= ["screen" "screen" :release] @log) "let go when the game ends")
+                        (@visible) (settle)))
+          (.then (fn [] (is (= ["screen" "screen" :release] @log)
+                            "a tab coming back to no game asks for nothing")
+                        (reset! refuse? true) (wake/hold! true) (settle)))
+          (.then (fn [] (is (= ["screen" "screen" :release "screen"] @log) "asked, and refused")
+                        (reset! refuse? false) (wake/hold! true) (settle)))
+          (.then (fn [] (is (= ["screen" "screen" :release "screen" "screen"] @log)
+                            "a refusal is nothing happened: asked again on the next view")
+                        (wake/hold! false) (settle)))
+          (.then (fn [] (reset! log [])
+                        ;; The game ends while the browser is still deciding.
+                        (wake/hold! true) (wake/hold! false) (settle)))
+          (.then (fn [] (is (= ["screen" :release] @log)
+                            "a lock granted after the game ended is let go at once")))
+          (.catch (fn [e] (is false (str "threw: " e))))
+          (.finally (fn []
+                      (wake/hold! false)
+                      (js-delete js/navigator "wakeLock")
+                      (js-delete js/globalThis "document")
+                      (done)))))))
+
+(deftest a-screen-lock-without-the-api-is-nothing
+  (testing "desktop Firefox and older Safari have no navigator.wakeLock, and
+            Node has no document. Neither may throw, nor say so in the console."
+    (is (nil? (wake/hold! true)))
+    (is (nil? (wake/hold! false)))
+    (is (nil? (wake/install!)))))
