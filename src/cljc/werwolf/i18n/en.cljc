@@ -78,6 +78,8 @@
    :lobby/narrate            "I will narrate"
    :lobby/play-along         "I will play along"
    :lobby/timer              "Time limit"
+   :lobby/bots               "Bots"
+   :lobby/bots-hint          "Bots play along, so you can test on your own."
    :lobby/timer-switch-on    "Turn the time limit on"
    :lobby/timer-switch-off   "Turn the time limit off"
    :lobby/password           "Password"

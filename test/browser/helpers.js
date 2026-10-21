@@ -87,6 +87,10 @@ const DE = {
   beginNight: /^Erste Nacht beginnen/,
   playAlong: 'Ich spiele mit',
   narrator: 'Spielleiter',
+  // The Spielleiter's own pace in an untimed room, and the one panel that
+  // exists only once a game is over.
+  advance: /^Phase weiter/,
+  recap: 'Rückblick',
 };
 
 /** Every frame the server sent this page, decoded far enough to inspect. */
