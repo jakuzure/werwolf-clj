@@ -15,6 +15,16 @@
       (is (not (ask "pr-042.werwolf-chrz.duckdns.org")))
       (is (not (ask nil))))))
 
+(deftest the-ask-endpoint-answers-caddy-and-the-browser
+  (let [ask (#'main/ask-handler domain (atom #{42}))
+        answer #(ask {:query-string (when % (str "domain=" %))})]
+    (is (= 200 (:status (answer "pr-42.werwolf-chrz.duckdns.org"))))
+    (testing "forward_auth copies a 404 to the browser: give it a line to read"
+      (let [{:keys [status body]} (answer "pr-43.werwolf-chrz.duckdns.org")]
+        (is (= 404 status))
+        (is (= "No such preview.\n" body))))
+    (is (= 404 (:status (answer nil))))))
+
 (deftest config-from-the-environment
   (let [cfg (main/config {"PREVIEWS_REPO" "jakuzure/werwolf-clj"
                           "PREVIEWS_DOMAIN" domain

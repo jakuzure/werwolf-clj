@@ -215,7 +215,7 @@ in
     askPort = mkOption {
       type = types.port;
       default = 8341;
-      description = "Loopback port of the endpoint Caddy asks before issuing a certificate.";
+      description = "Loopback port of the endpoint Caddy asks before issuing a certificate and before proxying a request.";
     };
 
     # For the VM test.
@@ -334,6 +334,17 @@ in
       virtualHosts."*.${cfg.domain}".extraConfig = ''
         tls {
           on_demand
+        }
+        # A certificate outlives its PR by up to 90 days and its name is in
+        # the transparency logs, so a closed PR's host keeps getting requests:
+        # 1244 in one day (2026-10-21), scanners after /.env and /.git. Each
+        # one used to reach the proxy, fail to resolve a Service that is gone,
+        # log an error and get the "asleep" text. So ask the controller first,
+        # the same question on_demand_tls asks: a 2xx goes on to the proxy,
+        # anything else is handed to the client as it came, and the
+        # controller's 404 reads "No such preview.".
+        forward_auth 127.0.0.1:${toString cfg.askPort} {
+          uri /ask?domain={host}
         }
         reverse_proxy {
           # k3s CoreDNS resolves the Service names

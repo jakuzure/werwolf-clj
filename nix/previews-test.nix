@@ -145,6 +145,13 @@ pkgs.testers.runNixOSTest {
         machine.wait_until_succeeds(f"[ -z \"$({kubectl} get deployment,service,secret,pvc -l werwolf-previews/pr=1 -o name)\" ]", timeout=60)
         machine.fail("curl -sf 'http://127.0.0.1:8341/ask?domain=pr-1.${domain}'")
 
+    with subtest("its host keeps its certificate for weeks: 404 from the gate, no lookup of a gone Service"):
+        lookups = "journalctl -u caddy --no-pager | grep -c 'dynamic upstreams' || true"
+        before = machine.succeed(lookups)
+        out = machine.succeed(f"{curl} -w '%{{http_code}}' https://pr-1.${domain}/")
+        assert out == "No such preview.\n404", out
+        assert machine.succeed(lookups) == before
+
     with subtest("its image and the GC root on its closure go with the next prune"):
         roots = "/var/lib/rancher/k3s/agent/containerd/io.containerd.snapshotter.v1.nix/gcroots"
         machine.succeed("k3s crictl images | grep nix-image-werwolf")

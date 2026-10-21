@@ -1,6 +1,7 @@
 (ns werwolf.previews.main
   "The PR preview controller: one round every `INTERVAL_SECS`, plus the
-   endpoint Caddy asks before it gets a certificate for a preview's host.
+   endpoint Caddy asks before it gets a certificate for a preview's host and
+   before it proxies a request to one.
 
    A round only ever acts on complete data. If GitHub, k3s or meminfo cannot be
    read, the round is skipped and nothing changes; the next one tries again."
@@ -104,7 +105,14 @@
                         (re-find #"(?:^|&)domain=([^&]*)")
                         second
                         java.net.URLDecoder/decode)]
-      {:status (if (allowed? domain @hosts host) 200 404)})))
+      (if (allowed? domain @hosts host)
+        {:status 200}
+        ;; Caddy's forward_auth hands this answer to the browser as it came
+        ;; (on_demand_tls reads only the status), so a link to a closed PR
+        ;; shows a line instead of an empty page.
+        {:status 404
+         :headers {"Content-Type" "text/plain; charset=utf-8"}
+         :body "No such preview.\n"}))))
 
 (defn -main [& _]
   (let [cfg (config (System/getenv))
