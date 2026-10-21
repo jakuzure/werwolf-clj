@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.9.0](https://github.com/jakuzure/werwolf-clj/compare/v0.8.0...v0.9.0) (2026-10-21)
+
+
+### Features
+
+* **client:** keep the screen awake during a game ([a6bfe01](https://github.com/jakuzure/werwolf-clj/commit/a6bfe01502f89e7a15a3bfb2c817b3d6cad4d347))
+* **engine:** two wolves from six players ([2bea8f5](https://github.com/jakuzure/werwolf-clj/commit/2bea8f5dbaf05a0790b74d88301abf898c6fbfad))
+
+
+### Bug Fixes
+
+* **nix:** let Caddy wait for a slow app instead of answering 503 ([910b9b0](https://github.com/jakuzure/werwolf-clj/commit/910b9b07ea257ddb2f216ecf74de7fad669671d6))
+* **previews:** answer 404 for closed PRs instead of logging a failed upstream lookup ([a69097b](https://github.com/jakuzure/werwolf-clj/commit/a69097b57bc78f85ca7436736339c18265b0a25b))
+
 ## [0.8.0](https://github.com/jakuzure/werwolf-clj/compare/v0.7.0...v0.8.0) (2026-10-19)
 
 
