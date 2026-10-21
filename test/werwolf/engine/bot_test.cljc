@@ -10,8 +10,11 @@
   (:require [clojure.test :refer [deftest is testing]]
             [werwolf.engine.core :as engine]
             [werwolf.engine.events :as e]
+            [werwolf.engine.phases :as phases]
             [werwolf.engine.schema :as schema]
             [werwolf.engine.view :as view]
+            [werwolf.i18n.core :as i18n]
+            [werwolf.proto :as proto]
             [werwolf.test-util :as tu :refer [exec! try-exec]]))
 
 (defn- lobby
@@ -54,3 +57,52 @@
                                                    (assoc-in [:players 1 :connected?] false))
                                                {:type :player/joined :player 2 :name "Agnes (Bot)" :locale :de :bot? true})))
         "a table of bots is an empty table")))
+
+;; ------------------------------------------------------------ :gm/add-bot ---
+
+(deftest the-host-may-add-a-bot-while-a-seat-is-free
+  (let [s (lobby 3)]
+    (is (contains? (phases/legal-actions s 0) :gm/add-bot))
+    (is (contains? phases/no-target-actions :gm/add-bot))
+    (doseq [pid [1 2]]
+      (is (not (contains? (phases/legal-actions s pid) :gm/add-bot)) "host only"))
+    (let [s' (exec! s {:type :gm/add-bot :player 0})]
+      (is (= {:type :player/joined :player 3 :name "Agnes (Bot)" :locale :de :bot? true}
+             (first (:events (engine/execute s {:type :gm/add-bot :player 0})))))
+      (is (true? (get-in s' [:players 3 :bot?])))
+      (testing "the next one gets the next name and the next seat"
+        (let [s'' (exec! s' {:type :gm/add-bot :player 0})]
+          (is (= "Bruno (Bot)" (get-in s'' [:players 4 :name])))))
+      (testing "a kicked bot's name comes back, its seat number does not"
+        (let [s'' (-> s' (exec! {:type :gm/kick :player 0 :target 3}) (exec! {:type :gm/add-bot :player 0}))]
+          (is (= "Agnes (Bot)" (get-in s'' [:players 4 :name])))
+          (is (not (contains? (:players s'') 3)))))
+      (testing "a human already called Agnes (Bot) is skipped, case and spaces aside"
+        (let [s2 (e/apply-event (lobby 2) {:type :player/joined :player 2 :name " agnes (bot) " :locale :de})]
+          (is (= "Bruno (Bot)" (get-in (exec! s2 {:type :gm/add-bot :player 0}) [:players 3 :name])))))
+      (is (schema/valid-state? s') (pr-str (schema/explain-state s'))))))
+
+(deftest a-full-table-offers-no-bot
+  (let [full (reduce (fn [s _] (exec! s {:type :gm/add-bot :player 0}))
+                     (assoc (lobby 3) :max-players 6) (range 3))]
+    (is (= 6 (count (e/participant-ids full))))
+    (is (not (contains? (phases/legal-actions full 0) :gm/add-bot)))
+    (is (= :not-allowed (:error (second (try-exec full {:type :gm/add-bot :player 0})))))
+    (testing "the Spielleiter holds no seat at the table, so a narrated room has one more"
+      (let [n (assoc (tu/narrated-lobby 5) :max-players 6)]
+        (is (contains? (phases/legal-actions n 0) :gm/add-bot))
+        (is (not (contains? (phases/legal-actions (exec! n {:type :gm/add-bot :player 0}) 0) :gm/add-bot)))))))
+
+(deftest only-in-the-lobby
+  (let [s (tu/game-with {0 :dorfbewohner 1 :seherin 2 :werwolf 3 :hexe 4 :jaeger})]
+    (is (not (contains? (phases/legal-actions s 0) :gm/add-bot)))))
+
+(deftest the-host-seat-is-never-handed-to-a-bot
+  (let [s (exec! (lobby 3) {:type :gm/add-bot :player 0})]
+    (is (= [1 2] (phases/legal-targets s 0 :gm/transfer-host)))
+    (is (= [1 2 3] (phases/legal-targets s 0 :gm/kick)) "but a bot may be removed")))
+
+(deftest the-action-is-on-the-wire-with-a-label
+  (is (contains? proto/command-types :gm/add-bot))
+  (is (= "Bot hinzufügen" (i18n/action-name :de :gm/add-bot)))
+  (is (= "Add a bot" (i18n/action-name :en :gm/add-bot))))

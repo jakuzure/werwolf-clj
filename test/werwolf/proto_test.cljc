@@ -77,10 +77,11 @@
                  {:type :gm/reassign-role :target 2 :role :hexe}
                  {:type :gm/set-deck :deck {:werwolf 2 :seherin 1 :dieb 0}}
                  {:type :gm/set-deck :deck {}}
-                 {:type :gm/auto-deck}]]
+                 {:type :gm/auto-deck}
+                 {:type :gm/add-bot}]]
       (is (proto/valid-client-message? (as-wire cmd)) (pr-str cmd)))
     (doseq [a [:begin-night :gm/toggle-narrated :gm/toggle-timer
-               :gm/set-deck :gm/auto-deck]]
+               :gm/set-deck :gm/auto-deck :gm/add-bot]]
       (is (contains? phases/no-target-actions a)
           (str a " names nobody, so it must be offerable without a target")))))
 

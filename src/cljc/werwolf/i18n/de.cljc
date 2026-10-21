@@ -203,6 +203,7 @@
    ;; Der Host nimmt jemanden aus der Lobby: ein Geisterplatz, ein Tippfehler,
    ;; ein abgelöster Host. Zwei Tipps, wie beim Verlassen.
    :action/gm-kick    "Entfernen"
+   :action/gm-add-bot "Bot hinzufügen"
    :kick/button       "Entfernen"
    :kick/confirm      "Wirklich entfernen?"
    :log/kicked        (fn [n] (str n " wurde aus der Runde entfernt"))

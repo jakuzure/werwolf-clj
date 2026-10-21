@@ -720,7 +720,12 @@
       (= :lobby phase)
       (cond-> #{:gm/toggle-narrated :gm/toggle-timer :gm/transfer-host
                 :gm/kick :gm/set-deck}
-        (contains? state :deck) (conj :gm/auto-deck))
+        (contains? state :deck) (conj :gm/auto-deck)
+        ;; And seating a bot, only while there is a seat to put it in — a
+        ;; button that cannot seat anybody is a button somebody will press to
+        ;; see what happens. Counted the way `:join` counts: the Spielleiter
+        ;; holds no seat at the table.
+        (< (count (e/participant-ids state)) (:max-players state 18)) (conj :gm/add-bot))
 
       ;; The deal is on the table and not yet final. Deliberately NOT the
       ;; in-game overrides: there is nobody to kill or revive and no phase to
@@ -925,6 +930,8 @@
     ;; Switches and a starting gun: the Spielleiter's, and none of them names
     ;; anybody.
     :begin-night :gm/toggle-narrated :gm/toggle-timer
+    ;; Seating a bot names nobody either: the engine picks the seat and the name.
+    :gm/add-bot
     ;; Names nobody: the seat it takes is the host's.
     :claim-host
     ;; The whole table again, whoever is sitting at it.
@@ -1010,7 +1017,10 @@
       :gm/reassign-role (e/participant-ids state)
       ;; Any other seat. The heir is chosen by the host, so it may be somebody
       ;; who is not connected right now — the seat is what is handed over.
-      :gm/transfer-host (vec (remove #{pid} (sort (keys (:players state)))))
+      ;; Never a bot, though: a bot host could not advance a single phase, and
+      ;; the table would be waiting on a seat with nobody behind it.
+      :gm/transfer-host (vec (remove (fn [id] (or (= id pid) (get-in state [:players id :bot?])))
+                                     (sort (keys (:players state)))))
       ;; The same seats, for the same reason: anybody but himself, connected or
       ;; not — a seat nobody is behind is the commonest thing to remove. Never
       ;; himself, because a room without its host has nobody to start it; he
