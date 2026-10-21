@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.10.0](https://github.com/jakuzure/werwolf-clj/compare/v0.9.0...v0.10.0) (2026-10-21)
+
+
+### Features
+
+* **engine:** a bot decides from its own view ([431dd25](https://github.com/jakuzure/werwolf-clj/commit/431dd250ba5caf675b92189767e51d513ce6cfbe))
+* **engine:** a seat can be a bot, and the engine issues seat numbers ([8794b99](https://github.com/jakuzure/werwolf-clj/commit/8794b99e827aa379dc711d9e79ce7879fae9b97f))
+* **engine:** the host seats a bot from the lobby ([42ed8fb](https://github.com/jakuzure/werwolf-clj/commit/42ed8fbd607151c55c43ed69d574cf4a01ae175c))
+* **server:** the clock plays the bots ([6aa6820](https://github.com/jakuzure/werwolf-clj/commit/6aa682010edb63cffb8ab4651660fc5f416f53c1))
+* **ui:** add bots from the lobby ([878a658](https://github.com/jakuzure/werwolf-clj/commit/878a6587bcc8565dada83dfdccd453b4a3edf546))
+
+
+### Bug Fixes
+
+* **server:** a bot's floor counts from the human's return, and each offer gets its own delay ([949ebd1](https://github.com/jakuzure/werwolf-clj/commit/949ebd17f03ab5106b81b964e44ad4511c8a90f7))
+
 ## [0.9.0](https://github.com/jakuzure/werwolf-clj/compare/v0.8.0...v0.9.0) (2026-10-21)
 
 
