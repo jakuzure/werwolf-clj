@@ -59,13 +59,14 @@
       "groupName": "clojure dependencies"
     },
     {
-      "description": "The browser test tooling moves together and never ships to players.",
+      "description": "The test tooling moves together and never ships to players.",
       "matchPackageNames": [
         "@playwright/test",
         "@tailwindcss/cli",
         "tailwindcss",
         "shadow-cljs",
-        "transit-js"
+        "transit-js",
+        "ws"
       ],
       "groupName": "frontend build tooling"
     },

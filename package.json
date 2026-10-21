@@ -9,7 +9,8 @@
     "@tailwindcss/cli": "^4.3.3",
     "shadow-cljs": "^3.4.12",
     "tailwindcss": "^4.3.3",
-    "transit-js": "^0.8.874"
+    "transit-js": "^0.8.874",
+    "ws": "^8.22.0"
   },
   "dependencies": {
     "livekit-client": "^2.21.0",
