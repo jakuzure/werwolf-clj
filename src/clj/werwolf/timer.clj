@@ -39,18 +39,6 @@
 (defn- secs-for [game-cfg phase]
   (get game-cfg (engine/timed-phases phase)))
 
-(defn- nobody-here?
-  "Is every seat in the room disconnected?
-
-   Read from state rather than from the room's sockets, which it mirrors — a
-   seat goes absent when its LAST socket closes and comes back with its first —
-   so that the clock's policy stays a pure function of state, and so the commit
-   that records the first player returning is also the one that re-arms the
-   clock, through the ordinary reconcile, with no special case."
-  [state]
-  (and (seq (:players state))
-       (not-any? :connected? (vals (:players state)))))
-
 (defn clock-events
   "Events that make the deadline agree with the phase. Idempotent: given a state
    whose clock is already correct it returns nil, which is what lets it be
@@ -76,7 +64,7 @@
       ;; game that had played itself. Same shape again: drop the deadline, arm
       ;; none, and the reconcile after the first seat reconnects gives the phase
       ;; a full fresh clock. Time nobody could play through is not time.
-      (nobody-here? state)        (when deadline [{:type :phase/deadline :at nil}])
+      (engine/nobody-here? state)        (when deadline [{:type :phase/deadline :at nil}])
       (and secs (nil? deadline)) [{:type :phase/deadline :at (+ now-ms (* 1000 secs))}]
       (and (not secs) deadline)  [{:type :phase/deadline :at nil}]
       :else nil)))
@@ -93,7 +81,7 @@
   (when-let [deadline (:deadline state)]
     ;; Belt and braces: `clock-events` already clears the deadline of an empty
     ;; room on the commit that emptied it.
-    (when (and (>= now-ms deadline) (not (nobody-here? state)))
+    (when (and (>= now-ms deadline) (not (engine/nobody-here? state)))
       (conj (vec (engine/timeout-events state))
             {:type :phase/deadline :at nil}))))
 
@@ -144,7 +132,7 @@
     (cond
       ;; Everybody comes back from a restart disconnected, so this is the usual
       ;; case: no clock until somebody is there to be timed. Live or expired.
-      (nobody-here? state) [{:type :phase/deadline :at nil}]
+      (engine/nobody-here? state) [{:type :phase/deadline :at nil}]
 
       (>= now-ms deadline)
       (or (clock-events game-cfg now-ms (assoc state :deadline nil))
@@ -182,7 +170,7 @@
         since (:absent-since host)]
     (when (and host
                (false? (:connected? host))
-               (not (nobody-here? state))
+               (not (engine/nobody-here? state))
                (or (nil? since) (>= (- now-ms since) grace)))
       (engine/host-absent-events state))))
 

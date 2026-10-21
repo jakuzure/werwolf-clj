@@ -59,6 +59,15 @@
 
 (def legal-actions phases/legal-actions)
 
+(def next-seat
+  "The seat number for whoever joins next. The room layer reads it from here
+   and keeps no counter of its own."
+  events/next-seat)
+
+(def nobody-here?
+  "Every seat disconnected — bots included, which never are."
+  events/nobody-here?)
+
 (def team-of-player
   "A player's dealt team. SERVER-SIDE ONLY — this is exactly the information
    `view-for` exists to withhold. The room layer needs it to route werewolf

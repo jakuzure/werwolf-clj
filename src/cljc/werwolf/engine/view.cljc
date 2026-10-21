@@ -210,7 +210,9 @@
    :name       (:name p)
    :alive?     (:alive? p)
    :connected? (:connected? p)
-   :left?      (boolean (:left? p))})
+   :left?      (boolean (:left? p))
+   ;; Who is a bot is public like a name: the table can see nobody sits there.
+   :bot?       (boolean (:bot? p))})
 
 (defn- night-view
   "Night bookkeeping a player may see.

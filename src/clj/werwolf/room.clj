@@ -300,24 +300,6 @@
 
 ;; ------------------------------------------------------------ create/join ---
 
-(defn- next-player-id
-  "Seat numbers only ever go up; a departed player's seat is never recycled.
-
-   Recycling would be a security bug, not a tidiness question: reconnect tokens
-   name a seat, so handing seat 3 to a newcomer would let the previous
-   occupant's token drive them.
-
-   Counted from every seat ever ISSUED, which the public log remembers, rather
-   than from the seats still taken. Counting the taken ones recycled exactly the
-   seat that mattered: the newest player leaving handed their number — and their
-   token — to the next arrival, and an emptied lobby started again at 0. The log
-   is part of state, so this survives a restart without a counter of its own."
-  [state]
-  (let [ids (concat (keys (:players state))
-                    (keep #(when (= :player/joined (:type %)) (:player %))
-                          (:log state)))]
-    (if (seq ids) (inc (apply max ids)) 0)))
-
 (defn- fresh-room [room-id]
   {:room-id    room-id
    :state      nil
@@ -472,7 +454,9 @@
 (defn- seat!
   "The engine's half of joining. Must run under the lock."
   [ctx r room-id name locale]
-  (let [pid (next-player-id (:state r))
+  (let [;; The engine's rule, not a copy: see events/next-seat for why a seat
+        ;; number is never recycled.
+        pid (engine/next-seat (:state r))
         res (engine/execute (:state r) {:type :join :player pid
                                         :name name :locale locale})]
     (if (engine/error? res)

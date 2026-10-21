@@ -37,6 +37,10 @@
    [:role {:optional true} [:maybe RoleId]]
    [:alive? :boolean]
    [:connected? :boolean]
+   ;; A seat the server plays. Public, like the name; never connected, because
+   ;; there is no socket behind it. See events/next-seat for why it is a seat
+   ;; like any other.
+   [:bot? {:optional true} :boolean]
    ;; Epoch ms of the disconnect, so the server's clock can tell a phone that
    ;; blinked from a seat nobody is coming back to. The server stamps it; the
    ;; engine only records it and never reads a clock. Absent while connected,
