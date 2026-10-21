@@ -60,6 +60,44 @@
          sort
          vec)))
 
+(defn next-seat
+  "The seat number for whoever joins next. Seat numbers only ever go up; a
+   departed player's seat is never recycled.
+
+   Recycling would be a security bug, not a tidiness question: reconnect tokens
+   name a seat, so handing seat 3 to a newcomer would let the previous
+   occupant's token drive them.
+
+   Counted from every seat ever ISSUED, which the public log remembers, rather
+   than from the seats still taken. Counting the taken ones recycled exactly the
+   seat that mattered: the newest player leaving handed their number — and their
+   token — to the next arrival, and an emptied lobby started again at 0. The log
+   is part of state, so this survives a restart without a counter of its own.
+
+   In the engine rather than the room layer because the engine issues seats
+   itself now (the host seating a bot), and two counters would be the
+   recycled-seat bug waiting to come back."
+  [state]
+  (let [ids (concat (keys (:players state))
+                    (keep #(when (= :player/joined (:type %)) (:player %))
+                          (:log state)))]
+    (if (seq ids) (inc (apply max ids)) 0)))
+
+(defn nobody-here?
+  "Is every seat in the room disconnected?
+
+   Read from state rather than from the room's sockets, which it mirrors — a
+   seat goes absent when its LAST socket closes and comes back with its first —
+   so that the clock's policy stays a pure function of state, and so the commit
+   that records the first player returning is also the one that re-arms the
+   clock, through the ordinary reconcile, with no special case.
+
+   A bot is never connected, so a table of bots is an empty table: nothing is
+   timed, nothing is listed, and nobody is waited for."
+  [state]
+  (and (seq (:players state))
+       (not-any? :connected? (vals (:players state)))))
+
 (defn living-with-role [state role-id]
   (let [n (narrator state)]
     (->> (:players state)
@@ -164,15 +202,20 @@
     (some? timer?)    (assoc :timer? (boolean timer?))))
 
 (defmethod apply-event :player/joined
-  [state {:keys [player name locale]}]
+  ;; A bot is a seat the server plays: it has no socket, so it is never
+  ;; connected, and the state says so rather than pretend. That one fact is
+  ;; what keeps the clock, the room list and host succession right without a
+  ;; bot filter anywhere — a table of bots is an empty table.
+  [state {:keys [player name locale bot?]}]
   (-> state
       (assoc-in [:players player]
-                {:id player
-                 :name name
-                 :role nil
-                 :alive? true
-                 :connected? true
-                 :locale (or locale :de)})
+                (cond-> {:id player
+                         :name name
+                         :role nil
+                         :alive? true
+                         :connected? (not bot?)
+                         :locale (or locale :de)}
+                  bot? (assoc :bot? true)))
       (publish {:type :player/joined :player player})))
 
 (defmethod apply-event :player/left
@@ -765,7 +808,9 @@
                       ;; next: "Nochmal mit allen" means everybody still here.
                       (remove (fn [[_ p]] (:left? p)))
                       (map (fn [[pid p]]
-                             [pid (-> (select-keys p [:id :name :locale :connected? :absent-since])
+                             ;; :bot? too, or the seat comes back as a human
+                             ;; nobody drives and the rematch stalls on it.
+                             [pid (-> (select-keys p [:id :name :locale :connected? :absent-since :bot?])
                                       (assoc :role nil :alive? true))])))
                      (:players state)))
         (publish {:type :game/reset}))))
