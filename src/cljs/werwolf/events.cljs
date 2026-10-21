@@ -13,6 +13,7 @@
             [werwolf.chime :as chime]
             [werwolf.i18n.core :as i18n]
             [werwolf.subs :as sub]
+            [werwolf.wake :as wake]
             [werwolf.ws :as ws]))
 
 ;; The voice effects are named by LITERAL keyword rather than through an alias,
@@ -548,6 +549,8 @@
   ;; read as the app having crashed — the same reason a kick says so.
   {:db (assoc (unseat db) :notice :left)
    ::ws/forget-seat true
+   ;; And let the screen go dark again: the lock is for a game this page is in.
+   ::wake/hold false
    ;; Hang up on the way out. Without this the microphone stays live and
    ;; published into a room the player has walked out of — they would be audible
    ;; to a table they are no longer at, which is the worst possible bug in a game
@@ -764,6 +767,17 @@
       ;; away when the turn ends.
       new  (assoc ::chime/title (turn-title new)))))
 
+(defn- with-wake-lock
+  "Tell the screen lock whether a game runs on this page — see werwolf.wake.
+   `fx` already holds the db AFTER the message.
+
+   Said after every view, and after each message that can take the seat away.
+   Not only on a change: the effect acts on the change itself, and a reload or
+   a reconnect has no transition here to say it on — the first view after a
+   welcome already describes a running game."
+  [fx]
+  (assoc fx ::wake/hold (wake/wanted? (:db fx))))
+
 (defn server-message-fx
   "Named and public so the effects of a message, not only its db change, are
    testable — the same reason `leave-fx` is."
@@ -772,6 +786,10 @@
     ;; The phase chime, when this view turned the phase — see `with-chime`.
     (= :room/view (:type msg))
     (with-chime db)
+
+    ;; The screen lock, after anything that can start, end or leave a game.
+    (#{:room/view :server/left :server/kicked :server/error} (:type msg))
+    (with-wake-lock)
 
     ;; Persisting on every welcome matters: a resume hands back a REFRESHED
     ;; token, and keeping the old one would expire the session at its original

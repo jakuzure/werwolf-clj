@@ -18,6 +18,7 @@
             [werwolf.events :as ev]
             [werwolf.subs]
             [werwolf.views :as views]
+            [werwolf.wake :as wake]
             [werwolf.ws :as ws]))
 
 (defonce root (atom nil))
@@ -42,6 +43,9 @@
   ;; Before anything can be tapped: the tap that creates or joins a room is the
   ;; gesture that lets the first night's chime play at all.
   (chime/install!)
+  ;; So a tab coming back from the background re-takes the screen lock the
+  ;; browser let go of while it was hidden.
+  (wake/install!)
   (ws/connect! (config/websocket-url))
   (when-not @ticker
     ;; One timer for the whole app: countdowns render from :now, so a passing
