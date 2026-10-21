@@ -65,6 +65,73 @@ log is on a volume and `room/rehydrate!` folds unfinished rooms back on boot,
 re-arming each timed phase with a fresh clock rather than an expired one.
 Clients reconnect from their localStorage tokens.
 
+## Load testing
+
+`bb load` plays whole games against a running server with bots on real
+WebSockets. It is the only thing in the repo that exercises the server over
+sockets at scale; the simulation harness drives the engine in-process. Each bot
+speaks the protocol exactly as the browser does and picks legal moves from its
+own view the way `test/werwolf/sim/harness.cljc` does, so the games end.
+
+```bash
+bb load ws://localhost:3000/api/ws 2 6 smoke                          # two tables, a minute
+ACT_MIN=500 ACT_MAX=2500 bb load wss://werwolf.example.com/api/ws 60 12 human
+```
+
+Arguments: url, rooms, players per room, a label for the output. `ACT_MIN` and
+`ACT_MAX` are a bot's thinking time per move in ms: the default 50..300 is a
+stress test, 500..2500 is about human pace. `STAGGER` spaces out the room
+creations and `MAX_GAME_MS` gives up on a room; the defaults are in `bb.edn`.
+Not against production with players on it: the bots are indistinguishable from
+a few hundred people, which is the point.
+
+The run ends with one `SUMMARY` line of JSON. What to look at, in order:
+
+- `pingBaselineMs` and `pingUnderLoadMs`: the round trip of a separate socket
+  that only pings, before the rooms start and during the run. Their difference
+  is what the load costs a player who is just watching.
+- `cmdToViewMs`: from sending a command to the view it produced. This is the
+  lag a player feels on their own move, and the number to watch.
+- `connectMs` and `welcomeMs`: socket open to `:server/hello`, and create or
+  join to `:server/welcome`. On a TLS host the first is mostly the handshake.
+- `errors`: by server error code, plus `http <status>` for upgrades the server
+  refused. A 503 comes from the proxy, not the app. A few `:not-allowed` are
+  normal — a bot acting on a view that went stale while it was thinking — and
+  at stress pace there are many.
+- `unexpectedCloses`, `reconnects`, `resumeFailures`: sockets that closed under
+  a seated bot, and whether `:client/resume` got the seat back. All three
+  should be zero.
+- `stalls` and `aborted`: rooms that went quiet for 90 s, and rooms given up
+  after `MAX_GAME_MS`. Zero on a healthy server; `gamesDone` says the rest.
+- `eventLoopLagMaxMs`: the generator's own stalls. When it is large, the
+  latencies above are partly the generator's fault, and the test wants a
+  second process or a bigger machine rather than a faster server.
+
+### Reference numbers
+
+The first runs, on 2026-10-21, against the live 2 vCPU host from a laptop over
+the internet (ping at rest 20–23 ms), so that later runs have a baseline:
+
+| load                                    | ping p50 under load | move p50 | move p95 |
+|-----------------------------------------|---------------------|----------|----------|
+| ~300 players, human pace (500..2500 ms) | 21 ms               | 46 ms    | 1.3 s    |
+| ~400 players acting every 50–300 ms     | 22 ms               | 313 ms   | 2.7 s    |
+
+The app itself never dropped a socket. What did fail was joining: waves of
+fifteen or more new connections per second were answered with 503s by Caddy,
+whose health check decided the app was down while it was busy accepting them.
+Fixed separately, in the Caddyfile; a run that shows `http 503` in `errors` is
+a proxy regression, not a server one.
+
+`test/load/rate.js` isolates the connection rate from the game. It opens
+upgrades at a given rate with raw http requests, so a refused one reports the
+server's status and the start of its body — which is what told the proxy's
+503 from the app's.
+
+```bash
+node test/load/rate.js wss://werwolf.example.com/api/ws 20 10   # 20 per second for 10 s
+```
+
 ## The jar needs Java 21+ — including locally
 
 If you build the uberjar and run it with a bare `java -jar`, check which `java`
