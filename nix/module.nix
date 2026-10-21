@@ -323,9 +323,30 @@ in
             # flush_interval -1: never buffer, or WebSocket frames stall.
             reverse_proxy 127.0.0.1:${toString cfg.port} {
               flush_interval -1
+
+              # A slow app must not become an outage. In the load test of
+              # 2026-10-21, 20 to 60 tables of bots joining within half a minute
+              # made the app take 1 to 3 s to accept a new connection, while open
+              # sockets kept their 20 ms ping. The health check timed out at 2 s,
+              # Caddy marked its only upstream down and answered every WebSocket
+              # upgrade with 503 until the next check 10 s later: a third to two
+              # thirds of the joins in a wave failed, although the app never
+              # dropped a connection and recovered by itself.
+              #
+              # lb_try_duration: a request to a down upstream waits and retries
+              # (every lb_try_interval) for up to 10 s instead of failing at
+              # once. With a single upstream that is waiting for it to be
+              # healthy again; retrying is safe, since nothing was sent yet. The
+              # check then tolerates 5 s before the app counts as down and runs
+              # every 5 s, so a hiccup is both less likely to count and quicker
+              # to recover from. The active check stays, since a dead JVM must
+              # still be noticed; a restart that binds again within those 10 s
+              # now costs whoever joins meanwhile a wait, not an error.
+              lb_try_duration 10s
+              lb_try_interval 250ms
               health_uri      /health
-              health_interval 10s
-              health_timeout  2s
+              health_interval 5s
+              health_timeout  5s
             }
           }
         '';
