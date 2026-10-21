@@ -732,10 +732,18 @@
 
 (defn schedule!
   "Replace the scheduler's notes: the phase it saw, when that began, and the
-   bot due times (pid -> epoch ms)."
+   bots' turns (pid -> {:offers set :at epoch-ms})."
   [ctx room-id notes]
   (swap! (:rooms ctx) update room-id
          #(when % (merge % (select-keys notes [:phase :phase-since :bots])))))
+
+(defn reschedule!
+  "Move one bot's turn. One seat's entry rather than the whole map, because
+   this is written from the tick while a socket's commit may be re-arming the
+   others under the lock."
+  [ctx room-id pid at]
+  (swap! (:rooms ctx) update room-id
+         #(when (get-in % [:bots pid]) (assoc-in % [:bots pid :at] at))))
 
 ;; ------------------------------------------------------------------- recap ---
 ;;
