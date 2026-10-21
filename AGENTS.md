@@ -14,6 +14,18 @@ REPL for the whole session.
 - Server code: `(dev/reset)` reloads changed namespaces and restarts the
   system. Inspect live rooms with `(dev/system)` instead of reading SQLite or
   logs.
+- Reloading only reloads CHANGED files, and that is not always enough.
+  `werwolf.build-info` bakes the commit in at macro-expansion time, so after
+  a commit the unchanged build-info test keeps failing in the REPL with the
+  old commit. Use `(clojure.tools.namespace.repl/refresh-all)` for the full
+  suite and whenever HEAD has moved; `(require 'the.ns :reload)` for one
+  namespace. `kaocha.repl/run` does not reload a test namespace by itself
+  either: refresh first, or a changed test runs in its old shape.
+- A headless nREPL (no terminal attached) cannot be started with
+  `clojure -M:dev:cljs:test -m nrepl.cmdline ...`: the `:test` alias's
+  `:main-opts` win and hand the arguments to kaocha. Use a throwaway alias
+  through `-Sdeps` with the dev deps and `:main-opts ["-m" "nrepl.cmdline"
+  "--port" "7899"]`, over `-M:cljs:<that-alias>`.
 - Client code: run shadow-cljs inside the same JVM
   (`(shadow.cljs.devtools.server/start!)`, `(shadow.cljs.devtools.api/watch :app)`)
   and check a change with `(shadow.cljs.devtools.api/watch-compile-all!)`, which
