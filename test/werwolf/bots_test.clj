@@ -243,3 +243,44 @@
         (is (= :game-over (phase ctx room-id)) (str "still " (phase ctx room-id) " after " (- end t0) " ms"))
         (is (some? (:winner (state ctx room-id))))
         (is (contains? (:sinks (room-map ctx room-id)) 0) "the human stayed attached")))))
+
+(deftest after-an-absence-the-floor-counts-from-the-return
+  ;; The spec's own scenario: the human's phone goes in a pocket mid-day. The
+  ;; floor exists so a watcher can read the screen, and a watcher coming back
+  ;; has not read anything — the bots must not vote the instant the socket is
+  ;; back because the day began long ago.
+  (with-ctx [ctx]
+    (let [{:keys [room-id sink]} (bot-table ctx 5)]
+      (at! ctx t0)
+      (begin! ctx room-id)
+      (to-open-ballot! ctx room-id)
+      (let [since (:phase-since (room-map ctx room-id))]
+        (at! ctx (+ since 3000))
+        (room/detach! ctx sink)
+        (timer/tick! ctx (+ since 60000))
+        (is (zero? (living-bot-votes ctx room-id)) "nobody here, nobody votes")
+        (let [back (+ since 90000)]
+          (at! ctx back)
+          (room/attach! ctx room-id 0 sink)
+          (timer/tick! ctx (+ back 1000))
+          (is (zero? (living-bot-votes ctx room-id)) "the floor counts from the return, not from the phase")
+          (tick-until ctx (+ back 10100) (+ back 14000) #(pos? (living-bot-votes ctx room-id)))
+          (is (pos? (living-bot-votes ctx room-id)) "and then the bots vote"))))))
+
+(deftest an-armed-turn-is-kept-for-the-same-offer-only
+  ;; A seat whose turn has two moves — the Hexe's heal and then her pass —
+  ;; must get a delay before each, not the first move's instant for both.
+  (with-ctx [ctx]
+    (let [{:keys [room-id]} (bot-table ctx 5)]
+      (at! ctx t0)
+      (begin! ctx room-id)
+      (let [[pid {:keys [offers at]}] (first (:bots (room-map ctx room-id)))]
+        (is (= (+ t0 1500) at) "armed a delay after the offer appeared")
+        (testing "the same offer keeps its instant across a rearm"
+          (bots/rearm! ctx game-cfg room-id (+ t0 20000))
+          (is (= (+ t0 1500) (get-in (room-map ctx room-id) [:bots pid :at]))))
+        (testing "a different offer for the same seat is armed afresh"
+          (room/schedule! ctx room-id {:bots {pid {:offers #{:hexe-pass} :at (- t0 5000)}}})
+          (bots/rearm! ctx game-cfg room-id (+ t0 20000))
+          (is (= offers (get-in (room-map ctx room-id) [:bots pid :offers])))
+          (is (= (+ t0 21500) (get-in (room-map ctx room-id) [:bots pid :at]))))))))

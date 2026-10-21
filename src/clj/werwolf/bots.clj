@@ -74,29 +74,45 @@
    Nothing is armed while nobody is here: the clock's own rule is that time
    nobody could play through is not time, and a table of bots that played on
    through a one-minute outage would hand whoever came back a finished game.
-   A night turn already armed keeps its instant; a day turn is recomputed on
-   every commit, because the humans answering is what moves it earlier."
+   The phase's start is forgotten with them, so the floor counts from the
+   human's return: the clock gives a phase a full fresh clock after an
+   absence for the same reason, and a watcher coming back has read nothing.
+
+   A turn already armed keeps its instant only for the SAME offer. A seat's
+   turn can take two moves — the Hexe's heal and then her pass, a dead
+   Jäger's shot and then, as Bürgermeister, his successor — and the second
+   must get its own delay, not the first move's instant, already past. Day
+   turns are recomputed on every commit, because the humans answering is
+   what moves them earlier."
   [ctx game-cfg room-id now-ms]
   (when-let [state (room/state-of ctx room-id)]
-    (let [notes (room/scheduling ctx room-id)
-          bots  (:bots notes)
+    (let [notes  (room/scheduling ctx room-id)
+          bots   (:bots notes)
+          empty? (engine/nobody-here? state)
           ;; When the phase began, by THIS clock: the commit stamps the wall
           ;; clock, and a test ticks simulated instants — the same reason the
           ;; clock's hook takes one. Still under the room's lock, right after
           ;; the commit that changed the phase, so no later commit can slip
-          ;; in between.
-          phase-since (if (= (:phase notes) (:phase state)) (:phase-since notes) now-ms)
-          due (if (engine/nobody-here? state)
+          ;; in between. nil while nobody is here, and so stamped afresh by
+          ;; the commit that brings somebody back.
+          phase-since (cond
+                        empty? nil
+                        (and (= (:phase notes) (:phase state)) (:phase-since notes)) (:phase-since notes)
+                        :else now-ms)
+          due (if empty?
                 {}
                 (into {}
                       (keep (fn [[pid p]]
                               (when (:bot? p)
-                                (let [offs (bot/offers (engine/view-for state pid))]
+                                (let [offs (bot/offers (engine/view-for state pid))
+                                      prev (get bots pid)]
                                   (when (seq offs)
-                                    [pid (if (and (contains? bots pid)
-                                                  (not (some day-actions offs)))
-                                           (get bots pid)
-                                           (due-at game-cfg phase-since state offs now-ms))])))))
+                                    [pid {:offers offs
+                                          :at (if (and prev
+                                                       (= (:offers prev) offs)
+                                                       (not (some day-actions offs)))
+                                                (:at prev)
+                                                (due-at game-cfg phase-since state offs now-ms))}])))))
                       (:players state)))]
       (room/schedule! ctx room-id {:phase (:phase state) :phase-since phase-since :bots due}))))
 
@@ -110,13 +126,16 @@
    werwolf.engine.bot-test are the guard against that ever being systematic."
   [ctx room-id now-ms]
   (let [{:keys [bots]} (room/scheduling ctx room-id)
-        due (sort (keep (fn [[pid at]] (when (<= at now-ms) pid)) bots))]
+        due (sort (keep (fn [[pid {:keys [at]}]] (when (<= at now-ms) pid)) bots))]
     (boolean
      (seq
       (doall
        (for [pid due
              :let [state (room/state-of ctx room-id)
-                   {:keys [seq]} (room/scheduling ctx room-id)]
+                   {:keys [seq] :as notes} (room/scheduling ctx room-id)]
+             ;; Read again per seat: the previous seat's move may have closed
+             ;; the phase and re-armed this one for a new offer, a delay away.
+             :when (<= (get-in notes [:bots pid :at] ##Inf) now-ms)
              :when (and state
                         (not (engine/nobody-here? state))
                         (get-in state [:players pid :bot?]))
@@ -127,8 +146,7 @@
          (do
            (when-let [err (:error res)]
              (log/warn "bot" pid "in" room-id "had its move refused:" (pr-str cmd) err)
-             (room/schedule! ctx room-id
-                             {:bots (assoc (:bots (room/scheduling ctx room-id))
-                                           pid (+ now-ms (* 1000 (or (:bot-patience-secs (:game ctx))
-                                                                     default-patience-secs))))}))
+             (room/reschedule! ctx room-id pid
+                               (+ now-ms (* 1000 (or (:bot-patience-secs (:game ctx))
+                                                     default-patience-secs)))))
            pid)))))))
