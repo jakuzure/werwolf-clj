@@ -16,6 +16,7 @@
             [werwolf.engine.view :as view]
             [werwolf.i18n.core :as i18n]
             [werwolf.proto :as proto]
+            [werwolf.sim.harness :as h]
             [werwolf.test-util :as tu :refer [exec! try-exec]]))
 
 (defn- lobby
@@ -178,3 +179,64 @@
     (let [s (tu/game-with cast) v (view/view-for s pid)]
       (when-let [c (bot/decide v seed)]
         (is (not (engine/error? (engine/execute s c))) (pr-str c))))))
+
+;; ---------------------------------------------------------- all-bot games ---
+;;
+;; The one property that matters for a human testing alone: whatever the bots
+;; are dealt, the game ends. The host seat never moves — narrated, it is the
+;; Spielleiter; otherwise a human absent all game, the worst case for a table —
+;; and where only the clock or the Spielleiter could move the game along, the
+;; loop does what they would.
+
+(defn- play-bots
+  [n seed opts]
+  (let [[s0 log0] (h/new-sim-game n seed opts)
+        bots (remove #{0} (keys (:players s0)))]
+    (loop [s s0, turn 0, log log0]
+      (cond
+        (seq (h/check-invariants s))
+        {:ok? false :reason :invariant :seed seed :players n :turn turn
+         :violations (h/check-invariants s)}
+
+        (engine/over? s)
+        {:ok? true :winner (:winner s) :seed seed :players n :turns turn :log log :state s}
+
+        (> turn 2000)
+        {:ok? false :reason :livelock :seed seed :players n :turn turn :phase (:phase s)}
+
+        :else
+        (let [moves (keep (fn [pid] (bot/decide (view/view-for s pid) (bot/seed-for seed turn pid))) bots)]
+          (if-let [cmd (first moves)]
+            (let [r (engine/execute s cmd)]
+              (if (engine/error? r)
+                {:ok? false :reason :rejected :cmd cmd :error (:error r) :seed seed :players n
+                 :turn turn :phase (:phase s)}
+                (recur (:state r) (inc turn) (into log (:events r)))))
+            ;; Nobody can move: only the clock or the Spielleiter could. Stand
+            ;; in for them with what they would do — the host starts the game
+            ;; and begins the night; everywhere else the clock's own expiry.
+            (case (:phase s)
+              (:lobby :setup)
+              (let [r (engine/execute s {:type (if (= :lobby (:phase s)) :start-game :begin-night) :player 0})]
+                (if (engine/error? r)
+                  {:ok? false :reason :deadlock :seed seed :players n :turn turn :phase (:phase s)
+                   :error (:error r)}
+                  (recur (:state r) (inc turn) (into log (:events r)))))
+              (let [evs (engine/timeout-events s)]
+                (if (empty? evs)
+                  {:ok? false :reason :deadlock :seed seed :players n :turn turn :phase (:phase s)}
+                  (let [[s' auto] (engine/settle (engine/apply-all s evs))]
+                    (recur s' (inc turn) (-> log (into evs) (into auto)))))))))))))
+
+(deftest bots-alone-finish-every-game
+  (doseq [n (range 5 19) narrated? [true false]
+          :let [r (play-bots n (+ 500 (* 13 n)) {:narrated? narrated?})]]
+    (is (:ok? r) (pr-str (dissoc r :log :state)))
+    (is (some? (:winner r)) (str n " players, narrated " narrated? ": no winner"))
+    (when (:ok? r)
+      (is (nil? (h/replay-mismatch r)) "the log replays to the same state"))))
+
+(deftest both-sides-win-against-bots
+  (let [winners (frequencies (map #(:winner (play-bots 9 % {})) (range 1 41)))]
+    (is (pos? (get winners :village 0)) (pr-str winners))
+    (is (pos? (get winners :werewolf 0)) (pr-str winners))))
