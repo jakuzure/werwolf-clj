@@ -303,14 +303,14 @@
       "hash": "sha256-kga33Wf7E4A2V2w9/KlHoqjz4sTS2cHy0d6lGbOk2uE="
     },
     {
-      "mvn-path": "com/github/seancorfield/next.jdbc/1.4.70/next.jdbc-1.4.70.jar",
+      "mvn-path": "com/github/seancorfield/next.jdbc/1.4.72/next.jdbc-1.4.72.jar",
       "mvn-repo": "https://repo.clojars.org/",
-      "hash": "sha256-2rE4ZHudPAnM7o1rEjpdaQdKpzaQsoruaajvqzVDVNE="
+      "hash": "sha256-TOqSPB5+7xRxCYAg9ZCZtSiic/P1H4YT8IcP5unGnAY="
     },
     {
-      "mvn-path": "com/github/seancorfield/next.jdbc/1.4.70/next.jdbc-1.4.70.pom",
+      "mvn-path": "com/github/seancorfield/next.jdbc/1.4.72/next.jdbc-1.4.72.pom",
       "mvn-repo": "https://repo.clojars.org/",
-      "hash": "sha256-FnjE5txyGA1XJ3RPpjoTDH/4VerBvOI7QKSh6SKWmao="
+      "hash": "sha256-F994iE2XaKa7D/uUYaVvnBCcJgeqvJHwWZQqIEQYfgA="
     },
     {
       "mvn-path": "com/google/google/5/google-5.pom",
