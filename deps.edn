@@ -18,7 +18,7 @@
   buddy/buddy-sign                    {:mvn/version "3.6.1-359"}
 
   ;; --- persistence ---
-  com.github.seancorfield/next.jdbc   {:mvn/version "1.4.70"}
+  com.github.seancorfield/next.jdbc   {:mvn/version "1.4.72"}
   org.xerial/sqlite-jdbc              {:mvn/version "3.53.4.0"}
 
   ;; --- metrics (werwolf.metrics) ---
