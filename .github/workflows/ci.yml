@@ -196,7 +196,7 @@ jobs:
     # what production runs, so that is what voice is tested against.
     services:
       livekit:
-        image: livekit/livekit-server:v1.13.10
+        image: livekit/livekit-server:v1.13.11
         env:
           # Services take no command line, so deploy/livekit.dev.yml's flags are
           # spelt as the config they stand for, in the variable livekit-server
