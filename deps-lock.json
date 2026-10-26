@@ -93,29 +93,29 @@
       "hash": "sha256-LVp6g6ymqHa1ZOMHYD0CRaNxZ4osT0xoEH7dC5sLv7s="
     },
     {
-      "mvn-path": "ch/qos/logback/logback-classic/1.6.5/logback-classic-1.6.5.jar",
+      "mvn-path": "ch/qos/logback/logback-classic/1.6.6/logback-classic-1.6.6.jar",
       "mvn-repo": "https://repo1.maven.org/maven2/",
-      "hash": "sha256-LoxzqtrVJehUrxrJV5OvPcdezt1TwBDqI4neRMCOcps="
+      "hash": "sha256-UjAhfMunqdMd2h3YeOVgYDenlyKCx9P46sHvqA6UY9k="
     },
     {
-      "mvn-path": "ch/qos/logback/logback-classic/1.6.5/logback-classic-1.6.5.pom",
+      "mvn-path": "ch/qos/logback/logback-classic/1.6.6/logback-classic-1.6.6.pom",
       "mvn-repo": "https://repo1.maven.org/maven2/",
-      "hash": "sha256-q1hVz9DE7eRmvUtE/5X+8OGr3A5Ronlk9DPG4gehc04="
+      "hash": "sha256-48FKClq3bLD/69CO0ZpXZpZMUhle3hW91UCHBxQtnME="
     },
     {
-      "mvn-path": "ch/qos/logback/logback-core/1.6.5/logback-core-1.6.5.jar",
+      "mvn-path": "ch/qos/logback/logback-core/1.6.6/logback-core-1.6.6.jar",
       "mvn-repo": "https://repo1.maven.org/maven2/",
-      "hash": "sha256-A9y/BTtAFmhJuOsKMMveQMBKRIgg6adYnEsKLsOp22M="
+      "hash": "sha256-VFhBXV1YqXq2cGMvmyvawtb34OEUVbRd1OZOkNEmcKs="
     },
     {
-      "mvn-path": "ch/qos/logback/logback-core/1.6.5/logback-core-1.6.5.pom",
+      "mvn-path": "ch/qos/logback/logback-core/1.6.6/logback-core-1.6.6.pom",
       "mvn-repo": "https://repo1.maven.org/maven2/",
-      "hash": "sha256-XV5fd9ikB6PHbhoFDnUZNrG0g5U9kPPoEcMDt88+h0Q="
+      "hash": "sha256-dBVFvxxTetT5Mo/5bN28U+mg8dqEdmVVkLoHGi8f4oQ="
     },
     {
-      "mvn-path": "ch/qos/logback/logback-parent/1.6.5/logback-parent-1.6.5.pom",
+      "mvn-path": "ch/qos/logback/logback-parent/1.6.6/logback-parent-1.6.6.pom",
       "mvn-repo": "https://repo1.maven.org/maven2/",
-      "hash": "sha256-oDOKgW7TEgYlF5adrQseVabswK0rVvV0kaJgptRW/BU="
+      "hash": "sha256-buKa2JJH3fKsKsx/IBWl//bPwk386tpHT+wCnS+UFvw="
     },
     {
       "mvn-path": "cheshire/cheshire/5.13.0/cheshire-5.13.0.jar",
@@ -303,14 +303,14 @@
       "hash": "sha256-kga33Wf7E4A2V2w9/KlHoqjz4sTS2cHy0d6lGbOk2uE="
     },
     {
-      "mvn-path": "com/github/seancorfield/next.jdbc/1.4.70/next.jdbc-1.4.70.jar",
+      "mvn-path": "com/github/seancorfield/next.jdbc/1.4.72/next.jdbc-1.4.72.jar",
       "mvn-repo": "https://repo.clojars.org/",
-      "hash": "sha256-2rE4ZHudPAnM7o1rEjpdaQdKpzaQsoruaajvqzVDVNE="
+      "hash": "sha256-TOqSPB5+7xRxCYAg9ZCZtSiic/P1H4YT8IcP5unGnAY="
     },
     {
-      "mvn-path": "com/github/seancorfield/next.jdbc/1.4.70/next.jdbc-1.4.70.pom",
+      "mvn-path": "com/github/seancorfield/next.jdbc/1.4.72/next.jdbc-1.4.72.pom",
       "mvn-repo": "https://repo.clojars.org/",
-      "hash": "sha256-FnjE5txyGA1XJ3RPpjoTDH/4VerBvOI7QKSh6SKWmao="
+      "hash": "sha256-F994iE2XaKa7D/uUYaVvnBCcJgeqvJHwWZQqIEQYfgA="
     },
     {
       "mvn-path": "com/google/google/5/google-5.pom",
