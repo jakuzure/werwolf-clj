@@ -141,6 +141,101 @@
    :depends [build:cljs build:css]
    :task    (shell "npx playwright test --config test/browser/playwright.config.js")}
 
+  bombadil:install
+  {:doc  "Install Bombadil into test/bombadil, a package of its own: the CLI is
+          44 MB of binaries, and the root lock is what Nix builds node_modules
+          from, for every build of the app."
+   :task (when (seq (fs/modified-since "test/bombadil/node_modules" "test/bombadil/package.json"))
+           (shell {:dir "test/bombadil"} "npm install"))}
+
+  test:bombadil
+  {:doc     "Let Bombadil loose on the app: one browser clicking at random through
+             whatever the screen offers, at a table of bots, with the properties
+             in test/bombadil/spec.ts checked after every step.
+
+               bb test:bombadil              three minutes
+               bb test:bombadil 20m          longer
+               bb test:bombadil --time-limit 5m
+                                             in a visible window: given any
+                                             flag, the task passes only yours
+
+             Exits 2 on a violation. The run is in test-results/bombadil, and
+             `test/bombadil/node_modules/.bin/bombadil browser inspect
+             test-results/bombadil` shows it step by step, with screenshots.
+             Bombadil's own --reproduce diverges within a few steps here: the
+             server deals and the bots move on their own randomness, which a
+             replay of the clicks cannot repeat.
+
+             Against the RELEASE build, like test:browser and for the same
+             reason. The server runs on :3998 (BOMBADIL_PORT) with a fresh temp
+             database, rooms that start without a Spielleiter, and clocks of
+             15 to 30 s, so games end inside a run and a stuck one shows. Its
+             log is test-results/bombadil-server.log. The browser is the local
+             Chrome or Chromium (BOMBADIL_CHROME to choose), muted.
+
+             Not part of test:all: it runs for minutes and walks somewhere else
+             every time. A run writes a screenshot per step, about 30 MB a
+             minute, so each run replaces the last."
+   :depends [build:cljs build:css bombadil:install]
+   :task
+   ;; NOTE: no #() and no @ here — bb.edn is plain EDN, as `dev` says.
+   (let [port   (or (System/getenv "BOMBADIL_PORT") "3998")
+         origin (str "http://localhost:" port)
+         out    "test-results/bombadil"
+         [arg :as args] *command-line-args*
+         ;; A time limit or nothing: this task's own flags. Anything else is
+         ;; the caller's, and goes through untouched.
+         own?   (not (and arg (str/starts-with? arg "-")))
+         flags  (if own?
+                  ["--headless" "--exit-on-violation" "--time-limit" (or arg "3m")
+                   "--output-path" out "--output-path-overwrite"]
+                  args)
+         open?  (fn [] (try (.close (java.net.Socket. "localhost" (parse-long port))) true
+                            (catch Exception _ false)))]
+     ;; Something else on the port would answer instead of our server, and the
+     ;; run would test whatever that is.
+     (when (open?)
+       (throw (ex-info (str "port " port " is taken; set BOMBADIL_PORT") {})))
+     ;; Only a run that writes `out` clears it: a --reproduce reads from it.
+     (when own? (fs/delete-tree out))
+     (fs/create-dirs "test-results")
+     (let [db     (str (fs/path (fs/create-temp-dir {:prefix "werwolf-bombadil"}) "werwolf.db"))
+           server (p/process {:extra-env {"PORT"              port
+                                          "DB_PATH"           db
+                                          "TOKEN_SECRET"      "bombadil-suite-secret-long-enough-to-pass"
+                                          ;; The creator plays a seat and the clock
+                                          ;; runs. A Spielleiter's game waits on him,
+                                          ;; and a random walk is a poor narrator.
+                                          ;; The walk still finds the switch.
+                                          "NARRATED"          "false"
+                                          "DISCUSSION_SECS"   "30"
+                                          "NIGHT_SECS"        "20"
+                                          "ELECTION_SECS"     "20"
+                                          "REACTION_SECS"     "15"
+                                          ;; Bots move at once and wait for nobody,
+                                          ;; as in test:browser.
+                                          "BOT_DELAY_MS"      "200"
+                                          "BOT_FLOOR_SECS"    "0"
+                                          "BOT_PATIENCE_SECS" "0"}
+                              :out      :write
+                              :out-file (fs/file "test-results/bombadil-server.log")
+                              :err      :out}
+                             "clojure" "-M" "-m" "werwolf.main")
+           exit   (try
+                    (loop [i 0]
+                      (cond (open?) nil
+                            (not (p/alive? server))
+                            (throw (ex-info "the server exited; see test-results/bombadil-server.log" {}))
+                            (> i 360) (throw (ex-info "the server did not come up in 3 minutes" {}))
+                            :else (do (Thread/sleep 500) (recur (inc i)))))
+                    (:exit (apply p/shell {:continue  true
+                                           ;; Muted: see test/bombadil/chrome-muted.
+                                           :extra-env {"CHROME" (str (fs/absolutize "test/bombadil/chrome-muted"))}}
+                                  "test/bombadil/node_modules/.bin/bombadil" "browser" "test"
+                                  (concat flags [origin "test/bombadil/spec.ts"])))
+                    (finally (p/destroy-tree server)))]
+       (System/exit exit)))}
+
   test:all
   {:doc     "Run the suite on both platforms, and compile the browser build.
              Does NOT include test:browser — it needs a browser download and is

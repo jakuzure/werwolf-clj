@@ -2,6 +2,7 @@
 /.cpcache/
 /.shadow-cljs/
 /node_modules/
+/test/bombadil/node_modules/
 /resources/public/js/
 /resources/public/css/main.css
 /data/
