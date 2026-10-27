@@ -15,7 +15,7 @@
 
 (def ^:private game-cfg
   {:election-secs 60 :discussion-secs 300 :nomination-secs 90 :vote-secs 60
-   :night-secs 45 :reaction-secs 30})
+   :night-secs 45 :reaction-secs 30 :verdict-secs 10})
 
 (defn- tmp-path []
   (let [f (java.io.File/createTempFile "werwolf-kick" ".db")]

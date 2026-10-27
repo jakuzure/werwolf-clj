@@ -98,11 +98,15 @@
       ;; And again for the day as one open ballot, which also moves every row.
       ;; And for the Hexe sleeping through a kill-free first night: every
       ;; table that deals her moved.
-      12 8675309 179 62  :weisser-werwolf
+      ;; And for the verdict that waits for the table to read the condemned's
+      ;; card: the host's call into the night is a move of its own, so every
+      ;; game that condemns somebody and plays on moved. The 9 and 5 rows
+      ;; condemn once, and that verdict ends the game, so they are untouched.
+      12 8675309 197 62  :weisser-werwolf
       9  4242    151 47  :village
-      18 777     308 117 :werewolf
+      18 777     288 114 :village
       5  31337   56  17  :village
-      14 90210   269 103 :werewolf)))
+      14 90210   262 102 :village)))
 
 (deftest state-matches-its-schema-at-every-step
   (testing "the closed GameState schema holds through a whole game, so state

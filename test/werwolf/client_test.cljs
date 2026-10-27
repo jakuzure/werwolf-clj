@@ -1032,6 +1032,23 @@
     (is (= entries (sub/dawn-news v nil)))
     (is (= entries (sub/latest-news (:log v))) "nor does the Zuletzt line")))
 
+(deftest the-verdict-card-tells-what-the-vote-did-until-the-night-falls
+  ;; A lynched Jäger and the Seherin he took with him, after a morning with a
+  ;; death of its own: the card is the verdict's, not the day's.
+  (let [verdict [{:type :vote/resolved :target 3 :tie? false}
+                 {:type :player/died :player 3 :cause :lynch :role :jaeger}
+                 {:type :jaeger/shot :player 3 :target 5}
+                 {:type :player/died :player 5 :cause :jaeger :role :seherin}]
+        v {:room-id "ABCD" :phase :day-resolve :night 2
+           :log (into [{:type :night/ended}
+                       {:type :player/died :player 1 :cause :werwolf :role :hexe}
+                       {:type :day/began}
+                       {:type :vote/cast :voter 0 :target 3}]
+                      verdict)}]
+    (is (= verdict (sub/verdict-news v)))
+    (is (nil? (sub/verdict-news (assoc v :phase :night))) "the night ends it, for everybody")
+    (is (nil? (sub/dawn-news v nil)) "and the morning card is not open over it")))
+
 (deftest the-table-record-ranks-wins-then-games
   (let [v {:players {1 {:name "Anna"} 2 {:name "Bert"} 3 {:name "Cem"}}
            :stats {:games 3

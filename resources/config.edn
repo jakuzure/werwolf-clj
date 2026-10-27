@@ -34,6 +34,11 @@
            ;; Generous: the Jäger has just been told he is dead and the whole
            ;; table is waiting on him.
            :reaction-secs   #long #or [#env REACTION_SECS 30]
+           ;; The moment after a condemnation, before the night falls: long
+           ;; enough to read whose card it was and say something about it,
+           ;; short enough not to feel like waiting. The Spielleiter can end
+           ;; it sooner.
+           :verdict-secs    #long #or [#env VERDICT_SECS 10]
            ;; Rule variant. true (default): the Düsterwald rule, the werewolves
            ;; choose a victim on the first night too, so the first day — which
            ;; has no trial — has something to talk about. false gives a

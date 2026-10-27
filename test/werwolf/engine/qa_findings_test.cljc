@@ -69,7 +69,8 @@
         s (tu/advance-to-vote s)
         s (reduce (fn [st pid] (exec! st {:type :vote :player pid :target 1}))
                   s (remove #{1} (alive s)))
-        s (exec! s {:type :vote-abstain :player 1})]
+        s (exec! s {:type :vote-abstain :player 1})
+        s (exec! s {:type :advance-phase :player 0})]
     (is (false? (get-in s [:players 1 :alive?])) "the plain wolf was condemned")
     (is (= 2 (:night s)))
     (let [s (exec! s {:type :werewolf-vote :player 2 :target 3})]

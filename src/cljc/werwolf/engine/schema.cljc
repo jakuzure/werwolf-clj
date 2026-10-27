@@ -150,6 +150,9 @@
    [:winner {:optional true} [:maybe Team]]
    ;; set by :vote/resolved so :day-resolve knows the lynch has been counted
    [:vote-resolved? {:optional true} :boolean]
+   ;; whom that vote condemned, until the night falls: while it is set,
+   ;; :day-resolve waits for the table to see the card turned over
+   [:condemned {:optional true} PlayerId]
    ;; where to return to once the reaction stack drains
    [:resume-phase {:optional true} [:maybe Phase]]
    ;; opt-in ghost view for the dead — see werwolf.engine.view

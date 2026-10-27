@@ -300,6 +300,9 @@
    :turn/calling (fn [role] (str "Der Spielleiter ruft: " role))
    ;; Der Spielleiter ist nie "dran" und wartet nie — er führt.
    :turn/narrating "Du leitest das Spiel"
+   ;; Nach dem Urteil wartet niemand auf irgendwen: der Tisch schaut sich an,
+   ;; wen es getroffen hat, und dann wird es Nacht.
+   :turn/nightfall "Gleich bricht die Nacht herein"
 
    ;; ------------------------------------------------------------ stage ---
    ;;
@@ -326,7 +329,8 @@
    :explain/discussion  "Redet miteinander: Wem traut ihr nicht? Wer genug geredet hat, tippt auf „Ich bin fertig“."
    :explain/trial       (fn [_] "Redet miteinander und stimmt ab, wer verurteilt wird. Ihr könnt umstimmen, bis alle abgestimmt haben.")
    :explain/first-discussion "Heute stimmt noch niemand ab. Sprecht über die Nacht und darüber, wem ihr traut. Wer genug geredet hat, tippt auf „Ich bin fertig“ – sind alle so weit, bricht die Nacht herein."
-   :explain/day-resolve "Das Urteil fällt."
+   :explain/day-resolve "Das Urteil ist gefallen. Seht euch an, wen es getroffen hat – dann bricht die Nacht herein."
+   :explain/day-resolve-narrator "Das Urteil ist gefallen. Verkünde, wen es getroffen hat, und lass dann mit „Weiter“ die Nacht hereinbrechen."
    :explain/reaction    "Ein Toter hat noch eine letzte Handlung. Alle warten auf ihn."
    :explain/reaction-jaeger "Der Jäger ist gestorben und legt noch einmal an. Alle warten auf seinen Schuss."
    :explain/reaction-mayor "Der Bürgermeister ist gestorben und bestimmt, wer sein Amt übernimmt."
@@ -368,6 +372,7 @@
    ;; ------------------------------------------------------------ badges ---
    :dawn/title "Der Morgen graut"
    :dawn/ok "Weiter"
+   :verdict/title "Das Urteil"
    :record/title (fn [n] (str "Diese Runde, nach " n " Spielen"))
    :record/won "gewonnen"
    :hexe/victim (fn [who] (str "🐺 Die Werwölfe haben " who " gewählt."))

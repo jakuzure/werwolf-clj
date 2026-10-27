@@ -65,6 +65,8 @@
    {:type :vote :player 6 :target 1} {:type :vote :player 7 :target 1}
    {:type :vote :player 9 :target 1}
    {:type :vote-abstain :player 1} {:type :vote-abstain :player 8}
+   ;; the table has seen the wolf's card; the Spielleiter calls the night
+   {:type :advance-phase :player 0}
    ;; night 2: the Weißer turns on the pack, the Hexe saves the wolves' pick
    {:type :seherin-inspect :player 3 :target 2}
    {:type :beschuetzer-protect :player 7 :target 4}
@@ -79,6 +81,7 @@
    {:type :vote :player 5 :target 4} {:type :vote :player 6 :target 4}
    {:type :vote :player 7 :target 4}
    {:type :vote-abstain :player 4} {:type :vote-abstain :player 9}
+   {:type :advance-phase :player 0}
    ;; night 3: the Spielleiter skips the Seherin, and the Weißer Werwolf —
    ;; alone of the pack now, and still hunting with it — the wolves' turn
    {:type :gm/skip-role :player 0}

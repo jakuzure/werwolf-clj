@@ -187,13 +187,32 @@
 
 (declare next-phase)
 
+(defn- nightfall [state]
+  [{:type :night/began :night (inc (:night state 0))}])
+
+(defn verdict-held?
+  "Is the table looking at whom it has just condemned, with the night yet to
+   fall?
+
+   The verdict used to be one commit from the last ballot to the next night: the
+   card a lynch turns over was in the Chronik, and the screen had already gone
+   dark. The table asked to see it first. So :day-resolve rests here, once the
+   condemned has died and any last move of his has been made — a lynched
+   Jäger's victim belongs on the same card — until the clock or the
+   Spielleiter lets the night fall.
+
+   Only after a condemnation. A day that condemned nobody has no card to turn
+   over, and holding the table for it would be waiting for nothing."
+  [state]
+  (and (= :day-resolve (:phase state))
+       (some? (:condemned state))))
+
 (defn- leave-day-phase
   "The events that end a day phase: the next one, or, at the end of the first
    day's talk, the night."
   [state phase]
   (if (and (= :discussion phase) (not (trial-day? state)))
-    [{:type :day/no-trial}
-     {:type :night/began :night (inc (:night state 0))}]
+    (into [{:type :day/no-trial}] (nightfall state))
     [{:type :phase/changed :phase (next-phase phase) :deadline nil}]))
 
 ;; ------------------------------------------------------- vote counting ---
@@ -499,9 +518,14 @@
         [{:type :phase/changed :phase :discussion :deadline nil}]
 
         :day-resolve
-        (if (:vote-resolved? state)
-          ;; Lynch death has been applied by now (branch above), so night can begin.
-          [{:type :night/began :night (inc (:night state))}]
+        (cond
+          ;; The lynch death has been applied by now (branch above), and the
+          ;; table is reading whose it was. The clock or the Spielleiter ends it.
+          (verdict-held? state) nil
+
+          (:vote-resolved? state) (nightfall state)
+
+          :else
           (let [{:keys [target tie? no-majority?]} (verdict state)]
             [(cond-> {:type :vote/resolved :target target :tie? tie?}
                no-majority? (assoc :no-majority? true))]))
@@ -535,13 +559,16 @@
 
    Which phases are timed is a RULE and lives here; how long they last is
    deployment policy and lives in config. Phases absent from this map have no
-   deadline by design: the lobby waits for the host, :day-reveal and
-   :day-resolve are instantaneous narrator steps, and :game-over waits for
-   nobody."
-  {:election   :election-secs
-   :night      :night-secs
-   :discussion :discussion-secs
-   :reaction   :reaction-secs})
+   deadline by design: the lobby waits for the host, :day-reveal is an
+   instantaneous narrator step, and :game-over waits for nobody.
+
+   :day-resolve is only ever at rest while `verdict-held?`, so its clock is the
+   length of that moment and nothing else."
+  {:election    :election-secs
+   :night       :night-secs
+   :discussion  :discussion-secs
+   :reaction    :reaction-secs
+   :day-resolve :verdict-secs})
 
 (defn timeout-events
   "What it MEANS for the clock to run out here. Pure, so the rule is testable
@@ -553,7 +580,14 @@
    that says nothing simply survives the day."
   [state]
   (let [phase (:phase state)]
-    (when (contains? timed-phases phase)
+    (cond
+      ;; The night falls, and nothing more is said. That time ran out is logged
+      ;; so a player can see why a vote or a turn closed on him; this clock
+      ;; closes nothing anybody was in the middle of.
+      (= :day-resolve phase)
+      (when (verdict-held? state) (nightfall state))
+
+      (contains? timed-phases phase)
       (into [{:type :phase/timed-out :phase phase}]
             (case phase
               ;; End the current role's turn. The wolves are the exception: they
@@ -615,6 +649,13 @@
     (cond
       (contains? next-phase phase)
       (leave-day-phase state phase)
+
+      ;; With a clock or without, like the day: calling the night after the
+      ;; verdict is the narrator's line, and nobody is owed anything here. Only
+      ;; the clock could end it otherwise, and a room whose clock is off would
+      ;; never see the night again.
+      (verdict-held? state)
+      (nightfall state)
 
       (and (not (timed? state)) (contains? clock-ended phase))
       (some-> (seq (rest (timeout-events state))) vec))))

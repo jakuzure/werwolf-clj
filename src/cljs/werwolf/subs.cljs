@@ -370,27 +370,46 @@
   [{:keys [room-id night]}]
   (str room-id ":" night))
 
+(defn- news-since
+  "The news from the last entry of type `from` on, or nil.
+
+   Everything that moment and its aftermath did, not `latest-news`'s last run:
+   a morning with a wolves' victim, a lover following them and a Jäger's shot
+   is four deaths, and the card used to show the last three. From the LAST
+   such entry: from the first one, every morning after the second retold the
+   whole game."
+  [log from]
+  (let [v     (vec log)
+        marks (keep-indexed (fn [i e] (when (= from (:type e)) i)) v)]
+    (when-let [i (last marks)]
+      (->> (subvec v i)
+           (filter #(news-tones (i18n/log-tone %)))
+           vec
+           not-empty))))
+
 (defn dawn-news
   "What the night did, for the morning card: the news since the night ended,
    while the day is young — the election or the talk — and until this player
    has read it. Nil otherwise."
   [{:keys [phase log] :as view} seen]
   (when (and (#{:election :discussion} phase) (not= seen (dawn-id view)))
-    ;; Everything the night and its aftermath did, not `latest-news`'s last
-    ;; run: a morning with a wolves' victim, a lover following them and a
-    ;; Jäger's shot is four deaths, and the card used to show the last three.
-    ;; From the LAST night's end: from the first one, every morning after the
-    ;; second retold the whole game.
-    (let [v    (vec log)
-          ends (keep-indexed (fn [i e] (when (= :night/ended (:type e)) i)) v)]
-      (when-let [i (last ends)]
-        (->> (subvec v i)
-             (filter #(news-tones (i18n/log-tone %)))
-             vec
-             not-empty)))))
+    (news-since log :night/ended)))
 
 (rf/reg-sub ::dawn-seen (fn [db _] (:dawn/seen db)))
 (rf/reg-sub ::dawn-news :<- [::view] :<- [::dawn-seen] (fn [[v seen] _] (dawn-news v seen)))
+
+(defn verdict-news
+  "What the verdict did, for the card the table reads before the night falls:
+   the news since the vote was counted, which is the condemned's death and
+   whatever his own last move took with him. Only while the server holds the
+   day on it — :day-resolve is at rest for nothing else, see
+   phases/verdict-held? — so it needs no dismissing: the night ends it for
+   everybody at once."
+  [{:keys [phase log]}]
+  (when (= :day-resolve phase)
+    (news-since log :vote/resolved)))
+
+(rf/reg-sub ::verdict-news :<- [::view] (fn [v _] (verdict-news v)))
 
 (rf/reg-sub
  ::can-act?
