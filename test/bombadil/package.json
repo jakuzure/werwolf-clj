@@ -1,0 +1,9 @@
+{
+  "name": "werwolf-clj-bombadil",
+  "private": true,
+  "license": "MIT",
+  "description": "Bombadil's specification for werwolf-clj. Its own package, so the 44 MB CLI stays out of the root lock that Nix builds node_modules from.",
+  "devDependencies": {
+    "@antithesishq/bombadil": "^0.7.10"
+  }
+}

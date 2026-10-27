@@ -1,0 +1,20 @@
+#!/bin/sh
+# The Chrome Bombadil drives, without sound.
+#
+# Headless is not silent: the walk sets off the night bells, the morning
+# arpeggio and the fanfare from a browser nobody can see, for the whole run.
+# Bombadil starts whatever $CHROME names and takes no Chrome flags of its own,
+# so `bb test:bombadil` points $CHROME here and this adds --mute-audio.
+#
+# BOMBADIL_CHROME picks the browser; otherwise the places Bombadil itself
+# would look.
+for c in "$BOMBADIL_CHROME" \
+         "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+         "/Applications/Chromium.app/Contents/MacOS/Chromium" \
+         google-chrome-stable google-chrome chromium chromium-browser chrome; do
+  if [ -n "$c" ] && command -v "$c" >/dev/null 2>&1; then
+    exec "$c" --mute-audio "$@"
+  fi
+done
+echo "chrome-muted: no Chrome or Chromium found; set BOMBADIL_CHROME" >&2
+exit 1
