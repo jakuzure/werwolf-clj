@@ -43,3 +43,13 @@
     (testing "two cards per player, counted"
       (is (every? #(= 2 (reduce + (vals (:roles %)))) (vals players))))
     (is (= :game-over (:phase s)))))
+
+(deftest the-pack-never-wins-for-the-weisser-werwolf
+  ;; Dealt to the pack, so their team is his on paper. But he plays for
+  ;; himself, and once the pack has won it is because he did not — see
+  ;; phases/winner. Only the deal and the end matter to the count.
+  (let [log (conj genesis
+                  {:type :game/started :assignments {1 :werwolf 2 :weisser-werwolf 3 :werwolf 4 :dorfbewohner}}
+                  {:type :game/ended :winner :werewolf})
+        won (into {} (map (fn [[pid p]] [pid (:won p)])) (:players (stats/stats log)))]
+    (is (= {1 1 2 0 3 1 4 0} won))))

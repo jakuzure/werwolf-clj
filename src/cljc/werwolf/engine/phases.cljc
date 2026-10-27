@@ -35,6 +35,17 @@
 (defn- teams-alive [state]
   (into #{} (map #(e/team-of-player state %)) (e/living-ids state)))
 
+(defn- betrayal-let-go?
+  "Did the Weißer Werwolf's turn tonight end without a wolf taken — passed,
+   timed out or skipped alike, since silence counts as itself? Only during
+   that night: a pass made while a villager still stood was his to make, and
+   the table becoming wolves-only by day or at dawn must not turn it into a
+   forfeit after the fact. He gets his next night instead."
+  [state]
+  (and (= :night (:phase state))
+       (contains? (set (get-in state [:night-actions :completed])) :weisser-werwolf)
+       (nil? (get-in state [:night-actions :weisser-target]))))
+
 (defn winner
   "Which team has won, or nil if the game continues.
 
@@ -46,7 +57,8 @@
    win while he lives, and the pack cannot eat him — but he wins alone. So a table
    of nothing but wolves is NOT a werewolf victory while he is among them: he
    still owes them a betrayal, and declaring the pack winners would rob him of the
-   game he was playing for."
+   game he was playing for. Only until his turn comes and he lets it go by,
+   though; see the clause below."
   [state]
   (let [living (e/living-ids state)
         lovers (set (:lovers state))
@@ -69,7 +81,14 @@
             ;; Last one standing: exactly what he was after.
             (and (= 1 (count living)) (seq whites)) :weisser-werwolf
             ;; Wolves only, but he is still in the room — the night is not over.
-            (seq whites) nil
+            ;; Unless his turn came tonight and he took nobody: with only
+            ;; wolves left there is nobody else for him to wait out, so a turn
+            ;; let go by is the betrayal not coming. Waiting on it regardless
+            ;; had no end: in an all-bots game the absent host held the card,
+            ;; so never hunted, and was Bürgermeister too, so the two wolves
+            ;; left could never outvote him, and the pack cannot eat its own.
+            ;; The game ran on for ever.
+            (and (seq whites) (not (betrayal-let-go? state))) nil
             :else :werewolf)
 
           :else nil)))))

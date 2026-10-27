@@ -152,7 +152,7 @@
    :role-desc/seherin      "The seer. Each night you may learn one player's role."
    :role-desc/hexe         "At night you learn whom the werewolves chose. Once per game you may heal, once poison — both in the same night, if you like."
    :role-desc/jaeger       "The hunter. When you die, you take someone with you."
-   :role-desc/weisser-werwolf "You hunt with the wolves — and every second night you tear one of them apart. You win alone."
+   :role-desc/weisser-werwolf "You hunt with the wolves — and every second night you tear one of them apart. You win alone. Once only wolves are left, letting your night pass hands the pack the win."
    :role-desc/beschuetzer  "Each night you guard one player from the werewolves — never the same one twice running."
    :role-desc/dieb         "On the first night you see two leftover cards and may take one — or stay a Dieb."
    :role-desc/amor         "On the first night you choose two players to fall in love."

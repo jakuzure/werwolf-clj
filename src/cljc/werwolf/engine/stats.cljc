@@ -16,13 +16,19 @@
 (defn- won?
   "Did `pid` win the game `state` has just ended? Lovers win as a pair over
    both teams, the Weißer Werwolf alone; otherwise a team wins together, the
-   dead included."
+   dead included.
+
+   Alone means never with the pack he was dealt to: their win is the one he
+   played against, and since phases/winner hands it to them when he lets his
+   betrayal go by, counting it as his would credit him for losing."
   [state pid]
-  (let [winner (:winner state)]
+  (let [winner (:winner state)
+        white? (= :weisser-werwolf (get-in state [:players pid :role]))]
     (case winner
       :lovers          (contains? (set (:lovers state)) pid)
-      :weisser-werwolf (= :weisser-werwolf (get-in state [:players pid :role]))
-      (:village :werewolf) (= winner (e/team-of-player state pid))
+      :weisser-werwolf white?
+      :werewolf        (and (= :werewolf (e/team-of-player state pid)) (not white?))
+      :village         (= :village (e/team-of-player state pid))
       false)))
 
 (defn- finished

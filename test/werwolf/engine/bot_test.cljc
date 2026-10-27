@@ -229,15 +229,11 @@
                     (recur s' (inc turn) (-> log (into evs) (into auto)))))))))))))
 
 (deftest bots-alone-finish-every-game
-  ;; Seeds from 600. From 500, once the verdict became a step of its own and
-  ;; every later bot seed moved, the sixteen-player unnarrated game walks into
-  ;; a stalemate that is older than that step: the pack and the Weißer
-  ;; Werwolf are all that is left, and he is the absent host — so never hunts —
-  ;; and the Bürgermeister, whose double vote nobody casts keeps every
-  ;; condemnation one short. Such a game cannot end; it is a rule question for
-  ;; another change, not something this test should keep tripping over.
+  ;; The sixteen-player unnarrated game here once ran for ever: the pack and
+  ;; the Weißer Werwolf were all that was left, and he was the absent host
+  ;; and the Bürgermeister. See phases/winner for why it ends now.
   (doseq [n (range 5 19) narrated? [true false]
-          :let [r (play-bots n (+ 600 (* 13 n)) {:narrated? narrated?})]]
+          :let [r (play-bots n (+ 500 (* 13 n)) {:narrated? narrated?})]]
     (is (:ok? r) (pr-str (dissoc r :log :state)))
     (is (some? (:winner r)) (str n " players, narrated " narrated? ": no winner"))
     (when (:ok? r)
