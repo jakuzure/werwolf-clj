@@ -319,6 +319,32 @@
        :abstained (count (filter (comp nil? val) votes))})))
 
 (rf/reg-sub ::ballot :<- [::view] (fn [v _] (ballot v)))
+
+(defn wolf-ballot
+  "The pack's votes tonight, one row per victim with the wolves who chose
+   them, most votes first; nil when nobody has voted or it is not night.
+
+   They were one line, \"Anna → Bob, Cem → Eve, Dana → Bob\", and with three
+   wolves the reader had to collect the arrows to see that Bob was ahead. Only
+   the grouping happens here. Who ends up eaten when the votes are split is
+   the engine's rule, and nothing here guesses at it. The votes arrive only
+   for whom the server lets see them: the pack and the Spielleiter."
+  [{:keys [phase night-info players me]}]
+  (when (= :night phase)
+    (let [nm #(get-in players [% :name] (str "#" %))]
+      (->> (:werewolf-votes night-info)
+           (filter (comp some? val))
+           (group-by val)
+           (map (fn [[target ballots]]
+                  {:id     target
+                   :name   (nm target)
+                   :voters (vec (sort (map (comp nm key) ballots)))
+                   :mine?  (contains? (into #{} (map key) ballots) (:id me))}))
+           (sort-by (juxt (comp - count :voters) :name))
+           vec
+           not-empty))))
+
+(rf/reg-sub ::wolf-ballot :<- [::view] (fn [v _] (wolf-ballot v)))
 (rf/reg-sub ::build (fn [db _] (:build db)))
 
 (defn table-record

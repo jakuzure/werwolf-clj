@@ -526,6 +526,26 @@
          [btn label (if (seq owing) #(rf/dispatch [::ev/form-set :skip-confirm here]) fire!)
           {:tone :quiet :testid "narrator-skip"}]))]))
 
+(defn- wolf-votes
+  "Where the pack stands tonight: a row per victim, its count first and its
+   wolves after it, most votes on top — read the way the day's ballot is, so
+   the leader is the first thing the eye finds. For the pack on the Jetzt card
+   and for the Spielleiter in his night notes; see `sub/wolf-ballot`."
+  []
+  (when-let [rows @(rf/subscribe [::sub/wolf-ballot])]
+    [:div {:class "space-y-1.5" :data-testid "wolf-votes"}
+     [:div {:class "text-xs font-bold uppercase tracking-wide text-rose-300"}
+      (str "🐺 " (t :narrator/wolf-votes))]
+     [:ul {:class "space-y-1"}
+      (for [{:keys [id name voters mine?]} rows]
+        ^{:key id}
+        [:li {:class "flex items-baseline gap-2 text-sm"}
+         [:span {:class "shrink-0 min-w-6 rounded-md bg-rose-900/80 px-1.5 text-center font-mono font-bold text-rose-50"}
+          (count voters)]
+         [:span {:class "shrink-0 font-semibold text-rose-50"} name]
+         [:span {:class "min-w-0 text-rose-200/80"} (str "← " (str/join ", " voters))]
+         (when mine? [pill (t :badge/your-vote) :mine])])]]))
+
 (declare action-bar)
 
 (defn- now-card
@@ -625,13 +645,7 @@
          ;; The pack's tally where a wolf is looking. It sat only in the
          ;; night notes under the Mitspieler tab, which on a phone is not
          ;; where anybody deciding with the pack is.
-         (let [votes (:werewolf-votes @(rf/subscribe [::sub/night-info]))
-               players @(rf/subscribe [::sub/players])
-               nm #(get-in players [% :name] (str "#" %))]
-           (when (and (seq votes) (not narrator?) (= :night phase))
-             [:div {:class "text-sm text-rose-200" :data-testid "wolf-votes"}
-              (str "🐺 " (t :narrator/wolf-votes) ": "
-                   (str/join ", " (for [[w v] (sort-by key votes)] (str (nm w) " → " (nm v)))))]))
+         (when-not narrator? [wolf-votes])
          [action-bar]]))))
 
 (defn- voice-panel
@@ -1260,11 +1274,13 @@
         notes @(rf/subscribe [::sub/narrator-info])
         players @(rf/subscribe [::sub/players])
         nm #(or (get-in players [% :name]) (str "#" %))
+        ;; The pack's votes are drawn by `wolf-votes`, the block the wolves
+        ;; read too, rather than as one more line here. His alone: the pack
+        ;; is sent the same votes and reads them on its Jetzt card, and with a
+        ;; second copy here a wide screen showed every wolf the tally twice.
+        wolves? (and @(rf/subscribe [::sub/narrator?])
+                     (some? @(rf/subscribe [::sub/wolf-ballot])))
         rows (cond-> []
-               (seq (:werewolf-votes info))
-               (conj [(t :narrator/wolf-votes)
-                      (str/join ", " (for [[w v] (sort-by key (:werewolf-votes info))]
-                                       (str (nm w) " → " (nm v))))])
                (contains? info :pending-deaths)
                (conj [(t :narrator/dying)
                       (if (seq (:pending-deaths info))
@@ -1278,10 +1294,11 @@
                (conj [(t :narrator/centre)
                       (str/join ", " (map #(str (i18n/icon-of %) " " (role-name %))
                                           (:centre notes)))]))]
-    (when (seq rows)
+    (when (or wolves? (seq rows))
       [:div {:class "rounded-xl border border-violet-800/60 bg-violet-950/20 px-4 py-3 space-y-1"}
        [:div {:class "text-sm font-bold uppercase tracking-wide text-violet-200"}
         (str "📜 " (t :narrator/night))]
+       (when wolves? [:div {:class "py-1"} [wolf-votes]])
        (for [[label text] rows]
          ^{:key label}
          [:div {:class "text-sm"}
