@@ -1123,6 +1123,62 @@
         (let [s (assoc-in s [:players 0 :alive?] false)]
           (is (= :weisser-werwolf (phases/winner s))))))))
 
+(defn- to-his-night
+  "A table of nothing but wolves, walked to night two: night one is not his
+   and leaves the pack nobody to eat, and the first day condemns nobody."
+  [assignments]
+  (let [s (tu/game-with assignments)
+        s (reduce (fn [st pid] (exec! st {:type :vote-abstain :player pid})) s (alive s))]
+    (assert (= [:night 2 :weisser-werwolf] [(:phase s) (:night s) (:night-cursor s)]))
+    s))
+
+(defn- clock-runs-out [s]
+  (first (engine/settle (engine/apply-all s (engine/timeout-events s)))))
+
+(deftest a-betrayal-he-lets-go-by-hands-the-pack-the-game
+  ;; The all-bots game that never ended: the pack and he were all that was
+  ;; left, he was the absent host and so never hunted, and as Bürgermeister he
+  ;; held the two votes that kept every condemnation one short.
+  (let [s (to-his-night {0 :werwolf 1 :weisser-werwolf 2 :werwolf})]
+    (doseq [[how end-turn] {"his clock runs out" clock-runs-out
+                            "he passes"          #(exec! % {:type :weisser-pass :player 1})
+                            "the host skips him" #(exec! % {:type :gm/skip-role :player 0})}]
+      (testing how
+        (let [s (end-turn s)]
+          (is (= :game-over (:phase s)))
+          (is (= :werewolf (:winner s)) "the pack's victory was only ever waiting on him"))))))
+
+(deftest taking-a-wolf-keeps-the-game-his-to-win
+  (testing "while another wolf stands, the night goes on"
+    (let [s (exec! (to-his-night {0 :werwolf 1 :weisser-werwolf 2 :werwolf})
+                   {:type :weisser-kill :player 1 :target 0})]
+      (is (= #{1 2} (set (alive s))))
+      (is (nil? (:winner s)))))
+  (testing "and the last one leaves him alone, as he meant to be"
+    (let [s (exec! (to-his-night {0 :werwolf 1 :weisser-werwolf})
+                   {:type :weisser-kill :player 1 :target 0})]
+      (is (= :weisser-werwolf (:winner s))))))
+
+(deftest a-pass-while-a-villager-stands-is-his-to-make
+  (let [s (white-table)
+        s (exec! s {:type :werewolf-vote :player 1 :target 0})
+        s (exec! s {:type :werewolf-vote :player 2 :target 0})
+        s (reduce (fn [st pid] (exec! st {:type :vote-abstain :player pid})) s (alive s))
+        ;; Night two: the pack takes the last villager, and he spares them.
+        s (exec! s {:type :werewolf-vote :player 1 :target 3})
+        s (exec! s {:type :werewolf-vote :player 2 :target 3})
+        s (exec! s {:type :weisser-pass :player 2})]
+    (is (= #{1 2} (set (alive s))) "the pack is alone at dawn")
+    (is (nil? (:winner s))
+        "but the villager still stood when he passed, so he gets his next night")
+    (testing "and that one is the last he may let go by"
+      (let [s (reduce (fn [st pid] (exec! st {:type :vote-abstain :player pid})) s (alive s))
+            _ (is (= [:discussion 3] [(:phase s) (:night s)]) "night three is not his")
+            s (reduce (fn [st pid] (exec! st {:type :vote-abstain :player pid})) s (alive s))
+            _ (is (= [:night 4 :weisser-werwolf] [(:phase s) (:night s) (:night-cursor s)]))
+            s (clock-runs-out s)]
+        (is (= :werewolf (:winner s)))))))
+
 ;; ----------------------------------------------------------------- Dieb ---
 ;;
 ;; Two extra cards go into the deck when he is dealt, and the two nobody receives

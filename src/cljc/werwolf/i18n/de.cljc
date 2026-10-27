@@ -153,7 +153,7 @@
    :role-desc/seherin      "Jede Nacht darfst du die Rolle eines Mitspielers sehen."
    :role-desc/hexe         "Du erfährst nachts, wen die Werwölfe gewählt haben. Einmal im Spiel darfst du heilen, einmal vergiften — auch beides in einer Nacht."
    :role-desc/jaeger       "Stirbst du, nimmst du einen Mitspieler mit."
-   :role-desc/weisser-werwolf "Du jagst mit den Wölfen — und jede zweite Nacht reißt du einen von ihnen. Du gewinnst nur allein."
+   :role-desc/weisser-werwolf "Du jagst mit den Wölfen — und jede zweite Nacht reißt du einen von ihnen. Du gewinnst nur allein. Sind nur noch Wölfe übrig und du lässt deine Nacht verstreichen, gewinnt das Rudel."
    :role-desc/beschuetzer  "Jede Nacht schützt du einen Mitspieler vor den Werwölfen — nie zweimal hintereinander denselben."
    :role-desc/dieb         "In der ersten Nacht siehst du zwei übrige Karten und darfst eine davon nehmen — oder Dieb bleiben."
    :role-desc/amor         "In der ersten Nacht bestimmst du zwei Verliebte."
