@@ -333,24 +333,24 @@
       "hash": "sha256-BvPD3a1Xswv+iGVUVqBHMeVqeK0N2QnmXHGIEAO5ZHk="
     },
     {
-      "mvn-path": "com/google/javascript/closure-compiler-main/v20260907/closure-compiler-main-v20260907.pom",
+      "mvn-path": "com/google/javascript/closure-compiler-main/v20261021/closure-compiler-main-v20261021.pom",
       "mvn-repo": "https://repo1.maven.org/maven2/",
-      "hash": "sha256-ss012igyyZ/6XwUd83cZ2Tfn2u4WMvaCCU496d4fZXo="
+      "hash": "sha256-2lZfhZ4XFjr2WeMOA+VO9vaxtgxm5rUgK/tS0xBGYIk="
     },
     {
-      "mvn-path": "com/google/javascript/closure-compiler-parent/v20260907/closure-compiler-parent-v20260907.pom",
+      "mvn-path": "com/google/javascript/closure-compiler-parent/v20261021/closure-compiler-parent-v20261021.pom",
       "mvn-repo": "https://repo1.maven.org/maven2/",
-      "hash": "sha256-xgJTbZW3guzj/2cb5LyZFzN0w6u0FDEqv1ynwpVQwfc="
+      "hash": "sha256-+JAAGx5KVwNMbTODJMS1Uk9ACxvxTdpVGmtp6XbRLto="
     },
     {
-      "mvn-path": "com/google/javascript/closure-compiler/v20260907/closure-compiler-v20260907.jar",
+      "mvn-path": "com/google/javascript/closure-compiler/v20261021/closure-compiler-v20261021.jar",
       "mvn-repo": "https://repo1.maven.org/maven2/",
-      "hash": "sha256-FonUXMqjqrrkopDgo1fQjOVrCHE6kLMOijBcm7Ie9us="
+      "hash": "sha256-ig1xzM6Kt4r+jDzuEwzaOvQXimcyQ1mCgVo3c4rZB4o="
     },
     {
-      "mvn-path": "com/google/javascript/closure-compiler/v20260907/closure-compiler-v20260907.pom",
+      "mvn-path": "com/google/javascript/closure-compiler/v20261021/closure-compiler-v20261021.pom",
       "mvn-repo": "https://repo1.maven.org/maven2/",
-      "hash": "sha256-UOp5NC0nEi1VUJsTBRaSgvZ1zX/ofmPv0dzXXV/XEtA="
+      "hash": "sha256-YBpPEL3Ut+HbpJdqWcdaRSO8k97s9qkTNmnlRvf8OEc="
     },
     {
       "mvn-path": "com/nextjournal/beholder/1.0.2/beholder-1.0.2.jar",
@@ -2208,14 +2208,14 @@
       "hash": "sha256-F+iii6ZBWeGqI7lm1AlejvFgsxyV+tUILX6gxQk7woM="
     },
     {
-      "mvn-path": "thheller/shadow-cljs/3.5.7/shadow-cljs-3.5.7.jar",
+      "mvn-path": "thheller/shadow-cljs/3.5.8/shadow-cljs-3.5.8.jar",
       "mvn-repo": "https://repo.clojars.org/",
-      "hash": "sha256-srYytIwEZOuj6TdFCYU11M/79HZg5TzaS/h27x0GnX8="
+      "hash": "sha256-tem/2EQ+IOpk1CuDp5ehMW6QCNqUren4s6LUJUVxnzE="
     },
     {
-      "mvn-path": "thheller/shadow-cljs/3.5.7/shadow-cljs-3.5.7.pom",
+      "mvn-path": "thheller/shadow-cljs/3.5.8/shadow-cljs-3.5.8.pom",
       "mvn-repo": "https://repo.clojars.org/",
-      "hash": "sha256-4+oXyC+8vZ2rvSzbEZP2rNa+CbaFNrV7L9dn3wjclqE="
+      "hash": "sha256-tpLi4f9jIWw+CjKvOmLgg6REa0S34Z/hho8nVOQKjvo="
     },
     {
       "mvn-path": "thheller/shadow-cljsjs/0.0.22/shadow-cljsjs-0.0.22.jar",
