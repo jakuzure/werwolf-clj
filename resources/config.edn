@@ -78,9 +78,11 @@
            ;; the humans: no sooner than the floor after the phase began, no
            ;; later than the patience, in between as soon as every living
            ;; human has answered. The floor is for a Spielleiter or a dead
-           ;; human, who hold no vote but are watching.
+           ;; human, who hold no vote but are watching. Both were longer, 10
+           ;; and 45 s, and a human who waited to see where the bots leaned
+           ;; sat out the whole patience at every ballot.
            :bot-delay-ms      #long #or [#env BOT_DELAY_MS 1500]
-           :bot-floor-secs    #long #or [#env BOT_FLOOR_SECS 10]
-           :bot-patience-secs #long #or [#env BOT_PATIENCE_SECS 45]
+           :bot-floor-secs    #long #or [#env BOT_FLOOR_SECS 5]
+           :bot-patience-secs #long #or [#env BOT_PATIENCE_SECS 20]
            :min-players     #long #or [#env MIN_PLAYERS 5]
            :max-players     #long #or [#env MAX_PLAYERS 18]}}
