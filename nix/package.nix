@@ -125,11 +125,17 @@ let
       }
       ''
         install -m 644 ${jar} $out
-        unzip -Z1 $out | grep -q '^${keep}.' \
+        # A file, not a pipe: `unzip -Z1 | grep -q` failed main's preview VM
+        # test with the jar intact. grep -q quits at the first match, unzip
+        # dies of SIGPIPE while still writing, and stdenv's pipefail makes
+        # that the pipeline's status. It only showed when nixpkgs moved and
+        # this was rebuilt, and then only on some runners.
+        unzip -Z1 $out > entries
+        grep -q '^${keep}.' entries \
           || { echo "sqlite-jdbc has no ${keep} any more" >&2; exit 1; }
         # Everything under org/sqlite/native/ except the kept directory and its
         # parents.
-        unzip -Z1 $out | grep '^org/sqlite/native/.' | grep -v '^${keep}' \
+        grep '^org/sqlite/native/.' entries | grep -v '^${keep}' \
           | while read -r entry; do
               case '${keep}' in "$entry"*) ;; *) echo "$entry" ;; esac
             done \
