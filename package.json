@@ -1,6 +1,6 @@
 {
   "name": "werwolf-clj",
-  "version": "0.10.0",
+  "version": "0.10.1",
   "private": true,
   "license": "MIT",
   "description": "Werwölfe von Finsterbach: the social deduction game Werewolf, in the browser",
