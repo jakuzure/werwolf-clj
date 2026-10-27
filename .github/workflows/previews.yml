@@ -41,10 +41,15 @@ jobs:
         with:
           extra-conf: |
             system-features = nixos-test benchmark big-parallel kvm
-      - uses: DeterminateSystems/magic-nix-cache-action@84c0677f58dcedf3b91f8223ce36a9ea5b3c84b7 # v15
-        with:
-          use-flakehub: false
       # read-only here: the werwolf build main pushed is reused, not compiled
+      #
+      # The one cache this job uses. It also had magic-nix-cache, which none of
+      # nine runs checked (main, PRs, Renovate) read a single path from:
+      # everything came from cache.nixos.org or Cachix. After the VM test it uploaded each store path the job had added to the
+      # GitHub cache one by one, the VM's whole nixpkgs closure among them: 960
+      # paths and 20 minutes on a Renovate PR. Those uploads also pushed the
+      # repository past GitHub's 10 GB cache limit, evicting what ci.yml's test
+      # jobs do read from it.
       - uses: cachix/cachix-action@38b082610b782e7e93e209c35fd730d399dee866 # v17
         with:
           name: werwolf-clj
