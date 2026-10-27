@@ -352,12 +352,13 @@
   ;; in a room without a clock, whatever the clock would have done. The second
   ;; kind is logged as an override, because it ends a turn somebody else was
   ;; owed — a Jäger's shot, a wolf's vote — and the table must be able to see
-  ;; that it was the Spielleiter and not the player who closed it.
+  ;; that it was the Spielleiter and not the player who closed it. Letting the
+  ;; night fall on a verdict closes nobody's turn, so it is not one.
   [state {:keys [player]}]
   (if-not (allowed? state player :advance-phase)
     (err :not-allowed {:action :advance-phase})
     (if-let [evs (phases/advance-events state)]
-      (if (next-phase (:phase state))
+      (if (or (next-phase (:phase state)) (phases/verdict-held? state))
         evs
         (into [{:type :gm/forced :actor player :action :advance-phase
                 :detail {:phase (:phase state)}}]

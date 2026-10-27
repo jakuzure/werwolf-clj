@@ -51,6 +51,35 @@ test.describe('a game played to the end', () => {
   let pages = [];
   test.afterEach(async () => { await closeAll(pages); pages = []; });
 
+  test('the table sees whom it condemned before the night falls', async ({ browser }) => {
+    const g = await startAndDeal(browser);
+    pages = g.pages;
+    const { roles } = g;
+    const [sl] = pages;
+
+    // The wolf eats the villager; the village then condemns the Hexe, which
+    // decides nothing — a wolf, the Seherin and the Jäger play on.
+    await playNight(roles, { inspect: seatOf(roles, 'Werwolf'), eat: seatOf(roles, 'Dorfbewohner') });
+    await playDay(pages, { lynch: seatOf(roles, 'Hexe'), roles, election: true });
+
+    // Every screen, the Spielleiter's too, turns her card over, and it is still day.
+    for (const page of pages) {
+      const card = page.getByTestId('verdict');
+      await expect(card).toBeVisible({ timeout: 20_000 });
+      await expect(card).toContainText('richtet');
+      await expect(card).toContainText('Hexe');
+      await expect(page.getByRole('heading', { name: 'Urteil', exact: true })).toBeVisible();
+    }
+
+    // Without a clock the night is his to call.
+    await sl.getByTestId('narrator-skip').click();
+    for (const page of pages) {
+      await expect(page.getByRole('heading', { name: 'Nacht', exact: true }))
+        .toBeVisible({ timeout: 20_000 });
+      await expect(page.getByTestId('verdict')).toHaveCount(0);
+    }
+  });
+
   test('the village wins by hanging the wolf', async ({ browser }) => {
     const g = await startAndDeal(browser);
     pages = g.pages;

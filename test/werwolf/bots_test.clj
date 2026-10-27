@@ -13,7 +13,7 @@
             [werwolf.timer :as timer]))
 
 (def game-cfg
-  {:election-secs 60 :discussion-secs 300 :night-secs 45 :reaction-secs 30
+  {:election-secs 60 :discussion-secs 300 :night-secs 45 :reaction-secs 30 :verdict-secs 10
    :bot-delay-ms 1500 :bot-floor-secs 10 :bot-patience-secs 45
    :room-idle-ms 300000 :game-idle-ms 1800000})
 

@@ -92,6 +92,7 @@ module.exports = defineConfig({
       DISCUSSION_SECS: '3600',
       NIGHT_SECS: '3600',
       REACTION_SECS: '3600',
+      VERDICT_SECS: '3600',
       // Bots move almost at once and wait for nobody: the bots spec watches a
       // game play itself, and nothing else seats a bot.
       BOT_DELAY_MS: '200',

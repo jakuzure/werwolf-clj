@@ -42,7 +42,7 @@
                        :db     {:dbtype "sqlite" :dbname db-path}
                        :tokens {:secret "e2e-secret-that-is-long-enough" :ttl-mins 720}
                        :game   {:election-secs 60 :discussion-secs 300 :nomination-secs 90 :vote-secs 60
-                                :night-secs 45 :reaction-secs 30
+                                :night-secs 45 :reaction-secs 30 :verdict-secs 10
                                 ;; Classic first night, so Amor and the wolves
                                 ;; are both awake in the same night.
                                 :first-night-kill? true

@@ -297,6 +297,7 @@
    :turn/urgent  "Everyone is waiting for you"
    :turn/calling (fn [role] (str "The Spielleiter calls: " role))
    :turn/narrating "You are running the game"
+   :turn/nightfall "Night is about to fall"
 
    ;; ------------------------------------------------------------ stage ---
    ;;
@@ -322,7 +323,8 @@
    :explain/discussion  "Talk it over: who do you not trust? Once you have said enough, tap “I'm done”."
    :explain/trial       (fn [_] "Talk it over and vote on who is condemned. You can change your vote until everyone has voted.")
    :explain/first-discussion "Nobody votes today. Talk about the night and about whom you trust. Once you have said enough, tap “I'm done” – when everyone is, night falls."
-   :explain/day-resolve "The verdict falls."
+   :explain/day-resolve "The verdict is in. See whom it struck – then night falls."
+   :explain/day-resolve-narrator "The verdict is in. Announce whom it struck, then let night fall with “Move on”."
    :explain/reaction    "Someone who just died has one last move. Everyone waits for them."
    :explain/reaction-jaeger "The Jäger has died and takes one last shot. Everyone waits for it."
    :explain/reaction-mayor "The mayor has died and names who takes over the office."
@@ -364,6 +366,7 @@
    ;; ------------------------------------------------------------ badges ---
    :dawn/title "Day breaks"
    :dawn/ok "Continue"
+   :verdict/title "The verdict"
    :record/title (fn [n] (str "This table, after " n " games"))
    :record/won "won"
    :hexe/victim (fn [who] (str "🐺 The werewolves chose " who "."))

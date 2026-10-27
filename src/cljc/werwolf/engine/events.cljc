@@ -470,6 +470,8 @@
              :night-actions {}
              :night-cursor nil
              :pending-deaths [])
+      ;; The verdict's moment is over; see phases/verdict-held?.
+      (dissoc :condemned)
       (publish {:type :night/began :night night})))
 
 (defmethod apply-event :night/role-turn
@@ -775,6 +777,10 @@
               (assoc :vote-resolved? true)
               (publish (cond-> {:type :vote/resolved :target target :tie? tie?}
                          no-majority? (assoc :no-majority? true))))
+    ;; Kept, rather than recounted from the ballot later: the deaths that follow
+    ;; change the count — a lynched Jäger who shoots the Bürgermeister moves
+    ;; the double vote — so the same ballot need not name the same player again.
+    target (assoc :condemned target)
     target (update :pending-deaths (fnil conj []) {:player target :cause :lynch})))
 
 (defmethod apply-event :game/ended

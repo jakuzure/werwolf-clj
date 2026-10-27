@@ -258,6 +258,26 @@
       (let [s (exec! s {:type :gm/toggle-timer :player 0})]
         (is (not (contains? (phases/legal-actions s 0) :gm/pause)))))))
 
+(deftest the-narrator-calls-the-night-after-the-verdict
+  (testing "without a clock the table rests on the condemned's card until the
+            Spielleiter lets the night fall"
+    (let [s (tu/narrated-game-with cast-of-5)
+          s (exec! s {:type :seherin-inspect :player 4 :target 2})
+          s (exec! s {:type :werewolf-vote :player 2 :target 1})
+          s (exec! s {:type :hexe-pass :player 3})
+          s (reduce (fn [s v] (exec! s (if (= 5 v)
+                                         {:type :vote-abstain :player v}
+                                         {:type :vote :player v :target 5})))
+                    s (engine/living-ids s))]
+      (is (= :day-resolve (:phase s)))
+      (doseq [pid (keys (:players s))]
+        (is (= :dorfbewohner (get-in (view/view-for s pid) [:known-roles 5]))
+            (str pid " cannot read the card the verdict turned over"))
+        (is (nil? (engine/redaction-leaks? s pid))))
+      (is (= [] (get-in (view/view-for s 0) [:narrator-info :owing]))
+          "he is told nobody is holding the table up")
+      (is (= :night (:phase (exec! s {:type :advance-phase :player 0})))))))
+
 (deftest without-a-clock-the-narrator-can-end-every-phase-the-clock-would-have
   (testing "every phase only the clock used to end now has a button, or one
             absent player holds the whole table forever"

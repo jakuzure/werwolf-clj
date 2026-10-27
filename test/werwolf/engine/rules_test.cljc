@@ -200,6 +200,77 @@
       (is (= :werwolf (:role death)) "classic Werwolf reveals the lynched role")
       (is (= :lynch (:cause death))))))
 
+;; ------------------------------------------------- the verdict's moment ---
+
+(def ^:private seven
+  {0 :dorfbewohner 1 :dorfbewohner 2 :werwolf 3 :dorfbewohner 4 :hexe 5 :seherin 6 :werwolf})
+
+(defn- condemn
+  "Everybody else votes against `target`, who abstains."
+  [s target]
+  (reduce (fn [s v] (exec! s (if (= target v)
+                               {:type :vote-abstain :player v}
+                               {:type :vote :player v :target target})))
+          s (alive s)))
+
+(deftest a-condemnation-holds-the-day-until-the-table-has-seen-the-card
+  (let [s (condemn (tu/day-with seven) 3)]
+    (testing "the condemned is dead and his card turned over, and it is still day"
+      (is (false? (get-in s [:players 3 :alive?])))
+      (is (some #(and (= :player/died (:type %)) (= 3 (:player %)) (= :dorfbewohner (:role %)))
+                (:log s)))
+      (is (= [:day-resolve 1] [(:phase s) (:night s)]))
+      (is (phases/verdict-held? s)))
+    (testing "nobody owes anything: the players may only talk, the host may go on"
+      (is (empty? (phases/owing s)))
+      (doseq [pid (remove #{0} (alive s))]
+        (is (= #{:chat} (disj (phases/legal-actions s pid) :set-locale :leave))))
+      (is (contains? (phases/legal-actions s 0) :advance-phase)))
+    (testing "the clock running out lets the night fall and says nothing more:
+              no vote and no turn was cut short"
+      (is (= [{:type :night/began :night 2}] (phases/timeout-events s))))
+    (testing "so does the host, and it is no override — nobody was owed a move"
+      (let [n (exec! s {:type :advance-phase :player 0})]
+        (is (= [:night 2] [(:phase n) (:night n)]))
+        (is (= (tu/count-log s :gm/forced) (tu/count-log n :gm/forced)))
+        (is (nil? (:condemned n)))))))
+
+(deftest without-a-clock-the-host-still-calls-the-night
+  (let [s (condemn (assoc (tu/day-with seven) :timer? false) 3)]
+    (is (phases/verdict-held? s))
+    (is (contains? (phases/legal-actions s 0) :advance-phase))
+    (is (= :night (:phase (exec! s {:type :advance-phase :player 0}))))))
+
+(deftest a-day-that-condemns-nobody-goes-straight-to-the-night
+  (testing "there is no card to turn over, so nothing to wait for"
+    (let [d (tu/day-with seven)
+          s (reduce (fn [s v] (exec! s {:type :vote-abstain :player v})) d (alive d))]
+      (is (= [:night 2] [(:phase s) (:night s)])))))
+
+(deftest a-lynched-jaeger-shoots-before-the-verdict-rests
+  (let [s (condemn (tu/day-with (assoc seven 3 :jaeger)) 3)]
+    (is (= :reaction (:phase s)) "his shot comes first")
+    (is (not (phases/verdict-held? s)))
+    (let [s (exec! s {:type :jaeger-shoot :player 3 :target 5})]
+      (testing "and the table reads both cards before the night"
+        (is (phases/verdict-held? s))
+        (is (= {3 :jaeger 5 :seherin}
+               (into {} (keep #(when (= :player/died (:type %)) [(:player %) (:role %)]))
+                     (:log s))))))))
+
+(deftest a-condemned-mayor-names-his-heir-before-the-verdict-rests
+  (let [s (condemn (assoc (tu/day-with seven) :mayor 3) 3)]
+    (is (= :reaction (:phase s)) "his last move comes first, like the Jäger's")
+    (let [s (exec! s {:type :mayor-appoint :player 3 :target 1})]
+      (is (phases/verdict-held? s))
+      (is (= 1 (:mayor s))))))
+
+(deftest a-lynch-that-decides-the-game-ends-it-at-once
+  (testing "the end turns every card over; it has no verdict to wait on"
+    (let [s (condemn (tu/day-with {0 :dorfbewohner 1 :dorfbewohner 2 :werwolf
+                                   3 :dorfbewohner 4 :hexe}) 2)]
+      (is (= [:game-over :village] [(:phase s) (:winner s)])))))
+
 ;; ------------------------------------------------------------ GM powers ---
 
 (deftest dead-host-keeps-gm-powers
@@ -548,11 +619,13 @@
 (deftest which-phases-have-a-clock-is-a-rule-not-a-config-value
   (testing "config decides how long a phase lasts; the engine decides whether it
             is timed at all"
-    (is (= #{:election :night :discussion :reaction}
+    (is (= #{:election :night :discussion :reaction :day-resolve}
            (set (keys phases/timed-phases))))
-    (doseq [p [:lobby :day-reveal :day-resolve :game-over]]
+    (doseq [p [:lobby :day-reveal :game-over]]
       (is (nil? (phases/timeout-events {:phase p}))
-          (str p " must have no timeout behaviour")))))
+          (str p " must have no timeout behaviour")))
+    (is (nil? (phases/timeout-events {:phase :day-resolve :vote-resolved? true}))
+        "nor the verdict, unless it condemned somebody: only then does it rest")))
 
 (deftest a-timeout-is-always-a-public-fact
   (testing "a player has to be able to see why the vote closed"

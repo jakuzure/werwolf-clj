@@ -604,7 +604,9 @@
 
               :else
               ["border-slate-700 bg-slate-900/60 text-slate-400"
-               (t :game/waiting)
+               ;; After a verdict nobody is waiting on anybody: the table is
+               ;; reading the card it turned over, and the night comes next.
+               (t (if (= :day-resolve phase) :turn/nightfall :game/waiting))
                (cond
                  ;; Not the role being called at night: the stage shows that as a
                  ;; chip directly above. Naming the players still to act would leak
@@ -1510,6 +1512,8 @@
           ;; The Spielleiter has no card to look at; his part of the deal is
           ;; checking it and opening the night.
           (and (= :setup phase) narrator?) (t :explain/setup-narrator)
+          ;; And the verdict is his to announce, and the night his to call.
+          (and (= :day-resolve phase) narrator?) (t :explain/day-resolve-narrator)
           :else (t (keyword "explain" (name (or phase :setup))))))]
 
      [host-absent-banner]
@@ -1519,11 +1523,12 @@
 
      [:div {:class "overflow-x-auto -mx-1 px-1"} [round-strip]]
 
-     ;; Not while the morning card is open: it tells the same news, larger,
-     ;; and the two read as the page repeating itself.
+     ;; Not while the morning or the verdict card is open: it tells the same
+     ;; news, larger, and the two read as the page repeating itself.
      ;; At the end too: under "Das Dorf gewinnt", the line that decided it —
      ;; "Ida wurde vom Dorf gerichtet".
-     (when-not @(rf/subscribe [::sub/dawn-news]) [latest-news])]))
+     (when-not (or @(rf/subscribe [::sub/dawn-news]) @(rf/subscribe [::sub/verdict-news]))
+       [latest-news])]))
 
 ;; -------------------------------------------------------------------- chat ---
 
@@ -2219,6 +2224,39 @@
        ;; leisure, the button for the people who already want the next round.
        [recap-panel]])))
 
+(defn- news-card
+  "A moment told once and large: what it did, in the Chronik's own sentences,
+   and the card each of its dead held. The morning and the verdict both read
+   this way; `footer` is whatever the moment asks of the reader."
+  [{:keys [entries icon title testid]} & footer]
+  (let [players @(rf/subscribe [::sub/players])
+        rows    (i18n/chronicle (lc) players entries {:show-all? false})
+        ;; Read off the entries, not the rows: "Das Dorf richtet Anna" tells
+        ;; her death for the line that would have, and the card came out in
+        ;; the colour of a quiet night.
+        death?  (some #(= :player/died (:type %)) entries)]
+    (when (seq rows)
+      (into
+       [:section {:class (str "rounded-xl border-2 p-4 space-y-3 text-center "
+                              (if death? "border-rose-700 bg-rose-950/40" "border-sky-800 bg-sky-950/30"))
+                  :data-testid testid}
+        [:div {:class "text-3xl" :aria-hidden true} icon]
+        [:h3 {:class "text-xs font-bold uppercase tracking-wide text-slate-300"} title]
+        (for [[i {:keys [text]}] (map-indexed vector (reverse rows))]
+          ^{:key i}
+          [:p {:class (str "text-lg font-semibold " (if death? "text-rose-100" "text-sky-100"))} text])
+        ;; The card each of them held, which a death turns over for everybody.
+        ;; A card of its own rather than a word after the name: whose it was
+        ;; is the one thing the table wants to read off this.
+        (when-let [dead (seq (filter #(and (= :player/died (:type %)) (:role %)) entries))]
+          [:div {:class "flex flex-wrap justify-center gap-2"}
+           (for [{:keys [player role]} dead]
+             ^{:key player}
+             [:span {:class "rounded-lg border border-rose-800/70 bg-rose-950/60 px-3 py-1.5 text-rose-100"}
+              (str (get-in players [player :name]) ": ")
+              [:span {:class "font-semibold"} (str (i18n/icon-of role) " " (role-name role))]])])]
+       footer))))
+
 (defn- dawn-card
   "The morning, told once and large: who did not survive the night and what
    they were, or that the night was quiet. A line under the stage was easy to
@@ -2226,27 +2264,22 @@
    good that day; the stage's \"Zuletzt\" line keeps saying it."
   []
   (when-let [entries @(rf/subscribe [::sub/dawn-news])]
-    (let [players @(rf/subscribe [::sub/players])
-          id      (sub/dawn-id @(rf/subscribe [::sub/view]))
-          rows    (i18n/chronicle (lc) players entries {:show-all? false})
-          death?  (some #(= :death (:tone %)) rows)]
-      (when (seq rows)
-        [:section {:class (str "rounded-xl border-2 p-4 space-y-3 text-center "
-                               (if death? "border-rose-700 bg-rose-950/40" "border-sky-800 bg-sky-950/30"))
-                   :data-testid "dawn"}
-         [:div {:class "text-3xl" :aria-hidden true} "🌅"]
-         [:h3 {:class "text-xs font-bold uppercase tracking-wide text-slate-300"} (t :dawn/title)]
-         (for [[i {:keys [text]}] (map-indexed vector (reverse rows))]
-           ^{:key i}
-           [:p {:class (str "text-lg font-semibold " (if death? "text-rose-100" "text-sky-100"))} text])
-         ;; The card each of them held, which a death turns over for everybody.
-         (when-let [dead (seq (filter #(and (= :player/died (:type %)) (:role %)) entries))]
-           [:div {:class "flex flex-wrap justify-center gap-2"}
-            (for [{:keys [player role]} dead]
-              ^{:key player}
-              [:span {:class "text-sm text-rose-200"}
-               (str (get-in players [player :name]) ": " (i18n/icon-of role) " " (role-name role))])])
-         [btn (t :dawn/ok) #(rf/dispatch [::ev/dawn-seen id]) {:tone :ghost :testid "dawn-ok"}]]))))
+    (let [id (sub/dawn-id @(rf/subscribe [::sub/view]))]
+      [news-card {:entries entries :icon "🌅" :title (t :dawn/title) :testid "dawn"}
+       [btn (t :dawn/ok) #(rf/dispatch [::ev/dawn-seen id]) {:tone :ghost :testid "dawn-ok"}]])))
+
+(defn- verdict-card
+  "Whom the village condemned and what he was, before the night falls.
+
+   The night used to fall in the same instant as the verdict: the card the
+   lynch turned over went into the Chronik while the screen was already dark,
+   and the table asked to see it first. The server now holds the day on it
+   (phases/verdict-held?), and this is what the table looks at meanwhile. No
+   button: the night ends it for everybody at once, on the clock or on the
+   Spielleiter's word."
+  []
+  (when-let [entries @(rf/subscribe [::sub/verdict-news])]
+    [news-card {:entries entries :icon "⚖️" :title (t :verdict/title) :testid "verdict"}]))
 
 (defn- tab-state
   "Which tab a phone shows, and how much chat is unread. The tab is per room,
@@ -2396,6 +2429,7 @@
      [:div {:class (on #{:table} "max-lg:order-9")} [gm-panel]]]
     [:div {:class "contents lg:flex lg:flex-col lg:gap-4"}
      [:div {:class (on #{:now} "max-lg:order-1")} [dawn-card]]
+     [:div {:class (on #{:now} "max-lg:order-1")} [verdict-card]]
      [:div {:class (on #{:now} "max-lg:order-2")} [phase-stage]]
      [:div {:class (on #{:now} "max-lg:order-3")} [now-card]]
      ;; Straight under the moves during the vote: it is what everybody is

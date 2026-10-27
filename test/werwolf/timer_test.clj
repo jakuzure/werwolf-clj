@@ -13,7 +13,7 @@
 
 (def game-cfg
   {:election-secs 60 :discussion-secs 300
-   :night-secs 45 :reaction-secs 30})
+   :night-secs 45 :reaction-secs 30 :verdict-secs 10})
 
 (def t0 1700000000000)
 
@@ -258,6 +258,37 @@
           (testing "and the game moves on to the next night rather than stalling"
             (is (= :night (:phase st)))
             (is (= 2 (:night st)))))))))
+
+(deftest a-condemnation-rests-on-its-own-clock-before-the-night
+  (with-ctx [ctx]
+    (let [room-id (table ctx 7)]
+      (room/submit! ctx room-id 0 {:type :start-game})
+      (skip-night! ctx room-id)
+      (let [st (room/state-of ctx room-id)
+            living (engine/living-ids st)
+            ;; Somebody whose death neither ends the game nor owes a last move.
+            accused (first (filter #(#{:dorfbewohner :seherin :hexe}
+                                     (get-in st [:players % :role]))
+                                   living))
+            timed-out #(count (filter (fn [e] (= :phase/timed-out (:type e)))
+                                      (:log (room/state-of ctx room-id))))]
+        (at! ctx t0)
+        (doseq [v living]
+          (room/submit! ctx room-id v (if (= v accused)
+                                        {:type :vote-abstain}
+                                        {:type :vote :target accused})))
+        (testing "the condemned is dead, and the day waits a short clock of its own"
+          (is (false? (get-in (room/state-of ctx room-id) [:players accused :alive?])))
+          (is (= :day-resolve (phase ctx room-id)))
+          (is (= (+ t0 10000) (deadline ctx room-id))))
+        (timer/tick! ctx (+ t0 9000))
+        (is (= :day-resolve (phase ctx room-id)) "nothing before it")
+        (let [before (timed-out)]
+          (at! ctx (+ t0 10001))
+          (timer/tick! ctx (+ t0 10001))
+          (testing "then the night falls, and nobody is told time ran out on them"
+            (is (= [:night 2] ((juxt :phase :night) (room/state-of ctx room-id))))
+            (is (= before (timed-out)))))))))
 
 (deftest a-jaeger-who-never-fires-does-not-fire
   (testing "the shot is his to take, not the server's to guess"
