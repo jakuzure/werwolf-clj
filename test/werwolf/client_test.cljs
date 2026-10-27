@@ -963,6 +963,19 @@
       (is (nil? (sub/ballot (assoc v :trial? false))))
       (is (nil? (sub/ballot (assoc v :phase :night)))))))
 
+(deftest the-wolf-votes-read-by-victim-most-votes-first
+  (let [v {:phase :night :me {:id 3}
+           :players {1 {:name "Anna"} 2 {:name "Bert"} 3 {:name "Cem"}
+                     4 {:name "Dana"} 5 {:name "Eva"}}
+           :night-info {:werewolf-votes {1 5, 3 2, 4 5}}}]
+    (is (= [{:id 5 :name "Eva" :voters ["Anna" "Dana"] :mine? false}
+            {:id 2 :name "Bert" :voters ["Cem"] :mine? true}]
+           (sub/wolf-ballot v))
+        "the leader on top, whoever voted first")
+    (testing "nothing to draw before a wolf has voted, or once the night is over"
+      (is (nil? (sub/wolf-ballot (assoc v :night-info {}))))
+      (is (nil? (sub/wolf-ballot (assoc v :phase :day-reveal)))))))
+
 (deftest the-turn-is-yours-when-the-game-waits-on-you
   (let [v {:phase :night :me {:id 1} :actions #{:chat :seherin-inspect}}]
     (is (true? (sub/my-turn? v)))
