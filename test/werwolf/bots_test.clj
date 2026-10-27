@@ -8,6 +8,7 @@
   (:require [clojure.java.io :as io]
             [clojure.test :refer [deftest is testing]]
             [werwolf.bots :as bots]
+            [werwolf.config :as config]
             [werwolf.room :as room]
             [werwolf.store :as store]
             [werwolf.timer :as timer]))
@@ -172,6 +173,18 @@
           (is (zero? (living-bot-votes ctx room-id)) "still not before the floor")
           (tick-until ctx (+ since 10100) (+ since 14000) #(pos? (living-bot-votes ctx room-id)))
           (is (pos? (living-bot-votes ctx room-id)) "right after the floor"))))))
+
+(deftest the-shipped-pacing-keeps-a-ballot-short
+  ;; The tests above pin a floor and a patience of their own, so this one says
+  ;; what ships: a human who waits to see where the bots lean sits out the
+  ;; patience at every ballot, and at 45 s that was most of a day.
+  (let [shipped (:game (config/load-config :test))]
+    (is (= 5 (:bot-floor-secs shipped)))
+    (is (= 20 (:bot-patience-secs shipped)))
+    (testing "and a config without the keys falls back to the same pace"
+      (is (= (:bot-floor-secs shipped) bots/default-floor-secs))
+      (is (= (:bot-patience-secs shipped) bots/default-patience-secs))
+      (is (= (:bot-delay-ms shipped) bots/default-delay-ms)))))
 
 (deftest bots-do-nothing-while-nobody-is-here
   (with-ctx [ctx]

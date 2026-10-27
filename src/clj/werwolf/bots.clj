@@ -17,8 +17,8 @@
             [werwolf.room :as room]))
 
 (def default-delay-ms 1500)
-(def default-floor-secs 10)
-(def default-patience-secs 45)
+(def default-floor-secs 5)
+(def default-patience-secs 20)
 
 (def ^:private day-actions
   "What a bot answers by day, and so waits for the humans on. `:ready` closes
