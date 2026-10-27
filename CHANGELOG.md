@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.10.1](https://github.com/jakuzure/werwolf-clj/compare/v0.10.0...v0.10.1) (2026-10-27)
+
+
+### Bug Fixes
+
+* **nix:** list the sqlite-jdbc jar into a file before grepping it ([5dedd82](https://github.com/jakuzure/werwolf-clj/commit/5dedd82ffe1fe0c4435ff8710c73ffc5201e6950))
+* **room:** never write back a room that is no longer there ([270544c](https://github.com/jakuzure/werwolf-clj/commit/270544c1b6b235b731c2b0dfaa77b4038d0a1397))
+
 ## [0.10.0](https://github.com/jakuzure/werwolf-clj/compare/v0.9.0...v0.10.0) (2026-10-21)
 
 
