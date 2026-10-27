@@ -50,6 +50,21 @@ jobs:
           name: werwolf-clj
           skipPush: true
 
+      # Renovate bumps deps.edn but not deps-lock.json, and ci.yml regenerates
+      # the lock in a run of its own beside this one. Built from Renovate's own
+      # commit, the frontend failed every time on an artifact the offline build
+      # did not have ("thheller:shadow-cljs:pom:3.5.8 (absent)"), and the run
+      # on the bot's lock commit waits for someone to approve it. So regenerate
+      # it here too, for this build only: no commit, no push. nix build reads
+      # the working tree, so the VM test builds with it.
+      - name: Regenerate deps-lock.json on Renovate branches
+        if: github.event_name == 'pull_request' && startsWith(github.event.pull_request.head.ref, 'renovate/')
+        run: |
+          # The pinned clj-nix, not the latest: a newer one writes a lock
+          # format the pinned builder refuses ("Lock file generated with a
+          # different clj-nix version").
+          nix run --inputs-from . clj-nix#deps-lock -- --alias-exclude dev
+
       - name: VM test
         run: nix build -L .#checks.x86_64-linux.previews
 
