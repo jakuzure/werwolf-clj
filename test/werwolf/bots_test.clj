@@ -284,3 +284,40 @@
           (bots/rearm! ctx game-cfg room-id (+ t0 20000))
           (is (= offers (get-in (room-map ctx room-id) [:bots pid :offers])))
           (is (= (+ t0 21500) (get-in (room-map ctx room-id) [:bots pid :at]))))))))
+
+(deftest a-refused-move-for-a-disarmed-seat-keeps-the-room
+  ;; A human's commit landed between the tick reading the schedule and the bot
+  ;; submitting, closed the vote and re-armed the others without this seat. The
+  ;; refused bot is then moved back by its patience — and that once replaced
+  ;; the whole room with nil: a Bombadil run lost its game from memory mid-day,
+  ;; and the sweep logged "dropping idle room" for it every second after.
+  (with-ctx [ctx]
+    (let [{:keys [room-id]} (bot-table ctx 5)]
+      (at! ctx t0)
+      (begin! ctx room-id)
+      (let [armed  (set (keys (:bots (room-map ctx room-id))))
+            pid    (first (remove armed (bot-ids ctx room-id)))
+            before (room-map ctx room-id)]
+        (is (some? pid) "a bot whose turn it is not")
+        (room/reschedule! ctx room-id pid (+ t0 45000))
+        (is (some? (room-map ctx room-id)) "the room is still in memory")
+        (is (= (:state before) (state ctx room-id)))
+        (is (= (:bots before) (:bots (room-map ctx room-id))) "nothing to move, so nothing moved")))))
+
+(deftest a-late-write-to-a-dropped-room-leaves-nothing-behind
+  ;; The tick reads the schedule and writes it back without the room's lock,
+  ;; so the sweep can drop the room in between. A write that lands on an empty
+  ;; slot must not bring the id back as nil: nothing ever removes that, and the
+  ;; ticker would visit it every second for the rest of the process.
+  (with-ctx [ctx]
+    (let [{:keys [room-id]} (bot-table ctx 5)]
+      (at! ctx t0)
+      (begin! ctx room-id)
+      (let [[pid] (first (:bots (room-map ctx room-id)))]
+        (room/forget-room! ctx room-id)
+        (room/schedule! ctx room-id {:phase :night :phase-since t0 :bots {}})
+        (room/reschedule! ctx room-id pid (+ t0 45000))
+        (is (not (contains? @(:rooms ctx) room-id)))
+        (is (= [] (room/room-ids ctx)))
+        (is (= [] (room/sweep-idle! ctx (+ t0 (:game-idle-ms game-cfg) 1)))
+            "nothing left for the sweep to drop again")))))

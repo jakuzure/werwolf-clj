@@ -98,6 +98,19 @@
 (defn- rooms [ctx] @(:rooms ctx))
 (defn- room-of [ctx room-id] (get (rooms ctx) room-id))
 
+(defn- update-room!
+  "`update` one room, but only while it is still there.
+
+   A write can arrive for a room that is already gone: the sweep forgets rooms
+   without taking their lock, and the bots' tick writes its schedule without it
+   too. A plain `update` would put the id back with whatever `f` makes of nil —
+   nil itself, which nothing ever removes (`forget-room!` finds no room to
+   forget, so the sweep 'drops' it again every second), or a room without a
+   `:lock` for the next `with-room` to hold."
+  [ctx room-id f & args]
+  (swap! (:rooms ctx)
+         (fn [m] (if (get m room-id) (apply update m room-id f args) m))))
+
 (defn state-of
   "The authoritative game state for a room, or nil. Read-only; callers outside
    this namespace must not attempt to write it back."
@@ -249,13 +262,13 @@
      (let [r' (-> r
                   (assoc :state state')
                   (update :seq + (count events)))]
-       (swap! (:rooms ctx) update room-id merge
-              (cond-> (select-keys r' [:state :seq])
-                activity? (assoc :last-activity now)
-                ;; A rematch starts with an empty chat: the last game's wolves'
-                ;; whispers were still on the screen of somebody who is a
-                ;; villager now, and a reconnect would replay them.
-                (some #(= :game/reset (:type %)) events) (assoc :chat [])))
+       (update-room! ctx room-id merge
+                     (cond-> (select-keys r' [:state :seq])
+                       activity? (assoc :last-activity now)
+                       ;; A rematch starts with an empty chat: the last game's wolves'
+                       ;; whispers were still on the screen of somebody who is a
+                       ;; villager now, and a reconnect would replay them.
+                       (some #(= :game/reset (:type %)) events) (assoc :chat [])))
        (remember-recap! ctx room-id)
        (broadcast! ctx (room-of ctx room-id))
        ;; Last, and still under the lock: the clock gets to react to the new
@@ -551,7 +564,7 @@
     (with-room ctx room-id
       (fn [r]
         (let [r' (update r :voice (fnil (if joined? conj disj) #{}) sink)]
-          (swap! (:rooms ctx) update room-id #(when % (assoc % :voice (:voice r'))))
+          (update-room! ctx room-id assoc :voice (:voice r'))
           (when (not= (in-voice r) (in-voice r'))
             (broadcast! ctx (room-of ctx room-id)))
           {:ok? true})))
@@ -592,10 +605,10 @@
         {:error :unknown-player}
         (let [first-socket? (empty? (get-in r [:sinks pid]))
               r' (update-in r [:sinks pid] (fnil conj #{}) sink)]
-          (swap! (:rooms ctx) update room-id
-                 (fn [rm] (when rm (-> rm
-                                       (assoc-in [:sinks pid] (get-in r' [:sinks pid]))
-                                       (assoc :last-activity (System/currentTimeMillis))))))
+          (update-room! ctx room-id
+                        #(-> %
+                             (assoc-in [:sinks pid] (get-in r' [:sinks pid]))
+                             (assoc :last-activity (System/currentTimeMillis))))
           (swap! (:index ctx) assoc sink [room-id pid])
           (deliver! ctx sink {:type :room/chat-history :messages (visible-chat r' pid)})
           (if (and first-socket? (not (get-in (:state r) [:players pid :connected?])))
@@ -622,11 +635,11 @@
     (with-room ctx room-id
       (fn [r]
         (let [remaining (disj (get-in r [:sinks pid] #{}) sink)]
-          (swap! (:rooms ctx) update room-id
-                 (fn [rm] (when rm (-> rm
-                                       (assoc-in [:sinks pid] remaining)
-                                       (update :voice (fnil disj #{}) sink)
-                                       (assoc :last-activity (System/currentTimeMillis))))))
+          (update-room! ctx room-id
+                        #(-> %
+                             (assoc-in [:sinks pid] remaining)
+                             (update :voice (fnil disj #{}) sink)
+                             (assoc :last-activity (System/currentTimeMillis))))
           (cond
             (empty? remaining)
             ;; Stamped, so the clock can tell a phone that blinked from a seat
@@ -666,11 +679,11 @@
   [ctx room-id pid msg-type]
   (let [sinks (get-in (room-of ctx room-id) [:sinks pid])
         voiced? (contains? (in-voice (room-of ctx room-id)) pid)]
-    (swap! (:rooms ctx) update room-id
-           (fn [rm] (when rm (-> rm
-                                 (update :sinks dissoc pid)
-                                 (update :voice #(reduce disj (or % #{}) sinks))
-                                 (assoc :last-activity (System/currentTimeMillis))))))
+    (update-room! ctx room-id
+                  (fn [rm] (-> rm
+                               (update :sinks dissoc pid)
+                               (update :voice #(reduce disj (or % #{}) sinks))
+                               (assoc :last-activity (System/currentTimeMillis)))))
     (swap! (:index ctx)
            (fn [ix] (reduce (fn [m s] (cond-> m (= [room-id pid] (get m s)) (dissoc s)))
                             ix sinks)))
@@ -734,16 +747,19 @@
   "Replace the scheduler's notes: the phase it saw, when that began, and the
    bots' turns (pid -> {:offers set :at epoch-ms})."
   [ctx room-id notes]
-  (swap! (:rooms ctx) update room-id
-         #(when % (merge % (select-keys notes [:phase :phase-since :bots])))))
+  (update-room! ctx room-id merge (select-keys notes [:phase :phase-since :bots])))
 
 (defn reschedule!
   "Move one bot's turn. One seat's entry rather than the whole map, because
    this is written from the tick while a socket's commit may be re-arming the
-   others under the lock."
+   others under the lock.
+
+   A seat that is no longer armed is left alone. That commit is usually why
+   the bot's move was refused in the first place, and returning nil for it
+   once replaced the whole room with nil mid-game."
   [ctx room-id pid at]
-  (swap! (:rooms ctx) update room-id
-         #(when (get-in % [:bots pid]) (assoc-in % [:bots pid :at] at))))
+  (update-room! ctx room-id
+                #(cond-> % (get-in % [:bots pid]) (assoc-in [:bots pid :at] at))))
 
 ;; ------------------------------------------------------------------- recap ---
 ;;
@@ -770,7 +786,7 @@
     (cond
       (not= :game-over (:phase (:state rm)))
       (when (contains? rm :recap)
-        (swap! (:rooms ctx) update room-id #(when % (dissoc % :recap :stats))))
+        (update-room! ctx room-id dissoc :recap :stats))
 
       ;; The table's record across its games rides along: the same log, read
       ;; the same once, at the same moment.
@@ -783,7 +799,7 @@
                           nil)))
             rc (safe recap/recap "recap")
             st (safe stats/stats "stats")]
-        (swap! (:rooms ctx) update room-id #(when % (assoc % :recap rc :stats st)))))))
+        (update-room! ctx room-id assoc :recap rc :stats st)))))
 
 (defn- with-recap
   "Attach the cached recap to a view — at :game-over and never before. The
@@ -864,10 +880,10 @@
                      :name    (get-in state [:players pid :name])
                      :text    (subs text' 0 (min (count text') max-chat-text))
                      :at      (System/currentTimeMillis)}]
-            (swap! (:rooms ctx) update-in [room-id :chat]
-                   (fn [log]
-                     (let [log' (conj (vec log) (assoc msg :to to))]
-                       (vec (take-last (:max-chat ctx) log')))))
+            (update-room! ctx room-id update :chat
+                          (fn [log]
+                            (let [log' (conj (vec log) (assoc msg :to to))]
+                              (vec (take-last (:max-chat ctx) log')))))
             (doseq [rid to, sink (get-in r [:sinks rid])]
               (deliver! ctx sink msg))
             {:ok? true :channel channel :recipients to}))))))
