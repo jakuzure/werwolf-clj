@@ -35,10 +35,11 @@
   (doseq [suffix ["" "-wal" "-shm"]] (io/delete-file (str path suffix) true)))
 
 (defn- boot!
-  "Start the whole system on an ephemeral port against `db-path`."
-  [db-path]
+  "Start the whole system on an ephemeral port against `db-path`. `server`
+   is merged into the :server config, for the tests about its ceilings."
+  [db-path server]
   (let [sys (ig/init (main/system-config
-                      {:server {:port 0 :host "127.0.0.1"}
+                      {:server (merge {:port 0 :host "127.0.0.1"} server)
                        :db     {:dbtype "sqlite" :dbname db-path}
                        :tokens {:secret "e2e-secret-that-is-long-enough" :ttl-mins 720}
                        :game   {:election-secs 60 :discussion-secs 300 :nomination-secs 90 :vote-secs 60
@@ -68,6 +69,7 @@
   [port]
   (let [inbox (atom [])
         buf (StringBuilder.)
+        closed (promise)
         listener (reify WebSocket$Listener
                    (onOpen [_ ws] (.request ws 1))
                    (onText [_ ws data last?]
@@ -79,14 +81,19 @@
                            (swap! inbox conj msg))))
                      (.request ws 1)
                      nil)
-                   (onError [_ _ws _err] nil)
-                   (onClose [_ _ws _code _reason] nil))
+                   (onError [_ _ws _err] (deliver closed true) nil)
+                   (onClose [_ _ws _code _reason] (deliver closed true) nil))
         ws (-> (HttpClient/newHttpClient)
                (.newWebSocketBuilder)
                (.connectTimeout (java.time.Duration/ofSeconds 5))
                (.buildAsync (URI/create (str "ws://127.0.0.1:" port "/api/ws")) listener)
                (.get timeout-ms TimeUnit/MILLISECONDS))]
-    {:ws ws :inbox inbox}))
+    {:ws ws :inbox inbox :closed closed}))
+
+(defn- closed-within-timeout?
+  "Did the SERVER end this socket? The client never asks for it here."
+  [{:keys [closed]}]
+  (true? (deref closed timeout-ms false)))
 
 (defn- send! [{:keys [ws]} msg]
   (.get (.sendText ws (wire/write-transit msg) true) timeout-ms TimeUnit/MILLISECONDS))
@@ -133,8 +140,8 @@
                              (some? (get-in % [:view :deadline]))))
           [:view :deadline]))
 
-(defmacro with-server [[binding db-path] & body]
-  `(let [~binding (boot! ~db-path)]
+(defmacro with-server [[binding db-path server] & body]
+  `(let [~binding (boot! ~db-path ~(or server {}))]
      (try ~@body (finally (shutdown! ~binding)))))
 
 ;; ------------------------------------------------------------------- tests ---
@@ -391,7 +398,7 @@
     (let [path (tmp-path)]
       (try
         (let [;; --- first life ---
-              srv1 (boot! path)
+              srv1 (boot! path {})
               host (client (:port srv1))
               _ (await-type host :server/hello)
               _ (send! host {:type :client/create :name "Anna"})
@@ -413,7 +420,7 @@
           (shutdown! srv1)
 
           ;; --- second life: same database, brand new process state ---
-          (let [srv2 (boot! path)]
+          (let [srv2 (boot! path {})]
             (try
               (let [reconnected
                     (doall (for [[pid tok] (sort tokens)]
@@ -479,6 +486,65 @@
               (is (some? (await-type c :server/pong))))
             (finally (close! c)))))
       (finally (cleanup! path)))))
+
+(defn- send-raw!
+  "A text frame of `n` bytes. The server may reset the connection before the
+   client has written all of it, which is the point, not a failure."
+  [{:keys [ws]} n]
+  (try (.get (.sendText ws (apply str (repeat n "a")) true) timeout-ms TimeUnit/MILLISECONDS)
+       (catch Exception _ nil)))
+
+(deftest an-oversized-frame-costs-its-sender-the-socket-and-nobody-else
+  (testing "http-kit would buffer 4 MB per frame before looking at it; the
+            largest legal message is a few KB. The limit here is above the
+            64 KB below which http-kit never checks (see config.edn), so the
+            test can show the configured value is what counts."
+    (let [path (tmp-path)]
+      (try
+        (with-server [srv path {:max-frame-bytes 100000}]
+          (let [c (client (:port srv))]
+            (await-type c :server/hello)
+            (send-raw! c 70000)
+            (is (= :malformed (:code (await-type c :server/error)))
+                "under the limit, it is read and answered like any other junk")
+            (send-raw! c 150000)
+            (is (closed-within-timeout? c)))
+          (testing "and the server is still there for the next socket"
+            (let [c (client (:port srv))]
+              (try
+                (is (= 1 (:protocol (await-type c :server/hello))))
+                (finally (close! c))))))
+        (finally (cleanup! path))))))
+
+(defn- try-client
+  "A client, or nil when the server refused the handshake."
+  [port]
+  (try (client port) (catch Exception _ nil)))
+
+(deftest the-server-refuses-sockets-past-its-cap
+  (testing "one browser with many tabs, or one script, must not be able to
+            hold every thread the server has"
+    (let [path (tmp-path)]
+      (try
+        (with-server [srv path {:max-sockets 2}]
+          (let [a (client (:port srv))
+                b (client (:port srv))]
+            (await-type a :server/hello)
+            (await-type b :server/hello)
+            (testing "the third handshake is refused outright, not queued"
+              (is (nil? (try-client (:port srv)))))
+            (close! a)
+            (testing "a socket that closed makes room for the next one"
+              ;; The server learns of the close a moment after the client sent it.
+              (let [c (loop [n 0]
+                        (or (try-client (:port srv))
+                            (when (< n 100) (Thread/sleep 20) (recur (inc n)))))]
+                (is (some? c))
+                (when c
+                  (is (= 1 (:protocol (await-type c :server/hello))))
+                  (close! c))))
+            (close! b)))
+        (finally (cleanup! path))))))
 
 (deftest a-closing-socket-marks-its-player-absent-to-everyone-else
   (let [path (tmp-path)]

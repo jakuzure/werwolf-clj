@@ -1,5 +1,20 @@
 {:server  {:port     #long #or [#env PORT 3000]
-           :host     #or [#env HOST "0.0.0.0"]}
+           :host     #or [#env HOST "0.0.0.0"]
+           ;; Ceilings that only matter under attack; a friend group never
+           ;; reaches them. The frame limit is http-kit's :max-ws, 4 MB by
+           ;; default: the largest message a client may legally send is a
+           ;; 4096-character token or a 2000-character chat line (see
+           ;; werwolf.proto), so a 64 KB frame is already nobody's game, and
+           ;; a client that sends one gets its socket closed. 64 KB is also
+           ;; the floor: http-kit 2.8 only checks the limit on frames whose
+           ;; length needs the 64-bit field, so anything smaller is accepted
+           ;; whatever is set here (probed on 2026-10-28). The other two
+           ;; bound what one client with many tabs can make the server keep:
+           ;; a room is a few MB of heap, a socket a thread's worth of
+           ;; buffers. Both refuse with an error rather than crash the JVM.
+           :max-frame-bytes #long #or [#env MAX_FRAME_BYTES 65536]
+           :max-rooms       #long #or [#env MAX_ROOMS 100]
+           :max-sockets     #long #or [#env MAX_SOCKETS 1000]}
 
  ;; Prometheus metrics on a port of their own, loopback only. 0 (default): off.
  ;; See werwolf.metrics.

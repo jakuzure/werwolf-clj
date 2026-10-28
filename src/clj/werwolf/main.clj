@@ -24,17 +24,24 @@
             [werwolf.ws :as ws])
   (:gen-class))
 
+(def ^:private default-max-frame-bytes
+  "For a config built by hand, as the tests do: the same ceiling config.edn
+   gives MAX_FRAME_BYTES."
+  65536)
+
 (defn system-config
   "Build the integrant config from the loaded application config."
   [{:keys [server db tokens game media] :as cfg}]
   {::db      {:config db}
-   ::rooms   {:db (ig/ref ::db) :game game}
+   ::rooms   {:db (ig/ref ::db) :game game :max-rooms (:max-rooms server)}
    ::timer   {:rooms (ig/ref ::rooms)}
    ::media   {:config media}
-   ::handler {:rooms (ig/ref ::rooms) :tokens tokens :media (ig/ref ::media)}
+   ::handler {:rooms (ig/ref ::rooms) :tokens tokens :media (ig/ref ::media)
+              :max-sockets (:max-sockets server)}
    ::server  {:handler (ig/ref ::handler)
               :port    (:port server)
-              :host    (:host server)}
+              :host    (:host server)
+              :max-frame-bytes (:max-frame-bytes server)}
    ::metrics {:rooms (ig/ref ::rooms)
               :port  (get-in cfg [:metrics :port])
               :host  (get-in cfg [:metrics :host])}})
@@ -43,11 +50,13 @@
   (log/info "opening event log at" (:dbname config))
   (store/open config))
 
-(defmethod ig/init-key ::rooms [_ {:keys [db game]}]
+(defmethod ig/init-key ::rooms [_ {:keys [db game max-rooms]}]
   (let [ctx (room/registry {:ds db
                             :send! ws/send!
                             ;; Table-size limits for newly opened rooms.
                             :game game
+                            ;; And how many of them may be open at once.
+                            :max-rooms max-rooms
                             ;; Installing the clock's hook here is what makes
                             ;; deadlines exist at all — see werwolf.timer.
                             :after-commit (timer/hook game)
@@ -81,7 +90,7 @@
                      "audio is OFF")))
     provider))
 
-(defmethod ig/init-key ::handler [_ {:keys [rooms tokens media]}]
+(defmethod ig/init-key ::handler [_ {:keys [rooms tokens media max-sockets]}]
   (when (token/insecure-secret? tokens)
     ;; Loud, but not fatal: refusing to boot would mean a typo'd env var locks
     ;; you out of your own server, and the threat model here is a friend group,
@@ -91,6 +100,7 @@
   (http/handler {:rooms rooms
                  :tokens tokens
                  :media media
+                 :max-sockets max-sockets
                  ;; The protocol's replies. Its refusals are counted on the
                  ;; way out, so the protocol has no metrics of its own to keep.
                  :send! (fn [sock msg]
@@ -106,12 +116,24 @@
 (defmethod ig/halt-key! ::metrics [_ m]
   (when m (metrics/stop! m)))
 
-(defmethod ig/init-key ::server [_ {:keys [handler port host]}]
-  (let [srv (hk/run-server handler {:port port
+(defmethod ig/init-key ::server [_ {:keys [handler port host max-frame-bytes]}]
+  (let [limit (or max-frame-bytes default-max-frame-bytes)
+        srv (hk/run-server handler {:port port
                                     :ip host
                                     ;; A stoppable server object rather than a
                                     ;; bare stop function.
-                                    :legacy-return-value? false})]
+                                    :legacy-return-value? false
+                                    ;; http-kit would otherwise buffer 4 MB per
+                                    ;; WebSocket frame and 8 MB per request body
+                                    ;; before deciding anything, which is memory
+                                    ;; a stranger gets to fill for free. There is
+                                    ;; no route that takes a body at all; see
+                                    ;; MAX_FRAME_BYTES in config.edn for the frame.
+                                    :max-ws limit
+                                    :max-body limit
+                                    ;; The only thing the banner told anyone was
+                                    ;; which server to look up exploits for.
+                                    :server-header nil})]
     (log/info (str "werwolf-clj " (package-version) " (" (running-commit) ") listening on http://" host ":" (hk/server-port srv)))
     srv))
 
