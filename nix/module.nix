@@ -310,6 +310,32 @@ in
         virtualHosts.${cfg.domain}.extraConfig = ''
           encode zstd gzip
 
+          # Browser-side hardening, set here rather than by the app so that a
+          # response Caddy answers itself (an error page, a redirect) carries
+          # it too. Both the game and LiveKit signalling are same-origin, so
+          # the policy names nothing but 'self'.
+          #
+          # HSTS without includeSubDomains: the PR previews live under
+          # pr-<n>.<domain>, and a preview that is asleep or lost its
+          # certificate should fail on its own, not take the main site's
+          # promise with it.
+          #
+          # style-src allows inline styles because reagent renders :style
+          # maps as style attributes; scripts stay strict, the bundle is one
+          # file. connect-src names the wss: origin explicitly besides 'self'
+          # because older Safari did not count a WebSocket as 'self', and the
+          # table plays on phones. The microphone is the one permission the
+          # game needs, for voice.
+          header {
+            Strict-Transport-Security "max-age=31536000"
+            Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' wss://${cfg.domain}; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+            X-Content-Type-Options "nosniff"
+            X-Frame-Options "DENY"
+            Referrer-Policy "strict-origin-when-cross-origin"
+            Permissions-Policy "microphone=(self), camera=(), geolocation=(), payment=(), usb=()"
+            -Server
+          }
+
           ${lib.optionalString voice.enable ''
             # LiveKit signalling, prefix stripped. Media does not come through here.
             handle_path /livekit/* {
