@@ -552,6 +552,7 @@
    :error/not-host         "Only the narrator can do that"
    :error/password-required "This room has a password — please enter it"
    :error/wrong-password    "Wrong password"
+   :error/too-many-rooms   "Too many games are open right now — please try again in a moment"
    :error/too-many-attempts "Too many attempts — please wait a minute"
    :error/already-dead     "That player is already dead"
    :error/already-alive    "That player is still alive"

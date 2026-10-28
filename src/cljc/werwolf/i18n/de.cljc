@@ -561,6 +561,7 @@
    :error/not-host         "Nur der Spielleiter darf das"
    :error/password-required "Diese Runde hat ein Passwort — bitte eingeben"
    :error/wrong-password    "Falsches Passwort"
+   :error/too-many-rooms   "Gerade sind zu viele Runden offen — bitte versuch es gleich noch einmal"
    :error/too-many-attempts "Zu viele Versuche — bitte warte eine Minute"
    :error/already-dead     "Dieser Mitspieler ist schon tot"
    :error/already-alive    "Dieser Mitspieler lebt noch"

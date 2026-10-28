@@ -105,22 +105,44 @@
 
    `read-transit` returns nil on malformed input and `dispatch` answers nil with
    an error, so a client cannot kill its own read loop — let alone the server —
-   by sending garbage."
-  [deps]
-  (fn [req]
-    (if (ws/upgrade-request? req)
-      (ws/websocket-response
-       {:on-open    (fn [sock] (protocol/on-open deps sock))
-        :on-message (fn [sock raw]
-                      (let [t0  (System/nanoTime)
-                            msg (ws/read-transit raw)]
-                        (protocol/dispatch deps sock msg)
-                        (metrics/message! msg (- (System/nanoTime) t0))))
-        :on-close   (fn [sock _code _reason] (protocol/on-close deps sock))
-        :on-error   (fn [sock e]
-                      (log/warn "websocket error:" (ex-message e))
-                      (protocol/on-close deps sock))})
-      {:status 400 :body "expected a websocket upgrade request"})))
+   by sending garbage.
+
+   `max-sockets` in `deps` caps the open sockets; past it an upgrade is refused
+   with a 503, which the client's backoff turns into a retry. The count is the
+   one exception to the no-per-connection-map rule above: it has to be known
+   BEFORE the socket exists, when the registry has nothing to index it by. A
+   set rather than a counter, because `on-error` and `on-close` can both fire
+   for one socket and a counter would drift down for ever."
+  [{:keys [max-sockets] :as deps}]
+  (let [open (atom #{})]
+    (fn [req]
+      (cond
+        (not (ws/upgrade-request? req))
+        {:status 400 :body "expected a websocket upgrade request"}
+
+        (and max-sockets (>= (count @open) max-sockets))
+        (do (metrics/refused! :too-many-sockets)
+            {:status 503
+             :headers {"content-type" "text/plain"}
+             :body "too many connections"})
+
+        :else
+        (ws/websocket-response
+         {:on-open    (fn [sock]
+                        (swap! open conj sock)
+                        (protocol/on-open deps sock))
+          :on-message (fn [sock raw]
+                        (let [t0  (System/nanoTime)
+                              msg (ws/read-transit raw)]
+                          (protocol/dispatch deps sock msg)
+                          (metrics/message! msg (- (System/nanoTime) t0))))
+          :on-close   (fn [sock _code _reason]
+                        (swap! open disj sock)
+                        (protocol/on-close deps sock))
+          :on-error   (fn [sock e]
+                        (log/warn "websocket error:" (ex-message e))
+                        (swap! open disj sock)
+                        (protocol/on-close deps sock))})))))
 
 (defn router [deps]
   (ring/router

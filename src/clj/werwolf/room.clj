@@ -67,6 +67,7 @@
    fn of [sink message] that the transport supplies.
 
    `max-chat` bounds the per-room chat backlog kept for reconnecting players.
+   `max-rooms` bounds how many rooms are open at once; nil is no bound.
 
    `after-commit` is called as (f ctx room-id) at the end of every committed
    change, still holding the room's lock. The clock uses it to keep a room's
@@ -77,10 +78,16 @@
    `on-events` is called as (f events) with every batch as it is committed —
    not on replay — which is how the metrics count games without room.clj
    knowing they exist."
-  [{:keys [ds send! max-chat after-commit on-events game]}]
+  [{:keys [ds send! max-chat max-rooms after-commit on-events game]}]
   {:ds           ds
    :send!        send!
    :max-chat     (or max-chat 200)
+   ;; A room is a few MB of heap and a thread's worth of locking, and a client
+   ;; needs no seat to ask for one: without a ceiling, one script could open
+   ;; rooms until the JVM died. Only `create!` honours it. `rehydrate!` does
+   ;; not, since a room on disk is already paid for and refusing it would
+   ;; lose a game in progress to a limit that was meant for strangers.
+   :max-rooms    max-rooms
    :after-commit after-commit
    :on-events    on-events
    ;; Table-size limits from config. They live here rather than being read at
@@ -328,24 +335,36 @@
    ;; reads to decide a room has been abandoned rather than merely gone quiet.
    :last-activity (System/currentTimeMillis)})
 
-(defn- reserve-code!
-  "Claim an unused room code atomically. Checks memory and disk: a finished
-   game stays on disk for recaps, and reusing its code would splice two games
-   into one log."
+(defn- full?
+  "Are there already as many rooms as the registry may hold?"
   [ctx]
-  (loop [attempt 0]
-    (when (> attempt 200)
-      (throw (ex-info "could not allocate a free room code" {:attempts attempt})))
-    (let [code (random-code)]
-      (if (store/room-exists? (:ds ctx) code)
-        (recur (inc attempt))
-        (let [[old _] (swap-vals! (:rooms ctx)
-                                  (fn [m] (if (contains? m code)
-                                            m
-                                            (assoc m code (fresh-room code)))))]
-          (if (contains? old code)
-            (recur (inc attempt))
-            code))))))
+  (when-let [cap (:max-rooms ctx)]
+    (>= (count (rooms ctx)) cap)))
+
+(defn- reserve-code!
+  "Claim an unused room code atomically, or nil when the registry is `full?`.
+   Checks memory and disk: a finished game stays on disk for recaps, and
+   reusing its code would splice two games into one log.
+
+   The cap is checked inside the swap, with the code: two creates racing for
+   the last free room would otherwise both get one."
+  [ctx]
+  (let [cap (:max-rooms ctx)]
+    (loop [attempt 0]
+      (when (> attempt 200)
+        (throw (ex-info "could not allocate a free room code" {:attempts attempt})))
+      (let [code (random-code)]
+        (if (store/room-exists? (:ds ctx) code)
+          (recur (inc attempt))
+          (let [[old new] (swap-vals! (:rooms ctx)
+                                      (fn [m] (if (or (contains? m code)
+                                                      (and cap (>= (count m) cap)))
+                                                m
+                                                (assoc m code (fresh-room code)))))]
+            (cond
+              (contains? old code) (recur (inc attempt))
+              (contains? new code) code
+              :else nil)))))))
 
 (def ^:private absolute-min-players
   "The smallest table the role composition produces a real game for: one wolf,
@@ -357,20 +376,9 @@
    are two places to change it."
   engine/absolute-min-players)
 
-(defn create!
-  "Open a room and seat its creator as host (player 0).
-   Returns {:room-id .. :player-id 0} or {:error ..}.
-
-   `min-players`/`max-players` default to the registry's config, which is what
-   makes MIN_PLAYERS actually mean something — it was read into config and then
-   never plumbed here, so the limit was silently always 5.
-
-   `narrated?` likewise, and it defaults to TRUE when config says nothing: the
-   creator is the Spielleiter, dealt no card, and the room has no clock until
-   somebody switches one on. That is how the game is played at a real table, and
-   the host can change it in the lobby. Whoever needs the old room — the creator
-   playing, the clock running — passes `:narrated? false`, here or in config."
-  [ctx {:keys [name locale min-players max-players seed narrated? password]}]
+(defn- create*
+  "`create!` past its cheap refusal: hash, reserve a code, open the room."
+  [ctx name locale min-players max-players seed narrated? password]
   (let [;; Before the code is reserved and well before the lock: hashing is slow
         ;; on purpose, and nothing about it needs the room.
         pw-hash (when-not (password/blank? password) (password/hash-password password))
@@ -382,7 +390,11 @@
         first-kill? (boolean (:first-night-kill? cfg))
         first-trial? (boolean (:first-day-trial? cfg))
         narrated?* (boolean (if (some? narrated?) narrated? (get cfg :narrated? true)))]
-    (with-room ctx room-id
+    (if-not room-id
+      ;; Full after all: another create took the last room while this one
+      ;; was hashing its password.
+      {:error :too-many-rooms}
+     (with-room ctx room-id
       (fn [r]
         ;; The genesis event is built once and both applied and persisted, so
         ;; the live state and the log cannot disagree about the seed.
@@ -409,7 +421,28 @@
             (let [lock (when pw-hash [{:type :room/password-set :hash pw-hash}])]
               (commit! ctx r (into [genesis] cat [(:events joined) lock])
                        (engine/apply-all (:state joined) lock))
-              {:room-id room-id :player-id 0})))))))
+              {:room-id room-id :player-id 0}))))))))
+
+(defn create!
+  "Open a room and seat its creator as host (player 0).
+   Returns {:room-id .. :player-id 0} or {:error ..}.
+
+   `min-players`/`max-players` default to the registry's config, which is what
+   makes MIN_PLAYERS actually mean something — it was read into config and then
+   never plumbed here, so the limit was silently always 5.
+
+   `narrated?` likewise, and it defaults to TRUE when config says nothing: the
+   creator is the Spielleiter, dealt no card, and the room has no clock until
+   somebody switches one on. That is how the game is played at a real table, and
+   the host can change it in the lobby. Whoever needs the old room — the creator
+   playing, the clock running — passes `:narrated? false`, here or in config."
+  [ctx {:keys [name locale min-players max-players seed narrated? password]}]
+  (if (full? ctx)
+    ;; Asked here as well as in `reserve-code!`, where it is atomic: the hash
+    ;; below is slow on purpose, and a registry that is full should not be
+    ;; made to pay it for a room it is about to refuse.
+    {:error :too-many-rooms}
+    (create* ctx name locale min-players max-players seed narrated? password)))
 
 (defn- succession
   "If the host has walked out of the lobby, hand the powers to the lowest

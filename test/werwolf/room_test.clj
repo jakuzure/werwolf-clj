@@ -140,6 +140,40 @@
             (is (= :room-full (:error (room/join! ctx room-id {:name "Eve"}))))))
         (finally (cleanup! path))))))
 
+(deftest the-registry-refuses-a-room-past-its-cap
+  (testing "a client needs no seat to ask for a room, so without a ceiling one
+            script could open rooms until the heap was gone"
+    (let [path (tmp-path)]
+      (try
+        (let [ctx (room/registry {:ds (store/open {:dbtype "sqlite" :dbname path})
+                                  :send! (fn [s m] (swap! s conj m))
+                                  :max-rooms 2})
+              first-id (:room-id (room/create! ctx {:name "Anna"}))]
+          (is (some? first-id))
+          (is (some? (:room-id (room/create! ctx {:name "Bob"}))))
+          (is (= {:error :too-many-rooms} (room/create! ctx {:name "Cem"})))
+          (testing "and does not pay for a password hash before refusing"
+            (with-redefs [werwolf.password/hash-password
+                          (fn [_] (throw (ex-info "hashed a refused room" {})))]
+              (is (= {:error :too-many-rooms}
+                     (room/create! ctx {:name "Cem" :password "wolf"})))))
+          (testing "a swept room makes space"
+            (room/forget-room! ctx first-id)
+            (is (some? (:room-id (room/create! ctx {:name "Dana"})))))
+          (testing "while the rooms on disk come back on boot regardless: they
+                    are a game in progress, not a stranger's request"
+            (let [ctx2 (room/registry {:ds (store/open {:dbtype "sqlite" :dbname path})
+                                       :send! (fn [s m] (swap! s conj m))
+                                       :max-rooms 1})]
+              ;; Three, not two: the swept room was only forgotten, its
+              ;; unfinished log is still on disk.
+              (is (= 3 (count (room/rehydrate! ctx2))))
+              (is (= {:error :too-many-rooms} (room/create! ctx2 {:name "Emil"}))))))
+        (finally (cleanup! path)))))
+  (testing "no cap configured is no cap"
+    (with-ctx [ctx]
+      (is (every? :room-id (repeatedly 5 #(room/create! ctx {:name "Anna"})))))))
+
 (deftest the-host-may-start-under-the-recommended-size
   (testing "MIN_PLAYERS is the recommended table, not a gate. Four people who
             want to play now must not be held back by a number set for a bigger
