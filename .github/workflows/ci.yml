@@ -147,6 +147,26 @@ jobs:
           # the NARs are zstd already
           compression-level: 0
 
+  # Hands main's commit to nixconfig, whose bump-werwolf workflow pins lain to
+  # it; comin on lain then deploys it. A job of its own, after `build`:
+  # cachix-action pushes in its post step, so only once `build` is done is the
+  # package in Cachix, and lain downloads it instead of compiling it.
+  #
+  # NIXCONFIG_DISPATCH_TOKEN is a fine-grained PAT with Contents: write on
+  # jakuzure/nixconfig (repository_dispatch needs it), kept in the `cachix`
+  # environment next to CACHIX_AUTH_TOKEN, so only main can read it.
+  deploy:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-26.04
+    environment: cachix
+    steps:
+      - env:
+          GH_TOKEN: ${{ secrets.NIXCONFIG_DISPATCH_TOKEN }}
+        run: |
+          gh api repos/jakuzure/nixconfig/dispatches \
+            -f event_type=werwolf-main -f "client_payload[rev]=$GITHUB_SHA"
+
   test:
     if: github.event_name == 'pull_request' && github.actor != 'github-actions[bot]'
     runs-on: ubuntu-26.04
