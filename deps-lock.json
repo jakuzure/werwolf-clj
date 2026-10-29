@@ -368,14 +368,14 @@
       "hash": "sha256-HYUY46x1MqEE5Pe+d97zfJguUwcjxr2z1ncIzOKwwsQ="
     },
     {
-      "mvn-path": "com/thheller/shadow-http/0.1.11/shadow-http-0.1.11.jar",
+      "mvn-path": "com/thheller/shadow-http/0.1.15/shadow-http-0.1.15.jar",
       "mvn-repo": "https://repo.clojars.org/",
-      "hash": "sha256-EUdW2H6TU6HcVkFYq0FlGMaBlRajlr6uCkHjRkS80sE="
+      "hash": "sha256-FPvjVXaOWaDOlb6Q+6NrdDXqKv9Iy/ob7mhN2HLxFkg="
     },
     {
-      "mvn-path": "com/thheller/shadow-http/0.1.11/shadow-http-0.1.11.pom",
+      "mvn-path": "com/thheller/shadow-http/0.1.15/shadow-http-0.1.15.pom",
       "mvn-repo": "https://repo.clojars.org/",
-      "hash": "sha256-X4xIdcgXzFia6cnIZZFG0k3OB40/HB99kWXSwnTAi/Y="
+      "hash": "sha256-H7TyAJsP25KfWUniqTLFn/PLWMhycEAA8brRGXC6ml4="
     },
     {
       "mvn-path": "com/yahoo/platform/yui/yuicompressor/2.4.8/yuicompressor-2.4.8.jar",
@@ -2208,14 +2208,14 @@
       "hash": "sha256-F+iii6ZBWeGqI7lm1AlejvFgsxyV+tUILX6gxQk7woM="
     },
     {
-      "mvn-path": "thheller/shadow-cljs/3.5.8/shadow-cljs-3.5.8.jar",
+      "mvn-path": "thheller/shadow-cljs/3.5.10/shadow-cljs-3.5.10.jar",
       "mvn-repo": "https://repo.clojars.org/",
-      "hash": "sha256-tem/2EQ+IOpk1CuDp5ehMW6QCNqUren4s6LUJUVxnzE="
+      "hash": "sha256-tDWeoJkUa6YXQXeWJcWc6R6aBMPaqjJpcUsIjOs7Yiw="
     },
     {
-      "mvn-path": "thheller/shadow-cljs/3.5.8/shadow-cljs-3.5.8.pom",
+      "mvn-path": "thheller/shadow-cljs/3.5.10/shadow-cljs-3.5.10.pom",
       "mvn-repo": "https://repo.clojars.org/",
-      "hash": "sha256-tpLi4f9jIWw+CjKvOmLgg6REa0S34Z/hho8nVOQKjvo="
+      "hash": "sha256-Vwa8Q4fyFcJ5eG9Gj11YozklPH8La7jSCz5z2Qx+ZvM="
     },
     {
       "mvn-path": "thheller/shadow-cljsjs/0.0.22/shadow-cljsjs-0.0.22.jar",
