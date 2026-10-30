@@ -377,6 +377,43 @@
              (frequencies (keep :role (vals (:players (room/state-of (:rooms deps) code))))))
           "the deal is the deck"))))
 
+(deftest a-socket-that-closed-before-its-create-leaves-no-room-behind
+  (testing "http-kit runs the close handler as a task of its own, so it can
+            overtake the create still queued ahead of it. The room that create
+            made was bound to a dead socket, never swept and always listed,
+            and a hundred of them filled every room the server allows"
+    (with-deps [deps]
+      (let [closed (atom #{})
+            deps (assoc deps :open? #(not (contains? @closed %)))
+            rooms (:rooms deps)
+            ;; A socket whose close handler has already run.
+            dead! #(let [s (sock)] (swap! closed conj s) (protocol/on-close deps s) s)
+            swept? #(do (room/sweep-idle! rooms (+ (System/currentTimeMillis) 60000)
+                                          {:room-idle-ms 1000})
+                        (empty? (room/room-ids rooms)))]
+        (testing "a create"
+          (let [s (dead!)]
+            (protocol/dispatch deps s {:type :client/create :name "Anna"})
+            (let [[code] (room/room-ids rooms)]
+              (is (nil? (room/whereis rooms s)) "the dead socket is bound to nothing")
+              (is (false? (get-in (room/state-of rooms code) [:players 0 :connected?]))
+                  "its seat is absent, not held")
+              (is (empty? (room/open-rooms rooms)) "so nobody is offered the room")
+              (is (swept?) "and the sweep retires it"))))
+        (testing "a join and a resume"
+          (let [host (seat! deps {:type :client/create :name "Anna"})
+                {:keys [room-id token]} (last-of host :server/welcome)
+                bob (dead!)]
+            (protocol/dispatch deps bob {:type :client/join :room-id room-id :name "Bob"})
+            (is (nil? (room/whereis rooms bob)))
+            (is (false? (get-in (room/state-of rooms room-id) [:players 1 :connected?])))
+            (protocol/on-close deps host)
+            (let [anna (dead!)]
+              (protocol/dispatch deps anna {:type :client/resume :room-id room-id :token token})
+              (is (nil? (room/whereis rooms anna)))
+              (is (false? (get-in (room/state-of rooms room-id) [:players 0 :connected?]))))
+            (is (swept?))))))))
+
 ;; ------------------------------------------------------------------ resume ---
 
 (deftest a-dropped-socket-can-be-replaced-with-the-token

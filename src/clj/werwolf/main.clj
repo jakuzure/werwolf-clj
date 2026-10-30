@@ -102,7 +102,8 @@
                        ;; way out, so the protocol has no metrics of its own to keep.
                        :send! (fn [sock msg]
                                 (when (= :server/error (:type msg)) (metrics/refused! (:code msg)))
-                                (ws/send! sock msg)))))
+                                (ws/send! sock msg))
+                       :open? ws/open?)))
 
 (defmethod ig/init-key ::metrics [_ {:keys [rooms port host]}]
   (when-let [m (metrics/start! {:rooms rooms :port port :host host

@@ -661,10 +661,16 @@
    gone — closing one of two tabs is not an absence.
 
    Disconnected is never dead: the engine keeps the seat, the role and the vote
-   deadline. That is what makes a dropped connection survivable."
+   deadline. That is what makes a dropped connection survivable.
+
+   The socket's index entry is claimed in one step, so of two calls for the
+   same socket only one goes on. There are two: `on-error` and `on-close` both
+   fire, and the protocol detaches a socket it finds closed right after
+   attaching it, which can meet the close handler doing the same (see
+   werwolf.protocol/attach!). Read-then-remove let both through, and the table
+   was told twice that the player had gone."
   [ctx sink]
-  (when-let [[room-id pid] (get @(:index ctx) sink)]
-    (swap! (:index ctx) dissoc sink)
+  (when-let [[room-id pid] (get (first (swap-vals! (:index ctx) dissoc sink)) sink)]
     (with-room ctx room-id
       (fn [r]
         (let [remaining (disj (get-in r [:sinks pid] #{}) sink)]

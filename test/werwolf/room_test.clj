@@ -711,6 +711,24 @@
       (room/detach! ctx tab2)
       (is (true? (get-in (room/state-of ctx room-id) [:players pid :connected?]))))))
 
+(deftest a-socket-closing-twice-is-one-absence
+  (testing "on-error and on-close both fire for one socket, and the protocol
+            detaches a socket it finds closed just after attaching it, which
+            can meet the close handler doing the same"
+    (with-ctx [ctx]
+      (let [{:keys [room-id seats]} (table ctx 8)]
+        (doseq [{:keys [sink]} (rest seats)]
+          (let [go (promise)
+                both (mapv (fn [_] (future @go (room/detach! ctx sink))) (range 2))]
+            (deliver go true)
+            (run! deref both)))
+        (is (= (frequencies (map :pid (rest seats)))
+               (frequencies (keep #(when (and (= :player/connection (:type %))
+                                              (false? (:connected? %)))
+                                     (:player %))
+                                  (store/load-events (:ds ctx) room-id))))
+            "one line in the log per player, not one per call")))))
+
 (deftest reattaching-announces-the-return
   (with-ctx [ctx]
     (let [{:keys [room-id seats]} (table ctx 5)
