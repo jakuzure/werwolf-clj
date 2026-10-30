@@ -94,7 +94,11 @@
         pod (get-in d [:spec :template :spec])
         c (get-in pod [:containers 0])]
     (is (= "RuntimeDefault" (get-in pod [:securityContext :seccompProfile :type])))
-    (is (false? (get-in c [:securityContext :allowPrivilegeEscalation])))
+    (testing "not root"
+      (is (true? (get-in pod [:securityContext :runAsNonRoot])))
+      (is (= 65534 (get-in pod [:securityContext :runAsUser])))
+      (is (= 65534 (get-in pod [:securityContext :runAsGroup]))))
+    (is (false?(get-in c [:securityContext :allowPrivilegeEscalation])))
     (is (= ["ALL"] (get-in c [:securityContext :capabilities :drop])))
     (testing "a read-only root, so whatever it writes must be a volume"
       (is (true? (get-in c [:securityContext :readOnlyRootFilesystem])))

@@ -136,7 +136,18 @@
              {:metadata {:labels (:labels (meta-for pr))}
               :spec {:automountServiceAccountToken false
                      :enableServiceLinks false
-                     :securityContext {:seccompProfile {:type "RuntimeDefault"}}
+                     ;; nobody: the image has no users at all, so any uid
+                     ;; works. k3s's local-path creates each volume's
+                     ;; directory world-writable, so a new database can be
+                     ;; created; fsGroup hands what a volume already holds
+                     ;; (a database root wrote before this) to the group,
+                     ;; on k3s's default `local` volumes. Not on `hostPath`
+                     ;; ones, which only older k3s made.
+                     :securityContext {:runAsNonRoot true
+                                       :runAsUser 65534
+                                       :runAsGroup 65534
+                                       :fsGroup 65534
+                                       :seccompProfile {:type "RuntimeDefault"}}
                      :containers
                      [{:name "werwolf"
                        :image image
