@@ -50,13 +50,20 @@ jobs:
     permissions:
       # Only to push a regenerated deps-lock.json back to a Renovate branch.
       contents: write
+    env:
+      # A PR Renovate pushed, to a branch of this repository. Not a branch
+      # named renovate/…: a fork can name its branch that too, and its preview
+      # artifact would then be pushed into Cachix (see preview-renovate.yml).
+      # A person pushing to a Renovate branch counts as a person: no lockfile
+      # regeneration, no preview.
+      RENOVATE: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.actor == 'renovate[bot]' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           # On a Renovate PR, check out the branch itself rather than the merge
           # commit, so a regenerated lockfile can be committed back to it. Empty
           # means the default, which also keeps PRs from forks working.
-          ref: ${{ startsWith(github.head_ref, 'renovate/') && github.head_ref || '' }}
+          ref: ${{ env.RENOVATE == 'true' && github.head_ref || '' }}
 
       - uses: DeterminateSystems/nix-installer-action@3138316df39ed29be04236d7ffc686fa525866aa # v23
 
@@ -82,7 +89,7 @@ jobs:
       # Deliberately Renovate-only: a person who changes deps.edn should see the
       # build fail and regenerate it themselves, as flake.nix documents.
       - name: Regenerate deps-lock.json on Renovate branches
-        if: github.event_name == 'pull_request' && startsWith(github.event.pull_request.head.ref, 'renovate/')
+        if: env.RENOVATE == 'true'
         run: |
           # The pinned clj-nix, not the latest: a newer one writes a lock
           # format the pinned builder refuses ("Lock file generated with a
@@ -108,14 +115,14 @@ jobs:
       # because only this run sees the regenerated deps-lock.json: the run its
       # push starts does nothing — see `concurrency` above.
       - name: Build the preview image on Renovate branches
-        if: github.event_name == 'pull_request' && startsWith(github.event.pull_request.head.ref, 'renovate/')
+        if: env.RENOVATE == 'true'
         run: |
           path=$(nix build -L .#preview-image --print-out-paths)
           nix copy --to "file://$RUNNER_TEMP/preview?compression=zstd" "$path"
           echo "$path" > "$RUNNER_TEMP/preview/image"
           git rev-parse HEAD > "$RUNNER_TEMP/preview/sha"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: github.event_name == 'pull_request' && startsWith(github.event.pull_request.head.ref, 'renovate/')
+        if: env.RENOVATE == 'true'
         with:
           name: preview
           path: ${{ runner.temp }}/preview
