@@ -376,6 +376,15 @@
       (testing "the dead keep it too"
         (is (contains? (phases/legal-actions s 5) :set-locale))))))
 
+(deftest the-language-you-already-have-logs-nothing
+  (let [s (tu/game-with {0 :dorfbewohner 1 :werwolf 2 :hexe 3 :seherin})
+        locale (get-in s [:players 1 :locale])
+        other (if (= :de locale) :en :de)]
+    (is (= [] (:events (engine/execute s {:type :set-locale :player 1 :locale locale})))
+        "a log line nothing ever deletes, for a change that did not happen")
+    (let [s (exec! s {:type :set-locale :player 1 :locale other})]
+      (is (= other (get-in s [:players 1 :locale])) "a real change still lands"))))
+
 (deftest chat-is-allowed-in-the-lobby
   (testing "people arrange the game before it starts; a silent lobby was a bug"
     (let [s (e/replay [{:type :game/created :room-id "R" :host 0 :seed 1 :min-players 5}

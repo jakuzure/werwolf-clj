@@ -519,7 +519,8 @@
             heap until the JVM died"
     (let [path (tmp-path)]
       (try
-        (with-server [srv path]
+        ;; All at once, which the rate limit would otherwise close it for.
+        (with-server [srv path {:frame-burst 1000}]
           (let [c (client (:port srv))]
             (try
               (await-type c :server/hello)
@@ -592,6 +593,43 @@
                   (is (= 1 (:protocol (await-type c :server/hello))))
                   (close! c))))
             (close! b)))
+        (finally (cleanup! path))))))
+
+(defn- send-quietly!
+  "Send, or nothing when the server has already closed the socket."
+  [c msg]
+  (try (send! c msg) (catch Exception _ nil)))
+
+(deftest a-socket-that-floods-is-closed-and-nobody-else-notices
+  (testing "every frame is work on the pool all rooms share: ten sockets
+            sending :set-locale as fast as they could made every other
+            table's create time out"
+    (let [path (tmp-path)]
+      (try
+        (with-server [srv path {:frames-per-sec 10 :frame-burst 30}]
+          (let [calm (client (:port srv))
+                flood (client (:port srv))]
+            (try
+              (await-type calm :server/hello)
+              (await-type flood :server/hello)
+              (testing "a burst within the limit is answered in full"
+                (dotimes [_ 20] (send! calm {:type :client/ping}))
+                (await-msg calm (fn [_] (= 20 (count (filter #(= :server/pong (:type %))
+                                                             (msgs calm))))))
+                (is (not (realized? (:closed calm)))))
+              (dotimes [_ 200] (send-quietly! flood {:type :client/ping}))
+              (is (closed-within-timeout? flood) "past it, the socket is closed")
+              (is (< (count (filter #(= :server/pong (:type %)) (msgs flood))) 40)
+                  "after about a burst's worth of answers, and not one per excess frame")
+              (testing "and the others carry on"
+                (send! calm {:type :client/ping})
+                (await-msg calm (fn [_] (= 21 (count (filter #(= :server/pong (:type %))
+                                                             (msgs calm))))))
+                (let [c (client (:port srv))]
+                  (try
+                    (is (= 1 (:protocol (await-type c :server/hello))))
+                    (finally (close! c)))))
+              (finally (close! calm) (close! flood)))))
         (finally (cleanup! path))))))
 
 (deftest a-closing-socket-marks-its-player-absent-to-everyone-else

@@ -116,6 +116,10 @@
   (cond
     (not (contains? (:players state) player)) (err :not-in-room {})
     (not (#{:de :en} locale))                 (err :unsupported-locale {:locale locale})
+    ;; The language the player already has is nothing to log: the security
+    ;; review's spam put 19,675 of these in one room's log in a minute, and
+    ;; nothing ever deletes a log line.
+    (= locale (get-in state [:players player :locale])) []
     :else [{:type :player/locale-set :player player :locale locale}]))
 
 (defmethod handle :start-game
