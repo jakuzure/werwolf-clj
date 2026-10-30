@@ -216,27 +216,34 @@
    answered with the seat it already has — welcomed and repainted exactly as a
    resume would be, and no new seat — because the answer to a repeat is the
    answer to the first. Asking for a DIFFERENT room while seated is a real
-   conflict, and is still refused."
+   conflict, and is still refused.
+
+   Returns the message it accepted, normalised, or nil for one it refused as
+   malformed or failed on: what the metrics may count, since only an accepted
+   message has a :type the protocol itself named."
   [{:keys [rooms] :as deps} sock raw-msg]
   (try
     (let [msg (when (map? raw-msg) (normalise raw-msg))
           [room-id pid] (room/whereis rooms sock)]
       (cond
         (not (proto/valid-client-message? msg))
-        (error! deps sock :malformed {:errors (proto/explain-client-message msg)})
+        (do (error! deps sock :malformed {:errors (proto/explain-client-message msg)})
+            nil)
 
         (and room-id (#{:client/create :client/join :client/resume} (:type msg)))
-        (if (asking-again? msg room-id)
-          (do (welcome! deps sock room-id pid)
-              (room/attach! rooms room-id pid sock))
-          (error! deps sock :already-in-room {}))
+        (do (if (asking-again? msg room-id)
+              (do (welcome! deps sock room-id pid)
+                  (room/attach! rooms room-id pid sock))
+              (error! deps sock :already-in-room {}))
+            msg)
 
-        :else (handle deps sock msg)))
+        :else (do (handle deps sock msg) msg)))
     (catch Throwable t
       ;; A rule bug must cost one client its message, not the whole room its
       ;; server. `locking` releases the room's lock on the way out.
       (log/error t "protocol failure handling" (:type raw-msg))
-      (error! deps sock :internal-error {}))))
+      (error! deps sock :internal-error {})
+      nil)))
 
 (defn on-close
   "The socket is gone. The room decides what that means for the player."

@@ -234,10 +234,15 @@
                    {:type :client/chat}                         ; no text
                    {:type :client/resume :room-id "ABCD"}]]     ; no token
         (swap! s empty)
-        (protocol/dispatch deps s bad)
+        (is (nil? (protocol/dispatch deps s bad))
+            "nil, so the metrics count it as invalid and not by its :type")
         (is (= [:malformed] (codes s)) (str "accepted: " (pr-str bad))))
       (testing "and nothing was created along the way"
-        (is (empty? (room/room-ids (:rooms deps))))))))
+        (is (empty? (room/room-ids (:rooms deps)))))
+      (testing "what it accepts it returns, as it read it"
+        (is (= {:type :client/ping} (protocol/dispatch deps s {:type :client/ping})))
+        (is (= "ABCD" (:room-id (protocol/dispatch deps s {:type :client/join :room-id "abcd"
+                                                            :name "x"}))))))))
 
 (deftest the-command-whitelist-is-a-whitelist
   (with-deps [deps]

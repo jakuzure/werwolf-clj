@@ -14,10 +14,12 @@
    The centrepiece is `killing-the-server-mid-game-loses-nothing`: verification
    step 5 of the plan, minus the browser."
   (:require [clojure.java.io :as io]
+            [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]
             [integrant.core :as ig]
             [org.httpkit.server :as hk]
             [werwolf.main :as main]
+            [werwolf.metrics :as metrics]
             [werwolf.ws :as wire])
   (:import (java.net URI)
            (java.net.http HttpClient WebSocket WebSocket$Listener)
@@ -502,6 +504,36 @@
               (is (some? (await-type c :server/pong))))
             (finally (close! c)))))
       (finally (cleanup! path)))))
+
+(defn- message-labels
+  "The :type labels the message counter holds, read the way a scrape reads them."
+  []
+  (set (for [^io.prometheus.metrics.model.snapshots.MetricSnapshot s (.scrape metrics/registry)
+             :when (= "werwolf_messages" (.getName (.getMetadata s)))
+             ^io.prometheus.metrics.model.snapshots.DataPointSnapshot dp (.getDataPoints s)]
+         (.get (.getLabels dp) "type"))))
+
+(deftest junk-on-the-wire-never-becomes-a-metric-label
+  (testing "a label is a counter and a histogram the registry keeps for ever, so
+            a :type taken off the wire let one socket without a seat fill the
+            heap until the JVM died"
+    (let [path (tmp-path)]
+      (try
+        (with-server [srv path]
+          (let [c (client (:port srv))]
+            (try
+              (await-type c :server/hello)
+              (doseq [i (range 50)]
+                (send! c {:type (keyword "client" (str "junk" i))})
+                (send! c {:type :client/command :cmd {:type (keyword (str "junk" i))}}))
+              ;; Frames are handled in order, each counted before the next.
+              (send! c {:type :client/ping})
+              (await-type c :server/pong)
+              (let [labels (message-labels)]
+                (is (not-any? #(str/includes? % "junk") labels))
+                (is (contains? labels "invalid")))
+              (finally (close! c)))))
+        (finally (cleanup! path))))))
 
 (defn- send-raw!
   "A text frame of `n` bytes. The server may reset the connection before the
