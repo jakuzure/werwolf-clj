@@ -67,8 +67,10 @@
 
    Text is accumulated until `last?`: the JDK splits a large frame across
    several onText calls, and parsing a half-message is exactly the kind of bug
-   that only ever shows up on the one big payload."
-  [port]
+   that only ever shows up on the one big payload.
+
+   `from` is the address the proxy in front would name in X-Forwarded-For."
+  [port & {:keys [from]}]
   (let [inbox (atom [])
         buf (StringBuilder.)
         closed (promise)
@@ -88,6 +90,7 @@
         ws (-> (HttpClient/newHttpClient)
                (.newWebSocketBuilder)
                (.connectTimeout (java.time.Duration/ofSeconds 5))
+               (cond-> from (.header "X-Forwarded-For" from))
                (.buildAsync (URI/create (str "ws://127.0.0.1:" port "/api/ws")) listener)
                (.get timeout-ms TimeUnit/MILLISECONDS))]
     {:ws ws :inbox inbox :closed closed}))
@@ -567,8 +570,10 @@
 
 (defn- try-client
   "A client, or nil when the server refused the handshake."
-  [port]
-  (try (client port) (catch Exception _ nil)))
+  [port & opts]
+  (try (apply client port opts) (catch Exception _ nil)))
+
+(defn- greeted? [c] (some #(= :server/hello (:type %)) (msgs c)))
 
 (deftest the-server-refuses-sockets-past-its-cap
   (testing "one browser with many tabs, or one script, must not be able to
@@ -593,6 +598,77 @@
                   (is (= 1 (:protocol (await-type c :server/hello))))
                   (close! c))))
             (close! b)))
+        (finally (cleanup! path))))))
+
+(deftest many-handshakes-at-once-still-respect-the-cap
+  (testing "the upgrade only looks and on-open decides, in one swap: when the
+            upgrade decided, a burst of handshakes all passed the look before
+            any of them was counted"
+    (let [path (tmp-path)]
+      (try
+        (with-server [srv path {:max-sockets 3}]
+          (let [go (promise)
+                cs (->> (range 24)
+                        (mapv (fn [_] (future @go (try-client (:port srv)))))
+                        (#(do (deliver go true) %))
+                        (keep deref))]
+            ;; Long enough for every hello the server sent to arrive.
+            (Thread/sleep 1000)
+            (is (<= 1 (count (filter greeted? cs)) 3))
+            (run! close! cs)))
+        (finally (cleanup! path))))))
+
+(deftest one-address-cannot-hold-every-socket
+  (testing "with the global cap alone, one client holding idle sockets locked
+            out every player, seated ones reconnecting included"
+    (let [path (tmp-path)]
+      (try
+        (with-server [srv path {:max-sockets-per-address 2}]
+          (let [port (:port srv)
+                [a b] [(client port :from "203.0.113.7") (client port :from "203.0.113.7")]]
+            (await-type a :server/hello)
+            (await-type b :server/hello)
+            (is (nil? (try-client port :from "203.0.113.7"))
+                "a third from the same address is refused")
+            (testing "while everybody else still gets in"
+              (doseq [other [(client port :from "198.51.100.1")
+                             ;; Not through the proxy: the machine itself.
+                             (client port)]]
+                (is (= 1 (:protocol (await-type other :server/hello))))
+                (close! other)))
+            (testing "naming yourself as this machine does not get you round it"
+              (let [x (client port :from "127.0.0.1")
+                    y (client port :from "127.0.0.1")]
+                (await-type x :server/hello)
+                (await-type y :server/hello)
+                (is (nil? (try-client port :from "127.0.0.1")))
+                (run! close! [x y])))
+            (run! close! [a b])))
+        (finally (cleanup! path))))))
+
+(deftest a-socket-that-never-sits-down-makes-room
+  (testing "at the cap, a socket that had its chance to take a seat and did
+            not is closed for the newcomer; a seated one never is"
+    (let [path (tmp-path)]
+      (try
+        (with-server [srv path {:max-sockets 2 :unseated-grace-ms 1500}]
+          (let [port (:port srv)
+                idle (client port)
+                host (client port)]
+            (await-type idle :server/hello)
+            (await-type host :server/hello)
+            (send! host {:type :client/create :name "Anna"})
+            (await-type host :server/welcome)
+            (testing "within its grace it keeps its place"
+              (is (nil? (try-client port))))
+            (Thread/sleep 1600)
+            (let [c (client port)]
+              (try
+                (is (= 1 (:protocol (await-type c :server/hello))))
+                (is (closed-within-timeout? idle))
+                (is (not (realized? (:closed host))))
+                (finally (close! c))))
+            (close! host)))
         (finally (cleanup! path))))))
 
 (defn- send-quietly!

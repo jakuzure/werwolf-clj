@@ -37,7 +37,9 @@
    ::timer   {:rooms (ig/ref ::rooms)}
    ::media   {:config media}
    ::handler (merge {:rooms (ig/ref ::rooms) :tokens tokens :media (ig/ref ::media)}
-                    (select-keys server [:max-sockets :frames-per-sec :frame-burst]))
+                    ;; :unseated-grace-ms only from tests, which cannot wait 30 s.
+                    (select-keys server [:max-sockets :max-sockets-per-address :unseated-grace-ms
+                                         :frames-per-sec :frame-burst]))
    ::server  {:handler (ig/ref ::handler)
               :port    (:port server)
               :host    (:host server)

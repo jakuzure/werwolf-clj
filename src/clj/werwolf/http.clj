@@ -111,6 +111,50 @@
     (when (>= tokens 1.0)
       {:tokens (dec tokens) :at now})))
 
+(def ^:private default-max-sockets-per-address 32)
+(def ^:private default-unseated-grace-ms 30000)
+
+(defn client-address
+  "Who opened this connection, for counting sockets per client; nil for this
+   machine, which is not counted that way.
+
+   http-kit has already read X-Forwarded-For into :remote-addr (its first
+   entry), so behind Caddy this is the client, not Caddy: Caddy replaces
+   whatever a client wrote in that header with the address it saw. Every way
+   this server is deployed puts Caddy in front — nix/module.nix binds the app
+   to loopback, deploy/ publishes no port of its own, a preview is reached
+   only through the host's Caddy — so nobody else gets to write it. Loopback
+   without that header is the operator's own machine, a test or a load run;
+   with it, it is somebody who wrote 127.0.0.1 there, and counted as such.
+   Compared as text: the value may be anything a client wrote, and InetAddress
+   would look a name up in DNS."
+  [{:keys [remote-addr headers]}]
+  (when-not (and (or (nil? remote-addr)
+                     (str/starts-with? remote-addr "127.")
+                     (#{"::1" "0:0:0:0:0:0:0:1"} remote-addr))
+                 (not (contains? headers "x-forwarded-for")))
+    remote-addr))
+
+(defn- crowd
+  "The open sockets a new one from `addr` would be one too many among, and the
+   refusal that is, or nil when there is room for it."
+  [open addr {:keys [max-sockets max-sockets-per-address]}]
+  (let [mine (when addr (filterv #(= addr (:addr (val %))) open))]
+    (cond (and mine (>= (count mine) max-sockets-per-address)) [:too-many-from-address mine]
+          (and max-sockets (>= (count open) max-sockets))       [:too-many-sockets open])))
+
+(defn- admit
+  "`open` with `sock` in it, or unchanged when there is no room for it. When a
+   cap is reached, room is made by closing the longest-open socket that had its
+   chance to sit down and did not: that is what holding sockets looks like, and
+   a page that is still being used is only asked to reconnect."
+  [open sock addr now limits idle?]
+  (let [[_ among] (crowd open addr limits)
+        victim (some->> (seq (filter idle? among)) (apply min-key (comp :at val)) key)]
+    (cond (nil? among) (assoc open sock {:addr addr :at now})
+          victim       (-> open (dissoc victim) (assoc sock {:addr addr :at now}))
+          :else        open)))
+
 (defn ws-handler
   "Upgrade to a WebSocket and hand every frame to the protocol layer.
 
@@ -118,12 +162,27 @@
    an error, so a client cannot kill its own read loop — let alone the server —
    by sending garbage.
 
-   `max-sockets` in `deps` caps the open sockets; past it an upgrade is refused
-   with a 503, which the client's backoff turns into a retry. The count is the
-   one exception to the no-per-connection-map rule above: it has to be known
-   BEFORE the socket exists, when the registry has nothing to index it by. A
-   set rather than a counter, because `on-error` and `on-close` can both fire
-   for one socket and a counter would drift down for ever.
+   `max-sockets` in `deps` caps the open sockets, and `max-sockets-per-address`
+   those of one client (see `client-address`); past either an upgrade is
+   refused with a 503, which the client's backoff turns into a retry. The
+   global cap alone was the denial it meant to prevent: one client holding
+   idle sockets locked every player out, seated ones whose phone reconnected
+   included. Per address it has to fit a whole table on one wifi, and
+   max-players is 18.
+
+   When a cap is full, a socket open longer than `unseated-grace-ms` without a
+   seat is closed to make room for the newcomer. Not on a timer of its own: the landing page asks for the room list on an unseated
+   socket for as long as somebody reads it, and closing that every 30 s would
+   flash the connection banner at them for nothing.
+
+   The sockets are the one exception to the no-per-connection-map rule above:
+   the count has to be known BEFORE a socket exists, when the registry has
+   nothing to index it by. A map by socket rather than a counter, because
+   `on-error` and `on-close` can both fire for one socket and a counter would
+   drift down for ever. The upgrade looks first, but `on-open` decides, in one
+   swap: when the upgrade decided, a burst of handshakes all passed before any
+   of them was counted. Nothing is reserved at upgrade time, since http-kit may
+   still refuse the handshake and never call `on-open`.
 
    Each socket may send `frame-burst` frames at once and `frames-per-sec` after
    that; a socket that sends faster is closed. Every frame is work on the pool
@@ -134,46 +193,64 @@
    than answered, since an answer per excess frame would be more of the same
    work, and no person tapping a phone comes near the limit. The bucket lives
    in the socket's own listener, so it needs no map either."
-  [{:keys [max-sockets frames-per-sec frame-burst] :as deps}]
-  (let [open    (atom #{})
+  [{:keys [max-sockets max-sockets-per-address unseated-grace-ms
+           frames-per-sec frame-burst] :as deps}]
+  (let [open    (atom {})
+        limits  {:max-sockets max-sockets
+                 :max-sockets-per-address (or max-sockets-per-address
+                                              default-max-sockets-per-address)}
+        grace   (or unseated-grace-ms default-unseated-grace-ms)
+        idle?   (fn [now [sock {:keys [at]}]]
+                  (and (> (- now at) grace) (not (protocol/seated? deps sock))))
         per-sec (or frames-per-sec default-frames-per-sec)
         burst   (or frame-burst default-frame-burst)]
     (fn [req]
-      (cond
-        (not (ws/upgrade-request? req))
-        {:status 400 :body "expected a websocket upgrade request"}
+      (let [addr (client-address req)
+            now  (System/currentTimeMillis)
+            seen @open]
+        (cond
+          (not (ws/upgrade-request? req))
+          {:status 400 :body "expected a websocket upgrade request"}
 
-        (and max-sockets (>= (count @open) max-sockets))
-        (do (metrics/refused! :too-many-sockets)
-            {:status 503
-             :headers {"content-type" "text/plain"}
-             :body "too many connections"})
+          (not (contains? (admit seen ::look addr now limits (partial idle? now)) ::look))
+          (do (metrics/refused! (first (crowd seen addr limits)))
+              {:status 503
+               :headers {"content-type" "text/plain"}
+               :body "too many connections"})
 
-        :else
-        ;; Only ever touched by this socket's frames, which http-kit hands
-        ;; over one at a time.
-        (let [bucket (atom {:tokens burst :at (System/currentTimeMillis)})]
-          (ws/websocket-response
-           {:on-open    (fn [sock]
-                          (swap! open conj sock)
-                          (protocol/on-open deps sock))
-            :on-message (fn [sock raw]
-                          (when-not (:closed? @bucket)
-                            (if-let [b (spend @bucket (System/currentTimeMillis) per-sec burst)]
-                              (let [_        (reset! bucket b)
-                                    t0       (System/nanoTime)
-                                    accepted (protocol/dispatch deps sock (ws/read-transit raw))]
-                                (metrics/message! accepted (- (System/nanoTime) t0)))
-                              (do (reset! bucket {:closed? true})
-                                  (metrics/refused! :rate-limited)
-                                  (ws/close! sock 1008 "too many messages")))))
-            :on-close   (fn [sock _code _reason]
-                          (swap! open disj sock)
-                          (protocol/on-close deps sock))
-            :on-error   (fn [sock e]
-                          (log/warn "websocket error:" (ex-message e))
-                          (swap! open disj sock)
-                          (protocol/on-close deps sock))}))))))
+          :else
+          ;; Only ever touched by this socket's frames, which http-kit hands
+          ;; over one at a time.
+          (let [bucket (atom {:tokens burst :at now})]
+            (ws/websocket-response
+             {:on-open    (fn [sock]
+                            (let [now (System/currentTimeMillis)
+                                  [before after] (swap-vals! open admit sock addr now limits
+                                                             (partial idle? now))]
+                              (if (contains? after sock)
+                                (do (doseq [s (keys before) :when (not (contains? after s))]
+                                      (ws/close! s 1013 "made room"))
+                                    (protocol/on-open deps sock))
+                                (do (metrics/refused! (or (first (crowd before addr limits))
+                                                          :too-many-sockets))
+                                    (ws/close! sock 1013 "too many connections")))))
+              :on-message (fn [sock raw]
+                            (when-not (:closed? @bucket)
+                              (if-let [b (spend @bucket (System/currentTimeMillis) per-sec burst)]
+                                (let [_        (reset! bucket b)
+                                      t0       (System/nanoTime)
+                                      accepted (protocol/dispatch deps sock (ws/read-transit raw))]
+                                  (metrics/message! accepted (- (System/nanoTime) t0)))
+                                (do (reset! bucket {:closed? true})
+                                    (metrics/refused! :rate-limited)
+                                    (ws/close! sock 1008 "too many messages")))))
+              :on-close   (fn [sock _code _reason]
+                            (swap! open dissoc sock)
+                            (protocol/on-close deps sock))
+              :on-error   (fn [sock e]
+                            (log/warn "websocket error:" (ex-message e))
+                            (swap! open dissoc sock)
+                            (protocol/on-close deps sock))})))))))
 
 (defn router [deps]
   (ring/router

@@ -15,6 +15,11 @@
            :max-frame-bytes #long #or [#env MAX_FRAME_BYTES 65536]
            :max-rooms       #long #or [#env MAX_ROOMS 100]
            :max-sockets     #long #or [#env MAX_SOCKETS 1000]
+           ;; Of those, how many one client may hold: one address, as Caddy's
+           ;; X-Forwarded-For names it. Enough for a full table on one wifi.
+           ;; Past either cap a socket that never sat down makes room. See
+           ;; werwolf.http/ws-handler.
+           :max-sockets-per-address #long #or [#env MAX_SOCKETS_PER_ADDRESS 32]
            ;; Messages one socket may send: FRAME_BURST at once, then
            ;; FRAMES_PER_SEC. Faster than that and the socket is closed; the
            ;; client reconnects. A person tapping buttons sends a few a second

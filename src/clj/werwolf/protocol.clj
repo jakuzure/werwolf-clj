@@ -269,3 +269,9 @@
   [{:keys [rooms]} sock]
   (room/forget-attempts! rooms sock)
   (room/detach! rooms sock))
+
+(defn seated?
+  "Does this socket hold a seat? The transport asks when the server is full, to
+   find a socket that never sat down."
+  [{:keys [rooms]} sock]
+  (some? (room/whereis rooms sock)))
