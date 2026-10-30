@@ -73,8 +73,10 @@
       (is (= "Recreate" (get-in d [:spec :strategy :type]))))
     (is (= "nix:0/nix/store/x.tar" (:image c)))
     (is (= {:memory "200Mi"} (get-in c [:resources :limits])))
-    (testing "the heap leaves room for the JVM's own memory under the limit"
-      (is (= "-Xmx88m" (get-in (env d) ["JDK_JAVA_OPTIONS" :value]))))
+    (testing "the heap leaves room for the JVM's own memory under the limit,
+              and running out of it ends the pod rather than leaving it deaf"
+      (is (= "-Xmx88m -XX:+ExitOnOutOfMemoryError"
+             (get-in (env d) ["JDK_JAVA_OPTIONS" :value]))))
     (is (= "abc" (get-in d [:metadata :annotations :werwolf-previews/sha])))
     (testing "the commit goes in as the environment: the image carries none"
       (is (= "abc" (get-in (env d) ["WERWOLF_COMMIT" :value])))

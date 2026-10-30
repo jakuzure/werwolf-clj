@@ -231,7 +231,11 @@ in
           HOST = "127.0.0.1";
           PORT = toString cfg.port;
           DB_PATH = "/var/lib/werwolf/werwolf.db";
-          JDK_JAVA_OPTIONS = "-Xmx${cfg.heap}";
+          # Exit on an OutOfMemoryError instead of living on without the
+          # thread it hit. When that was http-kit's selector, the process
+          # stayed up and answered nothing, so Restart= never fired and every
+          # game waited for someone to restart it by hand.
+          JDK_JAVA_OPTIONS = "-Xmx${cfg.heap} -XX:+ExitOnOutOfMemoryError";
           MEDIA_PROVIDER = if voice.enable then "livekit" else "noop";
         } // lib.optionalAttrs voice.enable {
           LIVEKIT_URL = "wss://${cfg.domain}/livekit";
