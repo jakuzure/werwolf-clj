@@ -99,7 +99,11 @@
 
 (defn- env [{:keys [livekit pod-memory]} n sha]
   (into [(secret-env "TOKEN_SECRET" (object-name n) "token-secret")
-         {:name "JDK_JAVA_OPTIONS" :value (str "-Xmx" (heap-mib pod-memory) "m")}
+         ;; Exit on an OOM, so the Deployment restarts the pod: the probe is a
+         ;; readiness probe only, and a JVM whose selector thread died stayed
+         ;; up answering nothing. See nix/module.nix.
+         {:name "JDK_JAVA_OPTIONS"
+          :value (str "-Xmx" (heap-mib pod-memory) "m -XX:+ExitOnOutOfMemoryError")}
          ;; Which commit this preview is, for its start page: the image carries
          ;; none, so the same code is the same image on every commit.
          {:name "WERWOLF_COMMIT" :value (subs (str sha) 0 (min 7 (count (str sha))))}]
