@@ -65,6 +65,16 @@
       (is (= 200 (:status resp)) uri)
       (is (= type (get-in resp [:headers "Content-Type"])) uri))))
 
+(deftest a-connection-is-counted-against-the-client-behind-the-proxy
+  (testing "http-kit has already put X-Forwarded-For into :remote-addr"
+    (is (= "203.0.113.7" (http/client-address {:remote-addr "203.0.113.7"}))))
+  (testing "this machine is not a client to count"
+    (doseq [local ["127.0.0.1" "127.0.1.1" "::1" "0:0:0:0:0:0:0:1"]]
+      (is (nil? (http/client-address {:remote-addr local :headers {}})) local)))
+  (testing "but writing 127.0.0.1 into the header does not make a client local"
+    (is (= "127.0.0.1" (http/client-address {:remote-addr "127.0.0.1"
+                                             :headers {"x-forwarded-for" "127.0.0.1"}})))))
+
 (deftest the-server-says-which-build-it-is
   (testing "the start page asks: the bundle carries no commit"
     (let [resp (GET "/api/build")
