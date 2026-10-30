@@ -107,7 +107,7 @@
   ;; A word said aloud at the table, not an account credential — see
   ;; werwolf.password. Bounded so a frame cannot hand the hash a megabyte to
   ;; chew on; 64 is far more than anyone will read out. Never echoed: a
-  ;; rejection names the schema, never the value — see explain-client-message.
+  ;; rejection names the place, never the value — see explain-client-message.
   [:string {:min 1 :max 64}])
 
 (def Command
@@ -221,11 +221,30 @@
 (defn valid-client-message? [msg]
   (and (map? msg) (client-validator msg)))
 
+(def ^:private max-explained 3)
+
+(defn- step
+  "One step of an error's path, if it is short. It is the client's own key, and
+   a 60 KB keyword would come straight back."
+  [x]
+  (if (and (or (keyword? x) (string? x) (number? x)) (<= (count (str x)) 64)) x "…"))
+
 (defn explain-client-message
-  "Why a message was rejected. Sent back to the client, so it must not echo the
-   payload — a token could be in there."
+  "Why a message was rejected: where, and malli's word for it where it has one,
+   for the first few things wrong. Sent back to the client, so it must not echo
+   the payload — a token could be in there.
+
+   Nor grow with it. Each error used to carry its printed schema, so a closed
+   map with 5000 keys too many came back as 5000 copies of the whole command
+   whitelist: a 54 KB frame cost 138 ms and was answered with 4.7 MB (security
+   review, 2026-10-30). The client never shows any of it; it is for whoever
+   reads the frames."
   [msg]
   (when (map? msg)
-    (some-> (client-explainer msg)
-            :errors
-            (->> (mapv (fn [e] {:in (vec (:in e)) :schema (pr-str (m/form (:schema e)))}))))))
+    (some->> (client-explainer msg)
+             :errors
+             (map (fn [e] (cond-> {:in (mapv step (:in e))}
+                            (keyword? (:type e)) (assoc :error (:type e)))))
+             distinct
+             (take max-explained)
+             vec)))
