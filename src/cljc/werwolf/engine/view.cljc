@@ -229,11 +229,12 @@
       ;; leaning towards, who is dying, whom the Beschützer stood in front of.
       ;; Calling "Hexe, wach auf — diese Person wird sterben" is his job, so he
       ;; has to know who it is. Ids and causes only; roles reach him through
-      ;; `revealed-roles` like everyone else's.
+      ;; `revealed-roles` like everyone else's. Who has walked out since is
+      ;; not dying any more, so he is not on the list.
       (if (= :night (:phase state))
         (cond-> {:werewolf-votes (get-in state [:night-actions :werewolf-votes] {})
                  :pending-deaths (mapv #(select-keys % [:player :cause])
-                                       (:pending-deaths state))}
+                                       (phases/pending-alive state))}
           (some? (get-in state [:night-actions :protected]))
           (assoc :protected (get-in state [:night-actions :protected])))
         {})
@@ -244,11 +245,13 @@
         (and alive? (= :werewolf (e/team-of-player state pid)))
         (assoc :werewolf-votes (get-in state [:night-actions :werewolf-votes] {}))
 
-        ;; The Hexe must see the pending victim to decide on the heal.
+        ;; The Hexe must see the pending victim to decide on the heal: the
+        ;; same queue her heal is offered from, or she would be shown a victim
+        ;; she has no button for.
         (and alive? (= :hexe role-id) (= :hexe cursor)
              (:sees-pending-deaths? (roles/role :hexe)))
         (assoc :pending-deaths (mapv #(select-keys % [:player :cause])
-                                     (:pending-deaths state)))
+                                     (phases/pending-alive state)))
 
         ;; And whom she saved tonight, if anybody. The heal takes the victim
         ;; off the list above, which without this read as "the wolves chose
