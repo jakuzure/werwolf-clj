@@ -154,3 +154,14 @@
           (pr-str deck)))
     (is (proto/valid-client-message?
          (as-wire {:type :gm/set-deck :deck {:werwolf 18}})))))
+
+(deftest a-seat-on-the-wire-is-a-seat
+  (testing "bounded like every other number a frame carries: a revive of a seat
+            past 2^53 once left every page of the room blank"
+    (doseq [cmd [{:type :gm/revive :target 9007199254740993}
+                 {:type :gm/revive :target -1}
+                 {:type :vote :target 10000}
+                 {:type :amor-link :a 0 :b 10000}
+                 {:type :amor-link :a -1 :b 1}]]
+      (is (not (proto/valid-client-message? (as-wire cmd))) (pr-str cmd)))
+    (is (proto/valid-client-message? (as-wire {:type :gm/revive :target 9999})))))

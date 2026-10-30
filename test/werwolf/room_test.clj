@@ -518,8 +518,11 @@
           (is (room/seated? ctx room-id pid))
           (is (false? (get-in state [:players pid :connected?]))))
         (is (nil? (room/whereis ctx sink)))
+        ;; Any commit will do, and it has to be one the host may make in every
+        ;; phase: the deal may have made the leaver the only wolf, and then
+        ;; the game is over and its clock is nobody's to pause.
         (let [before (count (views sink))]
-          (is (:ok? (room/submit! ctx room-id 0 {:type :gm/pause})))
+          (is (:ok? (room/submit! ctx room-id 0 {:type :set-locale :locale :en})))
           (is (= before (count (views sink))) "no more views for a page that left"))
         (testing "the seat can still be taken back"
           (let [back (mk-sink)]

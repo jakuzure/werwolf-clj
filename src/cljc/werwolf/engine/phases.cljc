@@ -353,6 +353,14 @@
   (filterv #(get-in state [:players (:player %) :alive?])
            (:pending-deaths state)))
 
+(defn healable
+  "The queued deaths the Hexe's heal can undo: the wolves' victims who are
+   still alive. Public because her view shows exactly these and nothing else.
+   The Weißer Werwolf's victim is not among them, and showing it to her told
+   her, before dawn, that this player is a wolf."
+  [state]
+  (filterv #(= :werwolf (:cause %)) (pending-alive state)))
+
 (defn- night?
   "Is it still night? A reaction that interrupts the night — the Jäger or the
    Bürgermeister dying mid-night, through a GM's kill or a lover walking out —
@@ -1129,7 +1137,7 @@
       :werewolf-vote   (vec (remove #(= :werewolf (e/team-of-player state %)) living))
       ;; She can only heal someone actually dying tonight — not a victim who
       ;; has walked out since, on whom the heal was spent for nothing.
-      :hexe-heal       (mapv :player (filter #(= :werwolf (:cause %)) (pending-alive state)))
+      :hexe-heal       (mapv :player (healable state))
       ;; Everyone living, HIMSELF INCLUDED — guarding your own door is a real
       ;; choice and the rules allow it — except whoever he guarded last night.
       ;; The ban is read from the registry rather than named here, so a second
@@ -1158,7 +1166,10 @@
 
       ;; GM overrides need targets too, or the host's UI has nothing to offer.
       :gm/force-kill   (vec living)
-      :gm/revive       (vec (sort (keep (fn [[id p]] (when-not (:alive? p) id))
+      ;; The dead, but not who walked out: he released his seat and his page
+      ;; forgot it, so a revived leaver is a living player nobody plays, owed
+      ;; every ballot and every night turn of his card.
+      :gm/revive       (vec (sort (keep (fn [[id p]] (when-not (or (:alive? p) (:left? p)) id))
                                        (:players state))))
       ;; Everyone, dead included: the reason to rewrite a dead player's role is
       ;; usually that the deal was wrong, and reviving them first would put a
@@ -1199,7 +1210,11 @@
     ;; and is indexed into by a select control, so an unstable order would make two
     ;; clients disagree and could make a replay platform-dependent.
     :dieb-take        (vec (sort (:centre state [])))
-    :gm/set-phase     (vec (sort (keys next-phase)))
+    ;; Not while the table looks at a verdict, nor in a reaction that follows
+    ;; one: :condemned stands until the night falls, so a day begun under it
+    ;; would hold at its own verdict without ever counting it. Letting the
+    ;; night fall from there is `:advance-phase`'s.
+    :gm/set-phase     (if (some? (:condemned state)) [] (vec (sort (keys next-phase))))
     ;; Only the role currently being called — skipping a role that is not
     ;; speaking would silently mark its turn done for the rest of the night.
     :gm/skip-role     (if-let [c (:night-cursor state)] [c] [])
