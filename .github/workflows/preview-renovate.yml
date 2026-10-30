@@ -5,6 +5,14 @@
 # environment lets it in), executes nothing from the artifact, and only copies
 # it into Cachix and sets the `preview` status lain's controller reads.
 #
+# Executing nothing is not enough, though: the artifact's narinfos may name
+# any store path with any content, and `cachix push` signs every one of them
+# into the cache main's build and lain substitute from. So whoever wrote the
+# artifact must be Renovate itself. `branches` below matches a fork's branch
+# just as well, and a fork's PR runs the fork's own ci.yml, which can upload
+# any `preview` it likes (the 2026-10-30 audit showed a crafted one passing
+# every check in this file). Hence the job's `if`.
+#
 # Lain gives these previews a slot only after every person's PR has one, see
 # previews/src/werwolf/previews/plan.clj.
 name: preview-renovate
@@ -15,8 +23,11 @@ on:
     types: [completed]
     branches: ["renovate/**"]
 
+# The head repository in the key: the group is decided before the job's `if`,
+# so a fork's run on a branch of the same name would otherwise cancel
+# Renovate's.
 concurrency:
-  group: preview-renovate-${{ github.event.workflow_run.head_branch }}
+  group: preview-renovate-${{ github.event.workflow_run.head_repository.full_name }}-${{ github.event.workflow_run.head_branch }}
   cancel-in-progress: true
 
 permissions:
@@ -26,7 +37,15 @@ jobs:
   push:
     # A test failing still deserves a look at the preview, so the conclusion
     # does not matter; a build that failed simply left no artifact.
-    if: github.event.workflow_run.event == 'pull_request'
+    #
+    # Only a run Renovate started, on a branch of this repository: see the top
+    # of this file. `actor` is whoever started the run in the first place, so
+    # re-running one keeps it; a person pushing to a Renovate branch gets no
+    # preview, as ci.yml then builds none.
+    if: >-
+      github.event.workflow_run.event == 'pull_request'
+      && github.event.workflow_run.head_repository.full_name == github.repository
+      && github.event.workflow_run.actor.login == 'renovate[bot]'
     runs-on: ubuntu-26.04
     environment: cachix
     permissions:
