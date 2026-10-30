@@ -132,10 +132,9 @@
                         (swap! open conj sock)
                         (protocol/on-open deps sock))
           :on-message (fn [sock raw]
-                        (let [t0  (System/nanoTime)
-                              msg (ws/read-transit raw)]
-                          (protocol/dispatch deps sock msg)
-                          (metrics/message! msg (- (System/nanoTime) t0))))
+                        (let [t0       (System/nanoTime)
+                              accepted (protocol/dispatch deps sock (ws/read-transit raw))]
+                          (metrics/message! accepted (- (System/nanoTime) t0))))
           :on-close   (fn [sock _code _reason]
                         (swap! open disj sock)
                         (protocol/on-close deps sock))

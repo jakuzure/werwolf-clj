@@ -21,6 +21,16 @@
 (defn- free-port []
   (with-open [s (java.net.ServerSocket. 0)] (.getLocalPort s)))
 
+(deftest only-the-protocol's-own-names-become-labels
+  (testing "each label is a counter the registry keeps for ever, so one taken
+            off the wire was heap a stranger could fill"
+    (is (= :vote (metrics/message-type {:type :client/command :cmd {:type :vote}})))
+    (is (= :client/ping (metrics/message-type {:type :client/ping})))
+    (doseq [junk [nil {} {:type :client/hack} {:type "client/ping"}
+                  {:type (keyword (apply str (repeat 1000 "x")))}
+                  {:type :client/command} {:type :client/command :cmd {:type :gm/nuke}}]]
+      (is (= :invalid (metrics/message-type junk)) (pr-str junk)))))
+
 (deftest no-port-serves-nothing
   (is (nil? (metrics/start! {:port 0 :host "127.0.0.1"})))
   (is (nil? (metrics/start! {:port nil :host "127.0.0.1"}))))

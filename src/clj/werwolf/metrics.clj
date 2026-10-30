@@ -20,6 +20,7 @@
 
    Plus the JVM's own: heap, GC pauses, threads."
   (:require [clojure.string :as str]
+            [werwolf.proto :as proto]
             [werwolf.room :as room])
   (:import [io.prometheus.metrics.core.metrics Counter GaugeWithCallback GaugeWithCallback$Callback Histogram]
            [io.prometheus.metrics.exporter.httpserver HTTPServer]
@@ -76,16 +77,27 @@
 
 ;; ------------------------------------------------------------- counting ---
 
+(def ^:private countable
+  "Every label `message-type` may return: the protocol's own names and
+   `:invalid`. Closed, because each label is a Counter and a Histogram child
+   the registry keeps for ever. When the label came straight off the wire, one
+   socket with no seat could put 60 KB of new keyword in every frame and grow
+   the heap until the JVM died, in about two seconds at -Xmx320m (security
+   review, 2026-10-30)."
+  (into (conj proto/client-message-types :invalid) proto/command-types))
+
 (defn message-type
   "The label for a client message: a command is counted by what it commands,
-   since `client_command` alone would say nothing about what the table does."
+   since `client_command` alone would say nothing about what the table does.
+   Anything the protocol does not name is `:invalid`."
   [msg]
-  (if (= :client/command (:type msg))
-    (get-in msg [:cmd :type] :client/command)
-    (:type msg :invalid)))
+  (let [t (if (= :client/command (:type msg)) (get-in msg [:cmd :type]) (:type msg))]
+    (if (contains? countable t) t :invalid)))
 
 (defn message!
-  "One client message handled, in `nanos`."
+  "One client message handled, in `nanos`. `msg` is what the protocol accepted,
+   nil for a frame it refused, so a refused frame is `:invalid` whatever its
+   :type said."
   [msg nanos]
   (let [t (labels (message-type msg))]
     (.inc (.labelValues messages t))
