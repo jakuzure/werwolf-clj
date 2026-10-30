@@ -325,8 +325,11 @@ in
           # promise with it.
           #
           # style-src allows inline styles because reagent renders :style
-          # maps as style attributes; scripts stay strict, the bundle is one
-          # file. connect-src names the wss: origin explicitly besides 'self'
+          # maps as style attributes. Scripts stay strict, no 'unsafe-eval':
+          # the voice module is a second file, and werwolf.audio has it loaded
+          # by <script> tag, because shadow's default loader evals it and voice
+          # never loaded under this policy.
+          # connect-src names the wss: origin explicitly besides 'self'
           # because older Safari did not count a WebSocket as 'self', and the
           # table plays on phones. The microphone is the one permission the
           # game needs, for voice.
