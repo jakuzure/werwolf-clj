@@ -372,6 +372,12 @@
 ;; ---- GM overrides -------------------------------------------------------
 ;; Every override is logged with its actor, so it is auditable in the public
 ;; log rather than something the host can do quietly.
+;;
+;; And each is checked against what the console was offered, like every
+;; player's move. They used to check only that the sender was the host, which
+;; trusted a hand-built frame from a host who also holds a card: :game-over in
+;; the middle of a game showed him every card and the Rückblick, and he played
+;; on. The named refusals come first, so the console still says what is wrong.
 
 (defn- host? [state pid] (= pid (:host state)))
 
@@ -394,6 +400,7 @@
     ;; him would put a Spielleiter in the dead players' channel and on nobody's
     ;; ballot — not a game state anything downstream expects.
     (= target (e/narrator state))  (err :invalid-target {:target target})
+    (not (allowed? state player :gm/force-kill)) (err :not-allowed {:action :gm/force-kill})
     :else [{:type :gm/forced :actor player :action :force-kill :detail {:target target}}
            {:type :player/died :player target :cause :gm}]))
 
@@ -402,17 +409,34 @@
   (cond
     (not (host? state player)) (err :not-host {})
     (before-play? state)       (err :no-game-in-progress {})
+    ;; A seat nobody holds. Reviving one wrote a player into the room out of
+    ;; nothing: a phantom on every page, a living participant nobody plays, and
+    ;; with a seat number past 2^53 a room whose every page stayed blank. Here
+    ;; and not in the reducer, which stored games replay through.
+    (not (contains? (:players state) target)) (err :no-such-player {:target target})
     (get-in state [:players target :alive?]) (err :already-alive {:target target})
+    (not (allowed? state player :gm/revive)) (err :not-allowed {:action :gm/revive})
+    ;; Somebody who walked out is not coming back to the seat; see
+    ;; `phases/legal-targets`.
+    (not (valid-target? state player :gm/revive target)) (err :invalid-target {:target target})
     :else [{:type :gm/forced :actor player :action :revive :detail {:target target}}
            {:type :player/revived :player target}]))
 
 (defmethod handle :gm/skip-role
+  ;; Only the role being called, as the console offers it. Any other turn
+  ;; marked done was gone for the rest of the night, and a double tap landed on
+  ;; the role called next and restarted its turn and its clock. No role at all
+  ;; means the one being called, so the log names it either way.
   [state {:keys [player role]}]
-  (cond
-    (not (host? state player)) (err :not-host {})
-    (not= :night (:phase state)) (err :not-night {})
-    :else [{:type :gm/forced :actor player :action :skip-role :detail {:role role}}
-           {:type :night/role-completed :role (or role (:night-cursor state))}]))
+  (let [role (or role (:night-cursor state))]
+    (cond
+      (not (host? state player)) (err :not-host {})
+      (not= :night (:phase state)) (err :not-night {})
+      (not (allowed? state player :gm/skip-role)) (err :not-allowed {:action :gm/skip-role})
+      (not (contains? (set (phases/legal-choices state :gm/skip-role)) role))
+      (err :invalid-choice {:role role})
+      :else [{:type :gm/forced :actor player :action :skip-role :detail {:role role}}
+             {:type :night/role-completed :role role}])))
 
 (defmethod handle :gm/reassign-role
   ;; The deal was wrong, or somebody has to be written out of one role and into
@@ -435,26 +459,37 @@
   ;; every seat he touched would be a map of where he thought the deal needed
   ;; fixing. The spare cards follow the Dieb in or out of the deal; see
   ;; `roles/centre-for`.
+  ;;
+  ;; Giving a seat the card it already holds is refused only there, where the
+  ;; Spielleiter sees every card anyway. Past :setup the refusal was a role
+  ;; oracle for a host who plays: "is P4 the Werwolf?" came back as "already
+  ;; that role", to him alone and with nothing in the log, while a wrong guess
+  ;; at least cost a public line. So a hit now goes through like a miss, with
+  ;; the same line, and changes nothing — not even a spent potion, which a
+  ;; rewrite to the same card would refill.
   [state {:keys [player target role]}]
-  (cond
-    (not (host? state player))                (err :not-host {})
-    (#{:lobby :game-over} (:phase state))     (err :no-game-in-progress {})
-    (not (get-in state [:players target]))    (err :no-such-player {:target target})
-    (= target (e/narrator state))             (err :invalid-target {:target target})
-    (not (contains? roles/all-ids role))      (err :unknown-role {:role role})
-    (= role (get-in state [:players target :role]))
-    (err :already-that-role {:target target})
+  (let [current (get-in state [:players target :role])]
+    (cond
+      (not (host? state player))                (err :not-host {})
+      (#{:lobby :game-over} (:phase state))     (err :no-game-in-progress {})
+      (not (get-in state [:players target]))    (err :no-such-player {:target target})
+      (= target (e/narrator state))             (err :invalid-target {:target target})
+      (not (contains? roles/all-ids role))      (err :unknown-role {:role role})
+      (and (= :setup (:phase state)) (= role current))
+      (err :already-that-role {:target target})
+      (not (allowed? state player :gm/reassign-role))
+      (err :not-allowed {:action :gm/reassign-role})
 
-    (= :setup (:phase state))
-    (let [dealt (vals (assoc (into {} (map (fn [id] [id (get-in state [:players id :role])]))
-                                   (e/participant-ids state))
-                             target role))]
-      [{:type :player/role-changed :player target :role role
-        :centre (roles/centre-for dealt)}])
+      (= :setup (:phase state))
+      (let [dealt (vals (assoc (into {} (map (fn [id] [id (get-in state [:players id :role])]))
+                                     (e/participant-ids state))
+                               target role))]
+        [{:type :player/role-changed :player target :role role
+          :centre (roles/centre-for dealt)}])
 
-    :else [{:type :gm/forced :actor player :action :reassign-role
-            :detail {:target target}}
-           {:type :player/role-changed :player target :role role}]))
+      :else (cond-> [{:type :gm/forced :actor player :action :reassign-role
+                      :detail {:target target}}]
+              (not= role current) (conj {:type :player/role-changed :player target :role role})))))
 
 ;; ---- the table itself: who narrates, the clock, whose seat this is ----
 
@@ -579,6 +614,9 @@
   (cond
     (not (host? state player)) (err :not-host {})
     (:paused? state)           (err :already-paused {})
+    ;; Not in the lobby, where the game then started paused, nor without a
+    ;; clock to stop.
+    (not (allowed? state player :gm/pause)) (err :not-allowed {:action :gm/pause})
     :else [{:type :gm/forced :actor player :action :pause :detail {}}
            {:type :clock/paused}
            {:type :phase/deadline :at nil}]))
@@ -588,6 +626,7 @@
   (cond
     (not (host? state player))   (err :not-host {})
     (not (:paused? state))       (err :not-paused {})
+    (not (allowed? state player :gm/resume)) (err :not-allowed {:action :gm/resume})
     ;; No deadline is set here: clearing :paused? is enough, because the timer
     ;; re-arms any timed phase with no deadline on its next reconcile — which is
     ;; also the only place that knows what time it is.
@@ -605,19 +644,41 @@
     (cond
       (not (host? state player))  (err :not-host {})
       (nil? (:deadline state))    (err :no-deadline {})
+      (not (allowed? state player :gm/add-time)) (err :not-allowed {:action :gm/add-time})
       ;; Computable without a clock: the deadline is already an absolute instant,
       ;; so extending it is arithmetic on state and stays inside the pure engine.
       :else [{:type :gm/forced :actor player :action :add-time :detail {:secs secs}}
              {:type :phase/deadline :at (+ (:deadline state) (* 1000 secs))}])))
 
+(defn- day-under-way?
+  "Is the ballot in state today's? Only while the day's own talk runs, or a
+   reaction has interrupted it."
+  [state]
+  (= :discussion (if (= :reaction (:phase state))
+                   (:resume-phase state)
+                   (:phase state))))
+
 (defmethod handle :gm/set-phase
+  ;; Only the phases the console offers; see `phases/legal-choices`. It took
+  ;; any keyword once, :game-over and :lobby included.
+  ;;
+  ;; Into a day that has not begun, as a day begins: with a fresh ballot. The
+  ;; night still holds yesterday's, complete and resolved, and a bare change
+  ;; of phase counted it again at once — the console's one jump skipped the
+  ;; whole day and let the next night fall. Within the day it only restarts
+  ;; the clock, with the ballot as it stands.
   [state {:keys [player phase]}]
   (cond
     (not (host? state player)) (err :not-host {})
     (before-play? state)       (err :no-game-in-progress {})
+    (not (allowed? state player :gm/set-phase)) (err :not-allowed {:action :gm/set-phase})
+    (not (contains? (set (phases/legal-choices state :gm/set-phase)) phase))
+    (err :invalid-choice {:phase phase})
     :else
     [{:type :gm/forced :actor player :action :set-phase :detail {:phase phase}}
-     {:type :phase/changed :phase phase :deadline nil}]))
+     (if (and (= :discussion phase) (not (day-under-way? state)))
+       {:type :day/began}
+       {:type :phase/changed :phase phase :deadline nil})]))
 
 ;; --------------------------------------------------------------- apply ---
 

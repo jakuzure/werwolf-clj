@@ -110,6 +110,12 @@
   ;; rejection names the place, never the value — see explain-client-message.
   [:string {:min 1 :max 64}])
 
+(def SeatId
+  ;; Bounded. Unbounded, a GM revive of a seat past 2^53 wrote a player whose
+  ;; id no browser can hold, and every page of the room stayed blank. Seats are
+  ;; issued one by one from 0, so this is far above any room.
+  [:int {:min 0 :max 9999}])
+
 (def Command
   "A player's intent. Closed, and notably WITHOUT :player.
 
@@ -118,14 +124,14 @@
    it said. Rejecting it is the honest answer."
   [:map {:closed true}
    [:type (into [:enum] (sort-by str command-types))]
-   [:target {:optional true} :int]
+   [:target {:optional true} SeatId]
    ;; Amor points at two players at once. These were missing once, and because
    ;; the map is closed that did not degrade Amor — it made the role unplayable,
    ;; with every link rejected as malformed. See `commands-are-expressible` in
    ;; the protocol tests, which now derives its cases from the simulation rather
    ;; than from anyone's memory of which keys exist.
-   [:a      {:optional true} :int]
-   [:b      {:optional true} :int]
+   [:a      {:optional true} SeatId]
+   [:b      {:optional true} SeatId]
    [:locale {:optional true} Locale]
    [:role   {:optional true} :keyword]
    [:phase  {:optional true} :keyword]

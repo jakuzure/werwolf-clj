@@ -218,7 +218,8 @@
   "Night bookkeeping a player may see.
 
    Werewolves see their own kill vote tally, because they must coordinate.
-   The Hexe sees who is currently dying, because that is her whole decision.
+   The Hexe sees whom the wolves are killing, because that is her whole
+   decision.
    Nobody else sees any of it — except the Spielleiter, who calls the night."
   [state pid]
   (let [role-id (get-in state [:players pid :role])
@@ -246,12 +247,14 @@
         (assoc :werewolf-votes (get-in state [:night-actions :werewolf-votes] {}))
 
         ;; The Hexe must see the pending victim to decide on the heal: the
-        ;; same queue her heal is offered from, or she would be shown a victim
-        ;; she has no button for.
+        ;; deaths her heal is offered for, and only those — or she would be
+        ;; shown a victim she has no button for, and the Weißer Werwolf's
+        ;; victim, which names a wolf before dawn. Leaving out the cause is
+        ;; not enough: with two names and one heal target she can tell which.
         (and alive? (= :hexe role-id) (= :hexe cursor)
              (:sees-pending-deaths? (roles/role :hexe)))
         (assoc :pending-deaths (mapv #(select-keys % [:player :cause])
-                                     (phases/pending-alive state)))
+                                     (phases/healable state)))
 
         ;; And whom she saved tonight, if anybody. The heal takes the victim
         ;; off the list above, which without this read as "the wolves chose

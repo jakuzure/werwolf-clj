@@ -989,8 +989,138 @@
       {:type :gm/reassign-role :player 1 :target 4 :role :hexe}     :not-host
       {:type :gm/reassign-role :player 0 :target 9 :role :hexe}     :no-such-player
       {:type :gm/reassign-role :player 0 :target 4 :role :admin}    :unknown-role
-      {:type :gm/reassign-role :player 0 :target 4 :role nil}       :unknown-role
-      {:type :gm/reassign-role :player 0 :target 2 :role :hexe}     :already-that-role)))
+      {:type :gm/reassign-role :player 0 :target 4 :role nil}       :unknown-role))
+  (testing "in :setup, where the Spielleiter sees every card, giving a seat the
+            card it holds is refused as the no-op it is"
+    (is (= :already-that-role
+           (:error (second (try-exec (tu/narrated-setup-with {1 :werwolf 2 :hexe 3 :seherin
+                                                              4 :dorfbewohner 5 :dorfbewohner})
+                                     {:type :gm/reassign-role :player 0 :target 2 :role :hexe})))))))
+
+(deftest a-reassignment-is-no-role-oracle
+  (testing "a host who plays asks \"is seat 2 the Hexe?\" by making it one.
+            Right or wrong, he is answered the same way: accepted, with the same
+            line in the Chronik but for the seat"
+    (let [s (tu/game-with gm-cast)
+          hit  (engine/execute s {:type :gm/reassign-role :player 0 :target 2 :role :hexe})
+          miss (engine/execute s {:type :gm/reassign-role :player 0 :target 4 :role :hexe})
+          seen (fn [r] (update (engine/view-for (:state r) 0) :log
+                               (partial mapv #(update % :detail dissoc :target))))]
+      (is (not (engine/error? hit)))
+      (is (not (engine/error? miss)))
+      (is (= (seen hit) (seen miss)))))
+  (testing "and a hit changes nothing, not even a spent potion"
+    (let [s (-> (tu/game-with gm-cast) (assoc-in [:players 2 :resources :heiltrank] 0))
+          s (exec! s {:type :gm/reassign-role :player 0 :target 2 :role :hexe})]
+      (is (= 0 (get-in s [:players 2 :resources :heiltrank]))))))
+
+(deftest the-gm-sets-only-the-phases-he-is-offered
+  (testing "a hand-built frame naming any other phase is refused. :game-over in
+            the middle of a game showed a playing host every card and the
+            Rückblick, and he played on"
+    (let [s (tu/game-with gm-cast)]
+      (doseq [p [:game-over :lobby :setup :night :day-reveal :bogus nil]]
+        (is (= :invalid-choice
+               (:error (second (try-exec s {:type :gm/set-phase :player 0 :phase p}))))
+            (str p))))))
+
+(deftest a-day-the-gm-opens-starts-with-a-fresh-ballot
+  (let [cast {0 :dorfbewohner 1 :werwolf 2 :dorfbewohner 3 :dorfbewohner
+              4 :dorfbewohner 5 :seherin}]
+    (testing "from night 2 the state still holds yesterday's ballot, complete
+              and resolved. Counted again, it skipped the day the console's jump
+              was meant to open, and the next night fell"
+      (let [s (tu/day-with cast)
+            s (reduce #(exec! %1 {:type :vote-abstain :player %2}) s (alive s))
+            _ (is (= [:night 2] [(:phase s) (:night s)]))
+            s (exec! s {:type :gm/set-phase :player 0 :phase :discussion})]
+        (is (= [:discussion 2] [(:phase s) (:night s)]) "the day is held, not skipped")
+        (is (empty? (:votes s)))
+        (testing "and its own ballot is the one that counts"
+          (let [s (reduce #(exec! %1 (if (= 4 %2)
+                                       {:type :vote-abstain :player 4}
+                                       {:type :vote :player %2 :target 4}))
+                          s (alive s))]
+            (is (false? (get-in s [:players 4 :alive?])))))))
+    (testing "within the day the jump only restarts the clock: the ballot stands"
+      (let [s (-> (tu/day-with cast)
+                  (exec! {:type :vote :player 1 :target 2})
+                  (exec! {:type :gm/set-phase :player 0 :phase :discussion}))]
+        (is (= {1 2} (:votes s)))))
+    (testing "and there is none while the table looks at a verdict: a day begun
+              under it would hold at its own verdict without counting it"
+      (let [s (tu/day-with cast)
+            s (reduce #(exec! %1 (if (= 4 %2)
+                                   {:type :vote-abstain :player 4}
+                                   {:type :vote :player %2 :target 4}))
+                      s (alive s))]
+        (is (phases/verdict-held? s))
+        (is (not (contains? (phases/legal-actions s 0) :gm/set-phase)))
+        (is (= :not-allowed
+               (:error (second (try-exec s {:type :gm/set-phase :player 0
+                                            :phase :discussion})))))))))
+
+(deftest the-gm-skips-only-the-role-being-called
+  (let [s (tu/game-with gm-cast)]
+    (is (= :seherin (:night-cursor s)))
+    (testing "another role's turn, or a role nobody holds, is refused: marked
+              done, it was gone for the rest of the night"
+      (doseq [r [:hexe :werwolf :amor :bogus]]
+        (is (= :invalid-choice
+               (:error (second (try-exec s {:type :gm/skip-role :player 0 :role r}))))
+            (str r))))
+    (testing "a double tap does not land on the role called next"
+      (let [s (exec! s {:type :gm/skip-role :player 0 :role :seherin})]
+        (is (= :werwolf (:night-cursor s)))
+        (is (= :invalid-choice
+               (:error (second (try-exec s {:type :gm/skip-role :player 0
+                                            :role :seherin})))))))
+    (testing "no role means the one being called, and the Chronik names it"
+      (let [s (exec! s {:type :gm/skip-role :player 0})]
+        (is (= :werwolf (:night-cursor s)))
+        (is (some #(= {:type :gm/forced :action :skip-role :detail {:role :seherin}}
+                      (select-keys % [:type :action :detail]))
+                  (:log s)))))))
+
+(deftest the-gm-revives-only-the-dead-who-stayed
+  (let [s (tu/game-with gm-cast)]
+    (testing "a seat nobody holds is refused, not written into the room: a
+              phantom revived past 2^53 left every page of the room blank"
+      (doseq [t [9 9999 -1 nil]]
+        (is (= :no-such-player
+               (:error (second (try-exec s {:type :gm/revive :player 0 :target t}))))
+            (str t))))
+    (testing "and so is somebody who walked out: his page has forgotten the seat"
+      (let [s (-> s
+                  (exec! {:type :leave :player 3})
+                  (exec! {:type :gm/force-kill :player 0 :target 2}))]
+        (is (= [2] (phases/legal-targets s 0 :gm/revive)))
+        (is (= :invalid-target
+               (:error (second (try-exec s {:type :gm/revive :player 0 :target 3})))))
+        (is (true? (get-in (exec! s {:type :gm/revive :player 0 :target 2})
+                           [:players 2 :alive?])))))
+    (testing "and nobody is revived or killed once the game is decided"
+      (let [s (exec! s {:type :gm/force-kill :player 0 :target 1})]
+        (is (= :game-over (:phase s)))
+        (is (= :not-allowed
+               (:error (second (try-exec s {:type :gm/revive :player 0 :target 1})))))
+        (is (= :not-allowed
+               (:error (second (try-exec s {:type :gm/force-kill :player 0 :target 2})))))))))
+
+(deftest the-hexe-is-not-shown-the-white-wolfs-victim
+  (testing "his victim is a wolf, so showing it to her named a wolf before
+            dawn — and her heal cannot undo it anyway"
+    (let [s (tu/game-with {0 :dorfbewohner 1 :werwolf 2 :weisser-werwolf 3 :hexe
+                           4 :dorfbewohner 5 :dorfbewohner})
+          s (reduce #(exec! %1 {:type :werewolf-vote :player %2 :target 0}) s [1 2])
+          s (exec! s {:type :hexe-pass :player 3})
+          s (reduce #(exec! %1 {:type :vote-abstain :player %2}) s (alive s))
+          _ (is (= [:night 2] [(:phase s) (:night s)]))
+          s (reduce #(exec! %1 {:type :werewolf-vote :player %2 :target 4}) s [1 2])
+          s (exec! s {:type :weisser-kill :player 2 :target 1})]
+      (is (= :hexe (:night-cursor s)))
+      (is (= [{:player 4 :cause :werwolf}]
+             (get-in (engine/view-for s 3) [:night-info :pending-deaths]))))))
 
 (deftest gm-overrides-are-refused-before-a-game-exists
   (testing "there are no roles to rewrite in a lobby, and none worth rewriting
@@ -1242,16 +1372,22 @@
       (is (pos? (tu/count-log s :mayor/vacated))))))
 
 (deftest the-election-happens-once
-  (testing ":election-held? rather than 'is it day 1' alone, so a GM who rewinds
-            the phase cannot re-run it"
+  (testing ":election-held? rather than 'is it day 1' alone, so a rewound phase
+            cannot re-run it"
     (let [s (-> (quiet-table)
                 (exec! {:type :elect :player 0 :target 2})
                 (exec! {:type :elect-abstain :player 1})
                 (exec! {:type :elect-abstain :player 2})
-                (exec! {:type :elect-abstain :player 3}))
-          s (exec! s {:type :gm/set-phase :player 0 :phase :day-reveal})]
-      (is (not= :election (:phase s)) "back through dawn, but no second election")
-      (is (= 2 (:mayor s)) "and the office is untouched"))))
+                (exec! {:type :elect-abstain :player 3}))]
+      (is (= :invalid-choice
+             (:error (second (try-exec s {:type :gm/set-phase :player 0 :phase :day-reveal}))))
+          "the GM can no longer send the table back to dawn")
+      (testing "but a stored game that went there before he could not replays
+                without a second election"
+        (let [[s] (phases/settle (e/apply-event s {:type :phase/changed :phase :day-reveal
+                                                   :deadline nil}))]
+          (is (not= :election (:phase s)) "back through dawn, but no second election")
+          (is (= 2 (:mayor s)) "and the office is untouched"))))))
 
 ;; ------------------------------------------------------ Weißer Werwolf ---
 ;;
