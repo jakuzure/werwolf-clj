@@ -138,7 +138,14 @@
     srv))
 
 (defmethod ig/halt-key! ::server [_ server]
-  (hk/server-stop! server {:timeout 1000}))
+  ;; server-stop! only signals; its promise is delivered once the server thread
+  ;; has finished. Until then that thread can still read a close frame, and with
+  ;; the worker pool already shut down http-kit runs the on-close handler right
+  ;; there: a seat's disconnect reached the event log after halt! had returned.
+  ;; The e2e restart then read the log first and collided with the late write on
+  ;; UNIQUE(room_id, seq), now and then, on a slow CI runner. Bounded, so a
+  ;; handler that hangs cannot hold up the shutdown.
+  (some-> (hk/server-stop! server {:timeout 1000}) (deref 5000 nil)))
 
 (defn -main [& _args]
   (let [cfg (config/load-config :prod)
