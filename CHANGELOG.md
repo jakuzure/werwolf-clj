@@ -1,5 +1,37 @@
 # Changelog
 
+## [0.11.0](https://github.com/jakuzure/werwolf-clj/compare/v0.10.1...v0.11.0) (2026-10-30)
+
+
+### Features
+
+* group the wolf votes by victim ([3626f5a](https://github.com/jakuzure/werwolf-clj/commit/3626f5a91ba705ede58ee0ca6670b78c54406191))
+* **server:** let the bots vote sooner ([3110a89](https://github.com/jakuzure/werwolf-clj/commit/3110a89e88101788e9a9706c45ceebf9c130db0e))
+* show the condemned player's role before night falls ([a051703](https://github.com/jakuzure/werwolf-clj/commit/a051703fd2ccec4443130929ecda9aba0ac31e31))
+
+
+### Bug Fixes
+
+* **ci:** hand the write token to the deps-lock push alone ([3d78f79](https://github.com/jakuzure/werwolf-clj/commit/3d78f79a87f7cffd5bca2abaa9f7efb4ce68c39e))
+* **ci:** link a preview to this repository's PR, never a fork's ([cc60458](https://github.com/jakuzure/werwolf-clj/commit/cc60458353aaefb32937005043609463229bdf0e))
+* **ci:** push Renovate previews only from Renovate's own runs ([0457e9d](https://github.com/jakuzure/werwolf-clj/commit/0457e9d486e1e457f3fbdf050450ad48976e7859))
+* **client:** load the voice module by script tag ([ef5e170](https://github.com/jakuzure/werwolf-clj/commit/ef5e1700ad2dadb733e8e140cceb4cbceaf65ef6))
+* **engine:** count only living ballots ([ee352fe](https://github.com/jakuzure/werwolf-clj/commit/ee352feeb1b4a32811146bb32e62341d89362856))
+* **engine:** end the game once the Weißer Werwolf lets his night go by ([38331f7](https://github.com/jakuzure/werwolf-clj/commit/38331f718a1dd18af9cee3f57a3eaf1203fe9ffe))
+* **engine:** settle the dawn queue before deciding the winner ([6716042](https://github.com/jakuzure/werwolf-clj/commit/67160427485f999ae36909d7a6826fd1d170a1f1))
+* **engine:** validate GM overrides like player commands ([db6db60](https://github.com/jakuzure/werwolf-clj/commit/db6db60fea209fa18db6e30dcf8171ba54c37f37))
+* exit on OutOfMemoryError so the server is restarted ([6105634](https://github.com/jakuzure/werwolf-clj/commit/61056346f3aeadab5c208735f0078a5e8ebd71a4))
+* **nix:** send security headers from Caddy ([f324b51](https://github.com/jakuzure/werwolf-clj/commit/f324b5162b7b202bf598411bb04b98ceb0dcbc07))
+* **previews:** run preview pods as nobody ([#115](https://github.com/jakuzure/werwolf-clj/issues/115)) ([edcd305](https://github.com/jakuzure/werwolf-clj/commit/edcd30597b69ac5767030f9669ea39bcde4b49cd))
+* **previews:** run preview pods without capabilities ([#114](https://github.com/jakuzure/werwolf-clj/issues/114)) ([5e53c43](https://github.com/jakuzure/werwolf-clj/commit/5e53c4343e36b162f3c57fa1012244fec5b139da))
+* **proto:** answer a malformed message with a few paths, not every schema ([6cec9f6](https://github.com/jakuzure/werwolf-clj/commit/6cec9f6b55c3a95ce875da4890194c506a3a767d))
+* **server:** bound frames, rooms and sockets ([e23566f](https://github.com/jakuzure/werwolf-clj/commit/e23566f6c2086e68dd7f11a7fc0527d3552c7c80))
+* **server:** cap sockets per client and let idle ones make room ([6a3cbfb](https://github.com/jakuzure/werwolf-clj/commit/6a3cbfb3f534d06273be4bacf37a9d6f397fc685))
+* **server:** close a socket that sends faster than a person can ([8ac6459](https://github.com/jakuzure/werwolf-clj/commit/8ac6459c05505e645dcec41d895db6fa4222dc81))
+* **server:** count only the protocol's own message types ([44d8c43](https://github.com/jakuzure/werwolf-clj/commit/44d8c43d64673d6852e316057a093dcf8ee4e705))
+* **server:** let go of a socket that closed before its seat was made ([426012d](https://github.com/jakuzure/werwolf-clj/commit/426012dc7ff86ce0e7116868af902d2f7851c13a))
+* **server:** wait for the server to stop before halt returns ([9a4bee1](https://github.com/jakuzure/werwolf-clj/commit/9a4bee10487a4ddb2327d34bf81a1a4b1561e046))
+
 ## [0.10.1](https://github.com/jakuzure/werwolf-clj/compare/v0.10.0...v0.10.1) (2026-10-27)
 
 
