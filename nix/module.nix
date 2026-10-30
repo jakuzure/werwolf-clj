@@ -328,7 +328,8 @@ in
           # maps as style attributes. Scripts stay strict, no 'unsafe-eval':
           # the voice module is a second file, and werwolf.audio has it loaded
           # by <script> tag, because shadow's default loader evals it and voice
-          # never loaded under this policy.
+          # never loaded under this policy. test/browser/csp-proxy.js reads this
+          # block, so the browser suite runs behind it.
           # connect-src names the wss: origin explicitly besides 'self'
           # because older Safari did not count a WebSocket as 'self', and the
           # table plays on phones. The microphone is the one permission the
