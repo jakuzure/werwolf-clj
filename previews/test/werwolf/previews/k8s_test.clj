@@ -88,6 +88,18 @@
     (is (= {:name "pr-42" :key "token-secret"}
            (get-in (env d) ["TOKEN_SECRET" :valueFrom :secretKeyRef])))))
 
+(deftest a-preview-holds-no-privileges
+  (let [d (->> (k8s/manifests config preview)
+               (filter #(= "Deployment" (:kind %))) first)
+        pod (get-in d [:spec :template :spec])
+        c (get-in pod [:containers 0])]
+    (is (= "RuntimeDefault" (get-in pod [:securityContext :seccompProfile :type])))
+    (is (false? (get-in c [:securityContext :allowPrivilegeEscalation])))
+    (is (= ["ALL"] (get-in c [:securityContext :capabilities :drop])))
+    (testing "a read-only root, so whatever it writes must be a volume"
+      (is (true? (get-in c [:securityContext :readOnlyRootFilesystem])))
+      (is (= #{"/data" "/tmp"} (set (map :mountPath (:volumeMounts c))))))))
+
 (deftest without-livekit-a-preview-is-a-text-game
   (let [d (->> (k8s/manifests (dissoc config :livekit) preview)
                (filter #(= "Deployment" (:kind %))) first)]
