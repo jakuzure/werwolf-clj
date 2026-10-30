@@ -100,6 +100,17 @@
                 {:status 304 :headers (select-keys (:headers resp) ["Cache-Control" "ETag"]) :body nil})
             resp))))))
 
+(def ^:private default-frames-per-sec 10)
+(def ^:private default-frame-burst 30)
+
+(defn- spend
+  "A socket's token bucket after one more frame at `now`, or nil when it is
+   empty: `burst` frames at once, refilled at `per-sec`."
+  [{:keys [tokens at]} now per-sec burst]
+  (let [tokens (min burst (+ tokens (* per-sec (/ (- now at) 1000.0))))]
+    (when (>= tokens 1.0)
+      {:tokens (dec tokens) :at now})))
+
 (defn ws-handler
   "Upgrade to a WebSocket and hand every frame to the protocol layer.
 
@@ -112,9 +123,21 @@
    one exception to the no-per-connection-map rule above: it has to be known
    BEFORE the socket exists, when the registry has nothing to index it by. A
    set rather than a counter, because `on-error` and `on-close` can both fire
-   for one socket and a counter would drift down for ever."
-  [{:keys [max-sockets] :as deps}]
-  (let [open (atom #{})]
+   for one socket and a counter would drift down for ever.
+
+   Each socket may send `frame-burst` frames at once and `frames-per-sec` after
+   that; a socket that sends faster is closed. Every frame is work on the pool
+   that all rooms share, and most commands are a commit with two SQLite
+   writes: in the security review ten sockets sending :set-locale as fast as
+   they could made every other table's create time out after 20 s. Checked
+   before the frame is even decoded, so junk is bounded too. Closed rather
+   than answered, since an answer per excess frame would be more of the same
+   work, and no person tapping a phone comes near the limit. The bucket lives
+   in the socket's own listener, so it needs no map either."
+  [{:keys [max-sockets frames-per-sec frame-burst] :as deps}]
+  (let [open    (atom #{})
+        per-sec (or frames-per-sec default-frames-per-sec)
+        burst   (or frame-burst default-frame-burst)]
     (fn [req]
       (cond
         (not (ws/upgrade-request? req))
@@ -127,21 +150,30 @@
              :body "too many connections"})
 
         :else
-        (ws/websocket-response
-         {:on-open    (fn [sock]
-                        (swap! open conj sock)
-                        (protocol/on-open deps sock))
-          :on-message (fn [sock raw]
-                        (let [t0       (System/nanoTime)
-                              accepted (protocol/dispatch deps sock (ws/read-transit raw))]
-                          (metrics/message! accepted (- (System/nanoTime) t0))))
-          :on-close   (fn [sock _code _reason]
-                        (swap! open disj sock)
-                        (protocol/on-close deps sock))
-          :on-error   (fn [sock e]
-                        (log/warn "websocket error:" (ex-message e))
-                        (swap! open disj sock)
-                        (protocol/on-close deps sock))})))))
+        ;; Only ever touched by this socket's frames, which http-kit hands
+        ;; over one at a time.
+        (let [bucket (atom {:tokens burst :at (System/currentTimeMillis)})]
+          (ws/websocket-response
+           {:on-open    (fn [sock]
+                          (swap! open conj sock)
+                          (protocol/on-open deps sock))
+            :on-message (fn [sock raw]
+                          (when-not (:closed? @bucket)
+                            (if-let [b (spend @bucket (System/currentTimeMillis) per-sec burst)]
+                              (let [_        (reset! bucket b)
+                                    t0       (System/nanoTime)
+                                    accepted (protocol/dispatch deps sock (ws/read-transit raw))]
+                                (metrics/message! accepted (- (System/nanoTime) t0)))
+                              (do (reset! bucket {:closed? true})
+                                  (metrics/refused! :rate-limited)
+                                  (ws/close! sock 1008 "too many messages")))))
+            :on-close   (fn [sock _code _reason]
+                          (swap! open disj sock)
+                          (protocol/on-close deps sock))
+            :on-error   (fn [sock e]
+                          (log/warn "websocket error:" (ex-message e))
+                          (swap! open disj sock)
+                          (protocol/on-close deps sock))}))))))
 
 (defn router [deps]
   (ring/router

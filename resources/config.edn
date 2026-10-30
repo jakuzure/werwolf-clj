@@ -14,7 +14,13 @@
            ;; buffers. Both refuse with an error rather than crash the JVM.
            :max-frame-bytes #long #or [#env MAX_FRAME_BYTES 65536]
            :max-rooms       #long #or [#env MAX_ROOMS 100]
-           :max-sockets     #long #or [#env MAX_SOCKETS 1000]}
+           :max-sockets     #long #or [#env MAX_SOCKETS 1000]
+           ;; Messages one socket may send: FRAME_BURST at once, then
+           ;; FRAMES_PER_SEC. Faster than that and the socket is closed; the
+           ;; client reconnects. A person tapping buttons sends a few a second
+           ;; at most. See werwolf.http/ws-handler.
+           :frames-per-sec  #long #or [#env FRAMES_PER_SEC 10]
+           :frame-burst     #long #or [#env FRAME_BURST 30]}
 
  ;; Prometheus metrics on a port of their own, loopback only. 0 (default): off.
  ;; See werwolf.metrics.

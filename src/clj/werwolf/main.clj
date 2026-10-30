@@ -36,8 +36,8 @@
    ::rooms   {:db (ig/ref ::db) :game game :max-rooms (:max-rooms server)}
    ::timer   {:rooms (ig/ref ::rooms)}
    ::media   {:config media}
-   ::handler {:rooms (ig/ref ::rooms) :tokens tokens :media (ig/ref ::media)
-              :max-sockets (:max-sockets server)}
+   ::handler (merge {:rooms (ig/ref ::rooms) :tokens tokens :media (ig/ref ::media)}
+                    (select-keys server [:max-sockets :frames-per-sec :frame-burst]))
    ::server  {:handler (ig/ref ::handler)
               :port    (:port server)
               :host    (:host server)
@@ -90,22 +90,19 @@
                      "audio is OFF")))
     provider))
 
-(defmethod ig/init-key ::handler [_ {:keys [rooms tokens media max-sockets]}]
+(defmethod ig/init-key ::handler [_ {:keys [tokens] :as cfg}]
   (when (token/insecure-secret? tokens)
     ;; Loud, but not fatal: refusing to boot would mean a typo'd env var locks
     ;; you out of your own server, and the threat model here is a friend group,
     ;; not the internet. This becomes fatal the day the room list goes public.
     (log/error (str "TOKEN_SECRET is unset or insecure — reconnect tokens are "
                     "forgeable. Set TOKEN_SECRET before exposing this server.")))
-  (http/handler {:rooms rooms
-                 :tokens tokens
-                 :media media
-                 :max-sockets max-sockets
-                 ;; The protocol's replies. Its refusals are counted on the
-                 ;; way out, so the protocol has no metrics of its own to keep.
-                 :send! (fn [sock msg]
-                          (when (= :server/error (:type msg)) (metrics/refused! (:code msg)))
-                          (ws/send! sock msg))}))
+  (http/handler (assoc cfg
+                       ;; The protocol's replies. Its refusals are counted on the
+                       ;; way out, so the protocol has no metrics of its own to keep.
+                       :send! (fn [sock msg]
+                                (when (= :server/error (:type msg)) (metrics/refused! (:code msg)))
+                                (ws/send! sock msg)))))
 
 (defmethod ig/init-key ::metrics [_ {:keys [rooms port host]}]
   (when-let [m (metrics/start! {:rooms rooms :port port :host host

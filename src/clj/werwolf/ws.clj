@@ -56,7 +56,9 @@
     true
     (catch Exception _ false)))
 
-(defn close! [sock] (try (ws/close sock) (catch Exception _ nil)))
+(defn close!
+  ([sock] (try (ws/close sock) (catch Exception _ nil)))
+  ([sock code reason] (try (ws/close sock code reason) (catch Exception _ nil))))
 
 (defn upgrade-request? [req] (ws/upgrade-request? req))
 
