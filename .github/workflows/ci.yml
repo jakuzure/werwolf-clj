@@ -49,6 +49,10 @@ jobs:
     environment: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && 'cachix' || '' }}
     permissions:
       # Only to push a regenerated deps-lock.json back to a Renovate branch.
+      # GitHub has no permissions per step, so instead only that step is given
+      # the token: checkout keeps no copy in .git/config, where every later
+      # step, the deps-lock run and the builds of PR code included, could read
+      # it.
       contents: write
     env:
       # A PR Renovate pushed, to a branch of this repository. Not a branch
@@ -64,6 +68,7 @@ jobs:
           # commit, so a regenerated lockfile can be committed back to it. Empty
           # means the default, which also keeps PRs from forks working.
           ref: ${{ env.RENOVATE == 'true' && github.head_ref || '' }}
+          persist-credentials: false
 
       - uses: DeterminateSystems/nix-installer-action@3138316df39ed29be04236d7ffc686fa525866aa # v23
 
@@ -89,6 +94,7 @@ jobs:
       # Deliberately Renovate-only: a person who changes deps.edn should see the
       # build fail and regenerate it themselves, as flake.nix documents.
       - name: Regenerate deps-lock.json on Renovate branches
+        id: lock
         if: env.RENOVATE == 'true'
         run: |
           # The pinned clj-nix, not the latest: a newer one writes a lock
@@ -100,10 +106,21 @@ jobs:
           else
             git config user.name  "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            # The run this push starts does nothing; see `concurrency` above.
             git commit -m "chore(deps): regenerate deps-lock.json" -- deps-lock.json
-            git push
+            echo "commit=true" >> "$GITHUB_OUTPUT"
           fi
+      # The one step with the write token. Handed to git by a credential helper
+      # that reads it from the environment, so it is in no command line either.
+      - name: Push deps-lock.json
+        if: steps.lock.outputs.commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # The run this push starts does nothing; see `concurrency` above.
+          # The helper's shell expands $GH_TOKEN, not this one.
+          # shellcheck disable=SC2016
+          git -c credential.helper='!f() { echo username=x-access-token; echo "password=$GH_TOKEN"; }; f' \
+            push origin "HEAD:refs/heads/$GITHUB_HEAD_REF"
 
       - name: Build
         run: nix build .#werwolf -L
@@ -135,6 +152,8 @@ jobs:
     runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
       - uses: DeterminateSystems/nix-installer-action@3138316df39ed29be04236d7ffc686fa525866aa # v23
       - uses: DeterminateSystems/magic-nix-cache-action@84c0677f58dcedf3b91f8223ce36a9ea5b3c84b7 # v15
         with:
@@ -167,6 +186,8 @@ jobs:
     runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
       - uses: DeterminateSystems/nix-installer-action@3138316df39ed29be04236d7ffc686fa525866aa # v23
       - uses: DeterminateSystems/magic-nix-cache-action@84c0677f58dcedf3b91f8223ce36a9ea5b3c84b7 # v15
         with:
@@ -257,6 +278,8 @@ jobs:
       # page against `git rev-parse HEAD`, which the build also read, and HEAD is
       # the one commit a depth-1 checkout is guaranteed to have.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
       - uses: DeterminateSystems/nix-installer-action@3138316df39ed29be04236d7ffc686fa525866aa # v23
       - uses: DeterminateSystems/magic-nix-cache-action@84c0677f58dcedf3b91f8223ce36a9ea5b3c84b7 # v15
         with:
@@ -309,6 +332,8 @@ jobs:
         shell: nix shell nixpkgs#babashka nixpkgs#clojure nixpkgs#jdk21_headless nixpkgs#nodejs_22 -c bash -eo pipefail {0}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
       - uses: DeterminateSystems/nix-installer-action@3138316df39ed29be04236d7ffc686fa525866aa # v23
       - uses: DeterminateSystems/magic-nix-cache-action@84c0677f58dcedf3b91f8223ce36a9ea5b3c84b7 # v15
         with:
