@@ -157,6 +157,116 @@
                   s [2 3 4])]
     (is (= :werewolf (:winner s)))))
 
+(defn- died [state]
+  (set (keep #(when (= :player/died (:type %)) (:player %)) (:log state))))
+
+(defn- second-night
+  "Night 1 eats the villager in seat 2 and the Hexe, if any, lets it happen;
+   day 1 condemns nobody. What is left is night 2 with seats 0 and 1."
+  [cast]
+  (let [s (tu/game-with cast)
+        s (exec! s {:type :werewolf-vote :player 1 :target 2})
+        s (if (= :hexe (:night-cursor s)) (exec! s {:type :hexe-pass :player 0}) s)
+        s (reduce #(exec! %1 {:type :vote-abstain :player %2}) s (alive s))]
+    (is (= [:night 2 [0 1]] [(:phase s) (:night s) (alive s)]))
+    s))
+
+(deftest a-dawn-is-judged-whole
+  (testing "the wolf eats the Hexe while she poisons him. Both die at the same
+            dawn, so nobody is left and the village has won. Judged after her
+            death alone, the table was the wolf's: a real 0.7.0 game ended
+            :werewolf with his poisoning still queued"
+    (let [s (second-night {0 :hexe 1 :werwolf 2 :dorfbewohner})
+          s (exec! s {:type :werewolf-vote :player 1 :target 0})
+          s (exec! s {:type :hexe-poison :player 0 :target 1})
+          s (exec! s {:type :hexe-pass :player 0})]
+      (is (= :village (:winner s)))
+      (is (= #{0 1 2} (died s)) "both deaths are in the Chronik")
+      (is (empty? (:pending-deaths s))))))
+
+(deftest a-jaeger-whose-death-decides-still-shoots
+  (testing "eaten as the last villager, the table is wolves only — but his shot
+            is still owed, and it can take the last wolf with him"
+    (let [s (second-night {0 :jaeger 1 :werwolf 2 :dorfbewohner})
+          s (exec! s {:type :werewolf-vote :player 1 :target 0})]
+      (is (= :reaction (:phase s)) "the game waits for his shot")
+      (is (contains? (phases/legal-actions s 0) :jaeger-shoot))
+      (testing "and if he takes the wolf, nobody is left"
+        (is (= :village (:winner (exec! s {:type :jaeger-shoot :player 0 :target 1})))))
+      (testing "if he holds his fire, the wolf has won"
+        (is (= :werewolf (:winner (exec! s {:type :jaeger-pass :player 0}))))))))
+
+(defn- dying-in-the-hexes-turn
+  "Night 1: Amor has linked the Jäger (1) with seat 2, the wolf (3) has eaten
+   seat 5, and the Hexe (4) is up."
+  []
+  (let [s (tu/game-with {0 :amor 1 :jaeger 2 :dorfbewohner 3 :werwolf 4 :hexe
+                         5 :dorfbewohner})
+        s (exec! s {:type :amor-link :player 0 :a 1 :b 2})
+        s (exec! s {:type :werewolf-vote :player 3 :target 5})]
+    (is (= :hexe (:night-cursor s)))
+    s))
+
+(deftest a-reaction-in-the-night-is-still-the-night
+  (testing "seat 2 walks out mid-night and the Jäger dies of grief. His shot
+            parks the game in :reaction, but the night's deaths still wait for
+            dawn: the Hexe gets her turn at the wolves' victim"
+    (let [s (exec! (dying-in-the-hexes-turn) {:type :leave :player 2})]
+      (is (= [:reaction :night] [(:phase s) (:resume-phase s)]))
+      (is (true? (get-in s [:players 5 :alive?])) "the victim is still alive")
+      (let [s (exec! s {:type :jaeger-shoot :player 1 :target 0})]
+        (is (= [:night :hexe] [(:phase s) (:night-cursor s)]))
+        (is (true? (get-in s [:players 0 :alive?]))
+            "his shot waits for dawn too, like every other death of the night")
+        (is (= [5] (phases/legal-targets s 4 :hexe-heal)))
+        (let [s (exec! s {:type :hexe-pass :player 4})
+              dawn (drop-while #(not= :night/ended (:type %)) (:log s))]
+          (is (= #{0 5} (set (keep #(when (= :player/died (:type %)) (:player %)) dawn))))
+          (is (not-any? #(= :night/quiet (:type %)) (:log s))
+              "a night with two deaths was not a quiet one")))))
+  (testing "the same when the GM takes the Bürgermeister in the Hexe's turn"
+    (let [s (assoc (dying-in-the-hexes-turn) :mayor 0)
+          s (exec! s {:type :gm/force-kill :player 0 :target 0})
+          _ (is (= :reaction (:phase s)) "the dead Bürgermeister names an heir")
+          _ (is (true? (get-in s [:players 5 :alive?])))
+          s (exec! s {:type :mayor-appoint :player 0 :target 4})]
+      (is (= [:night :hexe] [(:phase s) (:night-cursor s)]))
+      (is (= [5] (phases/legal-targets s 4 :hexe-heal))
+          "she can still save the victim"))))
+
+(deftest a-shot-in-the-night-decides-at-dawn
+  (testing "Amor walks out, the Jäger he loved follows him in grief and shoots
+            the last wolf. The shot lands at dawn, and until then the wolf
+            standing alone has not won"
+    (let [s (tu/game-with {0 :werwolf 1 :jaeger 2 :amor})
+          s (exec! s {:type :amor-link :player 2 :a 1 :b 2})
+          s (exec! s {:type :leave :player 2})
+          _ (is (= :reaction (:phase s)) "the Jäger is owed his shot")
+          s (exec! s {:type :jaeger-shoot :player 1 :target 0})]
+      (is (= :village (:winner s)) "nobody is left")
+      (is (some #(and (= :player/died (:type %)) (= 0 (:player %)) (= :jaeger (:cause %)))
+                (:log s))))))
+
+(deftest lovers-from-one-side-win-with-it
+  (testing "two wolves in love who outlive the village have won as wolves —
+            with the rest of the pack, not instead of it"
+    (let [s (tu/game-with {0 :amor 1 :werwolf 2 :werwolf 3 :dorfbewohner 4 :werwolf})
+          s (exec! s {:type :amor-link :player 0 :a 1 :b 2})
+          s (reduce #(exec! %1 {:type :gm/force-kill :player 0 :target %2}) s [4 3 0])]
+      (is (= [1 2] (alive s)))
+      (is (= :werewolf (:winner s)))))
+  (testing "two villagers in love, the last wolf gone: the village's win"
+    (let [s (tu/game-with {0 :amor 1 :werwolf 2 :dorfbewohner 3 :dorfbewohner})
+          s (exec! s {:type :amor-link :player 0 :a 2 :b 3})
+          s (reduce #(exec! %1 {:type :gm/force-kill :player 0 :target %2}) s [0 1])]
+      (is (= :village (:winner s)))))
+  (testing "the Weißer Werwolf is a side of his own: in love with a wolf, the
+            two of them win as lovers"
+    (let [s (tu/game-with {0 :amor 1 :werwolf 2 :weisser-werwolf 3 :dorfbewohner})
+          s (exec! s {:type :amor-link :player 0 :a 1 :b 2})
+          s (reduce #(exec! %1 {:type :gm/force-kill :player 0 :target %2}) s [3 0])]
+      (is (= :lovers (:winner s))))))
+
 ;; ---------------------------------------------------------- day voting ---
 
 (deftest genuine-tie-kills-nobody

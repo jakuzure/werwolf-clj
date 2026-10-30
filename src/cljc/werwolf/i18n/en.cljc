@@ -30,7 +30,7 @@
    :guide/day-title   "The day"
    :guide/day         "In the morning you learn who did not survive the night, and see their card. On the first day you elect a mayor first. Then you talk and vote at the same time on who is condemned — every day, the first one included. That takes a majority of the living; until everyone has voted, you can change your vote."
    :guide/win-title   "Who wins"
-   :guide/win         "The village wins once no werewolf is left alive. The werewolves win when nobody but them is left. Two lovers win together if they are the last two alive — whichever side they were on. The dead talk only to the dead."
+   :guide/win         "The village wins once no werewolf is left alive. The werewolves win when nobody but them is left. Two lovers from opposite sides win together if they are the last two alive. If both are on the same side, their side wins. The dead talk only to the dead."
    :guide/roles-title "The roles"
    :guide/team-werewolf "The werewolves"
    :guide/team-village "The village"
