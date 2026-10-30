@@ -110,7 +110,12 @@ jobs:
           SHA: ${{ steps.fetch.outputs.sha }}
           BRANCH: ${{ github.event.workflow_run.head_branch }}
         run: |
-          pr=$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$BRANCH" --json number --jq '.[0].number // empty')
+          # --head matches the branch name alone, and a fork's PR may use the
+          # same one (push-<change id> names are public). The link would then
+          # lead to the fork PR's host, where the controller, which skips
+          # cross-repository PRs, runs no preview.
+          pr=$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$BRANCH" --json number,isCrossRepository \
+                 --jq '[.[] | select(.isCrossRepository | not)][0].number // empty')
           args=(-f state=success -f context=preview -f "description=$IMAGE")
           if [ -n "$pr" ]; then
             args+=(-f "target_url=https://pr-$pr.werwolf-chrz.duckdns.org")
