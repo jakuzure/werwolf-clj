@@ -781,12 +781,13 @@
       (let [ctx (ctx-on path)
             {:keys [room-id] :as t} (table ctx 5)]
         (start! ctx t)
-        ;; Drive to game over the blunt way: the GM removes the village.
+        ;; Drive to game over the blunt way: the GM removes the pack. Not the
+        ;; village: the last villager to go may be the Jäger, and a game his
+        ;; death decides waits for his shot. The village's win is final at once.
         (loop [guard 0]
           (let [st (room/state-of ctx room-id)]
             (when (and (not= :game-over (:phase st)) (< guard 30))
-              (when-let [victim (first (set/difference (set (engine/living-ids st))
-                                                      (wolves-in st)))]
+              (when-let [victim (first (sort (wolves-in st)))]
                 (room/submit! ctx room-id (:host st) {:type :gm/force-kill :target victim}))
               (recur (inc guard)))))
         (is (= :game-over (:phase (room/state-of ctx room-id))))

@@ -19,9 +19,13 @@
 
    1. Deaths queued DURING the night are not applied until the night ends.
       Otherwise the werewolves' victim would die before the Hexe is offered the
-      chance to heal them.
+      chance to heal them. A reaction that interrupts the night is still the
+      night; see `night?`.
    2. Entering :reaction records a :resume-phase, because an interrupt can fire
-      from either day or night and must return to where it came from."
+      from either day or night and must return to where it came from.
+   3. Nobody but the village wins while a death is still owed: the queued
+      ones, and the ones a reaction on the stack can still cause. See
+      `deaths-outstanding?`."
   (:require [werwolf.engine.events :as e]
             [werwolf.engine.roles :as roles]))
 
@@ -46,11 +50,27 @@
        (contains? (set (get-in state [:night-actions :completed])) :weisser-werwolf)
        (nil? (get-in state [:night-actions :weisser-target]))))
 
+(defn- side
+  "Whose win a player is playing for: his dealt team, except the Weißer
+   Werwolf, who is dealt to the pack and wins alone."
+  [state pid]
+  (if (= :weisser-werwolf (get-in state [:players pid :role]))
+    :weisser-werwolf
+    (e/team-of-player state pid)))
+
 (defn winner
   "Which team has won, or nil if the game continues.
 
    Order matters: the lovers' win overrides everything, because a wolf and a
    villager in love beat both of their original teams.
+
+   Only a couple from two sides, though. Two wolves in love who outlive the
+   village have won as wolves, and their dead packmates with them; called a
+   win for the lovers, the pack's game went to the two of them alone and every
+   other wolf took a loss. The same for two villagers. The Weißer Werwolf is a
+   side of his own here: he and a wolf in love have nothing left to win but
+   each other, and waiting on his betrayal would mean waiting for him to kill
+   himself through his lover's grief.
 
    The Weißer Werwolf is the third exception, and the only one that can DELAY a
    victory rather than grant one. He is dealt as a werewolf — the village does not
@@ -68,7 +88,8 @@
 
       (and (seq lovers)
            (= 2 (count living))
-           (= (set living) lovers))
+           (= (set living) lovers)
+           (apply not= (map #(side state %) lovers)))
       :lovers
 
       :else
@@ -310,6 +331,37 @@
   (filterv #(get-in state [:players (:player %) :alive?])
            (:pending-deaths state)))
 
+(defn- night?
+  "Is it still night? A reaction that interrupts the night — the Jäger or the
+   Bürgermeister dying mid-night, through a GM's kill or a lover walking out —
+   parks the game in :reaction, but the night is not over. Asked of the phase
+   alone, the parked night counted as day: the wolves' victim died on the spot,
+   the Hexe woke to nobody to heal, and the Chronik called it a quiet night
+   right under the victim's death."
+  [state]
+  (= :night (if (= :reaction (:phase state))
+              (:resume-phase state)
+              (:phase state))))
+
+(def ^:private deadly-reactions
+  "Reactions that can still kill somebody: the Jäger's shot, and grief."
+  #{:reaction/jaeger-shot :reaction/lover-follows})
+
+(defn- deaths-outstanding?
+  "Is a death still owed that could change who has won? The queued ones, and
+   the ones a reaction on the stack can still cause. At night the queue waits
+   for dawn, and so does the verdict on the table it leaves.
+
+   A real game ended on the first of two dawn deaths: the wolves had eaten the
+   Hexe while she poisoned the last wolf, her death was applied first, and the
+   table read as wolves only. Both died, so the village had won. And a Jäger
+   eaten as the last villager never got the shot that could have taken the
+   last wolf with him. A Bürgermeister's succession is not in it: naming an
+   heir changes nobody's side, so a decided game does not wait for it."
+  [state]
+  (or (seq (pending-alive state))
+      (some #(deadly-reactions (:type %)) (:reactions state))))
+
 (declare legal-actions)
 
 (def always-allowed
@@ -446,20 +498,28 @@
     (cond
       (= :game-over phase) nil
 
-      ;; A decided game ends immediately, whatever phase we are in — except
-      ;; before it has begun. In :setup the Spielleiter is still arranging the
-      ;; cards, and a table he has momentarily left without a wolf is a deal in
-      ;; progress, not a village victory.
-      (and (not (#{:lobby :setup} phase)) (winner state))
-      [{:type :game/ended :winner (winner state)}]
-
       ;; Deaths queue up during the night and are applied at dawn — see the
       ;; namespace docstring. Outside the night, apply them one at a time so
-      ;; each can push its own reactions.
-      (and (not= :night phase) (seq (pending-alive state)))
+      ;; each can push its own reactions. Ahead of the win check, so a dawn is
+      ;; judged whole rather than one death at a time.
+      (and (not (night? state)) (seq (pending-alive state)))
       (let [{:keys [player cause]} (first (pending-alive state))]
         [{:type :player/died :player player :cause cause}
          {:type :deaths/consumed :player player}])
+
+      ;; A decided game ends immediately, whatever phase we are in — except
+      ;; before it has begun, and while a death that could change the result
+      ;; is still owed. In :setup the Spielleiter is still arranging the
+      ;; cards, and a table he has momentarily left without a wolf is a deal in
+      ;; progress, not a village victory.
+      ;;
+      ;; The village's win is final the moment it is there: no death brings a
+      ;; wolf back. Waiting on what is still owed could not change it, and a
+      ;; Jäger asked for a shot that decides nothing would only hold the table.
+      (and (not (#{:lobby :setup} phase))
+           (winner state)
+           (or (= :village (winner state)) (not (deaths-outstanding? state))))
+      [{:type :game/ended :winner (winner state)}]
 
       ;; Drain the reaction stack (LIFO).
       (seq (:reactions state))

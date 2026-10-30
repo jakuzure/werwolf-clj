@@ -27,7 +27,7 @@
    :guide/day-title   "Der Tag"
    :guide/day         "Am Morgen erfahrt ihr, wer die Nacht nicht überlebt hat, und seht seine Karte. Am ersten Tag wählt ihr zuerst einen Bürgermeister. Dann redet ihr und stimmt zugleich ab, wer verurteilt wird — jeden Tag, den ersten eingeschlossen. Dafür braucht es eine Mehrheit der Lebenden; bis alle abgestimmt haben, könnt ihr umstimmen."
    :guide/win-title   "Wer gewinnt"
-   :guide/win         "Das Dorf gewinnt, sobald kein Werwolf mehr lebt. Die Werwölfe gewinnen, wenn außer ihnen niemand mehr übrig ist. Zwei Verliebte gewinnen gemeinsam, wenn nur noch sie leben — egal, zu wem sie gehören. Tote reden nur noch mit Toten."
+   :guide/win         "Das Dorf gewinnt, sobald kein Werwolf mehr lebt. Die Werwölfe gewinnen, wenn außer ihnen niemand mehr übrig ist. Ein Liebespaar aus zwei Lagern gewinnt gemeinsam, wenn nur noch die beiden leben. Gehören beide zum selben Lager, gewinnt ihr Lager. Tote reden nur noch mit Toten."
    :guide/roles-title "Die Rollen"
    :guide/team-werewolf "Die Werwölfe"
    :guide/team-village "Das Dorf"
