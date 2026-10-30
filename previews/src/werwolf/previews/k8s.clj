@@ -136,10 +136,18 @@
              {:metadata {:labels (:labels (meta-for pr))}
               :spec {:automountServiceAccountToken false
                      :enableServiceLinks false
+                     :securityContext {:seccompProfile {:type "RuntimeDefault"}}
                      :containers
                      [{:name "werwolf"
                        :image image
                        :imagePullPolicy "IfNotPresent"
+                       ;; A preview runs whatever its PR runs, Renovate's
+                       ;; dependency updates included, which the workflows
+                       ;; treat as untrusted code. The server needs no
+                       ;; capability and writes only to /data and /tmp.
+                       :securityContext {:allowPrivilegeEscalation false
+                                         :readOnlyRootFilesystem true
+                                         :capabilities {:drop ["ALL"]}}
                        :env (env config pr sha)
                        :ports [{:containerPort 8080}]
                        :resources {:requests {:memory pod-memory-quantity}
