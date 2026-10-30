@@ -47,6 +47,25 @@
                        :token     (issue-token deps room-id player-id host?
                                                (System/currentTimeMillis))})))
 
+(defn- attach!
+  "Bind the socket to its seat, and let it go again if it has closed meanwhile.
+
+   http-kit runs a socket's close handler as a task of its own, and it can
+   overtake a frame still queued ahead of it. `on-close` then found nothing to
+   detach, the create behind it bound a dead socket, and the room counted as
+   attended for ever: never swept, still listed, still holding one of
+   MAX_ROOMS. A hundred sockets that sent a create and closed at once filled
+   the server's rooms until it was restarted (security review, 2026-10-30).
+
+   http-kit marks a socket closed before it runs the close handler, so either
+   the close came first and this sees it, or the attach came first and
+   `on-close` finds the socket in the index. `open?` comes in `deps` like
+   `send!`; without one every socket counts as open."
+  [{:keys [rooms open?]} room-id pid sock]
+  (room/attach! rooms room-id pid sock)
+  (when-not ((or open? (constantly true)) sock)
+    (room/detach! rooms sock)))
+
 ;; ---------------------------------------------------------------- dispatch ---
 
 (defmulti ^:private handle
@@ -78,7 +97,7 @@
       (error! deps sock code (:detail res))
       (let [{:keys [room-id player-id]} res]
         (welcome! deps sock room-id player-id)
-        (room/attach! rooms room-id player-id sock)))))
+        (attach! deps room-id player-id sock)))))
 
 (defmethod handle :client/join
   [{:keys [rooms] :as deps} sock {:keys [room-id name locale password]}]
@@ -91,7 +110,7 @@
       (error! deps sock code (:detail res))
       (let [pid (:player-id res)]
         (welcome! deps sock room-id pid)
-        (room/attach! rooms room-id pid sock)))))
+        (attach! deps room-id pid sock)))))
 
 (defmethod handle :client/resume
   [{:keys [rooms tokens] :as deps} sock {:keys [room-id token]}]
@@ -111,7 +130,7 @@
         ;; A fresh token, so a long game does not end with everyone holding an
         ;; expired one at the moment their wifi drops.
         (welcome! deps sock room-id pid)
-        (room/attach! rooms room-id pid sock)))))
+        (attach! deps room-id pid sock)))))
 
 (defmethod handle :client/command
   [{:keys [rooms] :as deps} sock {:keys [cmd]}]
@@ -233,7 +252,7 @@
         (and room-id (#{:client/create :client/join :client/resume} (:type msg)))
         (do (if (asking-again? msg room-id)
               (do (welcome! deps sock room-id pid)
-                  (room/attach! rooms room-id pid sock))
+                  (attach! deps room-id pid sock))
               (error! deps sock :already-in-room {}))
             msg)
 

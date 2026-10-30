@@ -56,6 +56,8 @@
     true
     (catch Exception _ false)))
 
+(defn open? [sock] (ws/open? sock))
+
 (defn close!
   ([sock] (try (ws/close sock) (catch Exception _ nil)))
   ([sock code reason] (try (ws/close sock code reason) (catch Exception _ nil))))
