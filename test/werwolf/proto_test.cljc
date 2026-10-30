@@ -114,12 +114,28 @@
       (is (not (proto/valid-client-message? {:type :client/join :room-id "ABCD"
                                              :name "Bob" :password bad})))
       (is (not (proto/valid-client-message? {:type :client/set-password :password bad})))))
-  (testing "a rejection names the schema, never the value"
+  (testing "a rejection names the place, never the value"
     (let [secret (apply str "Geheim" (repeat 70 "x"))
           why    (proto/explain-client-message {:type :client/create :name "Anna"
                                                 :password secret})]
-      (is (seq why))
+      (is (= [{:in [:password]}] why))
       (is (not (re-find #"Geheim" (pr-str why)))))))
+
+(deftest a-rejection-does-not-grow-with-the-junk
+  (testing "each error carried its printed schema, so 5000 keys too many came
+            back as 5000 copies of the command whitelist: 54 KB in, 4.7 MB out"
+    (let [why (proto/explain-client-message
+               {:type :client/command
+                :cmd (into {:type :vote} (map (fn [i] [(keyword (str "k" i)) i])) (range 5000))})]
+      (is (= 3 (count why)))
+      (is (every? #(= :malli.core/extra-key (:error %)) why))
+      (is (< (count (pr-str why)) 200))))
+  (testing "a key is the client's own, but a long one is not sent back"
+    (let [huge (keyword (apply str (repeat 10000 "x")))
+          why  (proto/explain-client-message {:type :client/ping huge 1})]
+      (is (= [{:in ["…"] :error :malli.core/extra-key}] why))))
+  (testing "nor a whitelist for a :type the protocol does not know"
+    (is (< (count (pr-str (proto/explain-client-message {:type :client/nonsense}))) 200))))
 
 (deftest a-deck-is-bounded-on-the-wire
   (testing "the deck is the one command payload that is a whole map, so its
