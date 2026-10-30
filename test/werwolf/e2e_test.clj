@@ -391,6 +391,22 @@
               (finally (doseq [c all] (close! c))))))
         (finally (cleanup! path))))))
 
+(deftest halting-waits-for-the-server-to-stop
+  (testing "halt! returns once the server thread has finished, not merely once
+            it was told to stop. A thread still running can take a close frame
+            after the halt and write that seat's disconnect into a log the next
+            life has already read, which is how the restart below failed on
+            UNIQUE(room_id, seq) on a slow CI runner."
+    (let [path (tmp-path)]
+      (try
+        (let [srv (boot! path {})
+              c   (client (:port srv))]
+          (await-type c :server/hello)
+          (shutdown! srv)
+          (is (= :stopped (hk/server-status (::main/server (:system srv)))))
+          (close! c))
+        (finally (cleanup! path))))))
+
 (deftest killing-the-server-mid-game-loses-nothing
   (testing "verification step 5: kill the server mid-game and restart. Clients
             reconnect from their tokens and land in the correct phase with the
