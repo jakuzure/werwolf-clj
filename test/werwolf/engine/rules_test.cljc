@@ -310,6 +310,105 @@
       (is (= :werwolf (:role death)) "classic Werwolf reveals the lynched role")
       (is (= :lynch (:cause death))))))
 
+;; ------------------------------------------------- the departed's ballots ---
+;;
+;; A ballot counts while its voter lives and names somebody living, or nobody.
+;; The ballots themselves stay as cast; see phases/living-ballots.
+
+(deftest the-departed-do-not-lynch
+  (testing "three players vote for the Seherin and walk out. The two living
+            wolves vote elsewhere, and the table that is left has no majority:
+            the three who are gone condemn nobody"
+    (let [s (tu/day-with {0 :dorfbewohner 1 :dorfbewohner 2 :seherin 3 :dorfbewohner
+                          4 :dorfbewohner 5 :werwolf 6 :werwolf})
+          s (reduce #(exec! %1 {:type :vote :player %2 :target 2}) s [1 3 4])
+          s (reduce #(exec! %1 {:type :leave :player %2}) s [1 3 4])
+          s (reduce #(exec! %1 {:type :vote :player %2 :target 0}) s [5 6])
+          s (reduce #(exec! %1 {:type :vote-abstain :player %2}) s [0 2])]
+      (is (true? (get-in s [:players 2 :alive?])) "the Seherin lives")
+      (is (some #(and (= :vote/resolved (:type %)) (nil? (:target %))) (:log s)))
+      (is (= 3 (count (filter #(and (= :vote/cast (:type %)) (= 2 (:target %))) (:log s))))
+          "their ballots are still in the Chronik, as cast"))))
+
+(deftest a-killed-voter-no-longer-votes
+  (testing "the GM takes a player who has voted, and his ballot goes with him:
+            two living votes of four are no majority"
+    (let [s (tu/day-with {0 :dorfbewohner 1 :werwolf 2 :dorfbewohner 3 :dorfbewohner
+                          4 :dorfbewohner})
+          s (exec! s {:type :vote :player 3 :target 4})
+          s (exec! s {:type :gm/force-kill :player 0 :target 3})
+          s (reduce #(exec! %1 {:type :vote :player %2 :target 4}) s [0 2])
+          s (reduce #(exec! %1 {:type :vote-abstain :player %2}) s [1 4])]
+      (is (true? (get-in s [:players 4 :alive?]))))))
+
+(deftest a-departed-wolf-does-not-choose-the-victim
+  (testing "a wolf votes and walks out; the pack that is left decides alone"
+    (let [s (tu/game-with {0 :dorfbewohner 1 :werwolf 2 :werwolf 3 :werwolf
+                           4 :dorfbewohner 5 :dorfbewohner})
+          s (exec! s {:type :werewolf-vote :player 1 :target 0})
+          s (exec! s {:type :leave :player 1})
+          s (exec! s {:type :werewolf-vote :player 2 :target 5})
+          s (exec! s {:type :werewolf-vote :player 3 :target 4})]
+      (is (false? (get-in s [:players 4 :alive?]))
+          "the living pack split 1–1, which breaks to the lower seat")
+      (is (true? (get-in s [:players 0 :alive?])) "not to the departed wolf's pick"))))
+
+(deftest the-pack-does-not-eat-somebody-who-has-left
+  (testing "one wolf's victim walks out before the other wolf votes. The pack
+            still eats tonight: the living ballot decides, and the night is not
+            lost to a corpse"
+    (let [s (tu/game-with {0 :dorfbewohner 1 :werwolf 2 :werwolf 3 :dorfbewohner
+                           4 :dorfbewohner 5 :dorfbewohner})
+          s (exec! s {:type :werewolf-vote :player 1 :target 3})
+          s (exec! s {:type :leave :player 3})
+          s (exec! s {:type :werewolf-vote :player 2 :target 4})]
+      (is (false? (get-in s [:players 4 :alive?])))
+      (is (not-any? #(= :night/quiet (:type %)) (:log s))))))
+
+(deftest a-candidate-who-dies-is-not-elected
+  (let [table #(tu/game-with {0 :dorfbewohner 1 :werwolf 2 :dorfbewohner
+                              3 :dorfbewohner 4 :dorfbewohner}
+                             {:first-night-kill? false :election? true})]
+    (testing "three ballots for seat 4, who then walks out: the office goes to
+              the living"
+      (let [s (table)
+            _ (is (= :election (:phase s)))
+            s (reduce #(exec! %1 {:type :elect :player %2 :target 4}) s [1 2 3])
+            s (exec! s {:type :leave :player 4})
+            s (exec! s {:type :elect :player 0 :target 2})]
+        (is (= 2 (:mayor s)))))
+    (testing "and when the clock closes the election"
+      (let [s (table)
+            s (reduce #(exec! %1 {:type :elect :player %2 :target 4}) s [1 2])
+            s (exec! s {:type :leave :player 4})
+            s (exec! s {:type :elect :player 3 :target 3})]
+        (is (= 3 (:mayor (e/apply-all s (phases/timeout-events s)))))))))
+
+(deftest the-hexe-cannot-heal-somebody-who-has-left
+  (let [s (tu/game-with {0 :dorfbewohner 1 :werwolf 2 :hexe 3 :dorfbewohner
+                         4 :dorfbewohner})
+        s (exec! s {:type :werewolf-vote :player 1 :target 3})
+        _ (is (= :hexe (:night-cursor s)))
+        s (exec! s {:type :leave :player 3})]
+    (is (not (contains? (phases/legal-actions s 2) :hexe-heal)) "no heal to offer")
+    (is (= :not-allowed (:error (second (try-exec s {:type :hexe-heal :player 2 :target 3}))))
+        "a heal on him would be spent for nothing")
+    (is (empty? (get-in (engine/view-for s 2) [:night-info :pending-deaths]))
+        "and she is not shown a victim she has no heal for")))
+
+(deftest a-wolf-who-walks-out-in-setup-leaves-no-game
+  (testing "the only wolf leaves before the night. The deal is no longer a
+            game, and the night is not offered until the Spielleiter fixes it"
+    (let [s (tu/narrated-setup-with {1 :werwolf 2 :seherin 3 :dorfbewohner
+                                     4 :dorfbewohner 5 :dorfbewohner})
+          _ (is (nil? (phases/deal-problem s)))
+          s (exec! s {:type :leave :player 1})]
+      (is (= :no-werewolf (phases/deal-problem s)))
+      (is (not (contains? (phases/legal-actions s 0) :begin-night)))
+      (let [s (exec! s {:type :gm/reassign-role :player 0 :target 3 :role :werwolf})]
+        (is (nil? (phases/deal-problem s)))
+        (is (contains? (phases/legal-actions s 0) :begin-night))))))
+
 ;; ------------------------------------------------- the verdict's moment ---
 
 (def ^:private seven

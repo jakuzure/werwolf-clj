@@ -286,6 +286,27 @@
 
 (defn- vote-weight [mayor voter] (if (= voter mayor) 2 1))
 
+(defn- living-ballots
+  "The ballots that still count: cast by somebody alive, for somebody alive or
+   for nobody. A voter who has walked out or been killed holds no vote any
+   more, and a ballot naming a corpse can neither condemn nor elect it — it is
+   left as an abstention.
+
+   Three departed players once lynched the Seherin against the two living
+   wolves, a candidate who died mid-election was elected anyway, and a wolf
+   who had left still broke his pack's tie.
+
+   Filtered where they are counted, not removed when the death is applied:
+   stored games replay through that reducer, and a filter there rewrote the
+   votes in 128 of 142 stored logs. The cast ballots stay in state and in the
+   log, as what was cast."
+  [state votes]
+  (let [living (set (e/living-ids state))]
+    (into {}
+          (filter (fn [[voter target]]
+                    (and (living voter) (or (nil? target) (living target)))))
+          votes)))
+
 (defn votes-needed
   "How many votes condemn somebody today: a strict majority of every vote the
    living hold, the Bürgermeister's counting twice. Abstaining, or not voting
@@ -303,7 +324,7 @@
   "Who the village condemns: `tally`'s leader, if they reach `votes-needed`.
    {:target id-or-nil :tie? bool :no-majority? bool}."
   [state]
-  (let [votes (:votes state {})
+  (let [votes (living-ballots state (:votes state {}))
         mayor (:mayor state)
         {:keys [target tie?]} (tally votes mayor)
         got (reduce + 0 (keep (fn [[voter t]] (when (and t (= t target))
@@ -325,8 +346,9 @@
 
 ;; --------------------------------------------------------- auto-events ---
 
-(defn- pending-alive
-  "Queued deaths that still refer to living players."
+(defn pending-alive
+  "Queued deaths that still refer to living players. Public because the views
+   show the same queue: whoever has walked out since is not dying any more."
   [state]
   (filterv #(get-in state [:players (:player %) :alive?])
            (:pending-deaths state)))
@@ -471,7 +493,8 @@
            ;; Collective decision: once every living wolf has voted, resolve it.
            :werwolf
            (when (wolves-all-voted? state)
-             (let [target (wolf-tally (get-in state [:night-actions :werewolf-votes]))]
+             (let [target (wolf-tally (living-ballots
+                                       state (get-in state [:night-actions :werewolf-votes])))]
                (cond-> [{:type :night/role-completed :role :werwolf}]
                  target (conj {:type :werewolf/chose :target target}))))
 
@@ -568,7 +591,7 @@
         ;; unfair, and the village simply goes without.
         :election
         (when (election-done? state)
-          (let [{:keys [target tie?]} (tally (:election-votes state {}))]
+          (let [{:keys [target tie?]} (tally (living-ballots state (:election-votes state {})))]
             [{:type :election/resolved :mayor target :tie? tie?}
              {:type :day/began}]))
 
@@ -679,7 +702,8 @@
                   (cond-> [{:type :night/role-completed :role cursor}]
                     (= :werwolf cursor)
                     (as-> evs
-                          (if-let [t (wolf-tally (get-in state [:night-actions :werewolf-votes]))]
+                          (if-let [t (wolf-tally (living-ballots
+                                                  state (get-in state [:night-actions :werewolf-votes])))]
                             (conj evs {:type :werewolf/chose :target t})
                             evs)))))
 
@@ -691,7 +715,7 @@
               ;; Uncast ballots are abstentions, exactly as in the lynch, so the
               ;; election resolves on whatever was actually cast.
               :election
-              (let [{:keys [target tie?]} (tally (:election-votes state {}))]
+              (let [{:keys [target tie?]} (tally (living-ballots state (:election-votes state {})))]
                 [{:type :election/resolved :mayor target :tie? tie?}
                  {:type :day/began}])
 
@@ -799,11 +823,16 @@
   "Why the Spielleiter's deal cannot be played as it stands, or nil. Only in
    :setup, where he rearranges the cards by hand: the night does not fall on a
    table of nothing but villagers — the game would be decided before anybody
-   woke. The same reasons as the lobby's deck; see `roles/cards-problem`."
+   woke. The same reasons as the lobby's deck; see `roles/cards-problem`.
+
+   The cards of the living only. A player who walks out in :setup is dead
+   with his card turned over; counted, the only wolf leaving still looked
+   like a game, the night was offered, and it fell on a village that had
+   already won."
   [state]
   (when (= :setup (:phase state))
     (roles/cards-problem (keep #(get-in state [:players % :role])
-                               (e/participant-ids state)))))
+                               (e/living-ids state)))))
 
 (defn host-actions
   "GM powers, which belong to the room's host and are NOT lost on death.
@@ -1098,8 +1127,9 @@
       :seherin-inspect (vec (remove #(contains? (get-in state [:players pid :knows] {}) %) others))
       ;; Wolves cannot eat their own.
       :werewolf-vote   (vec (remove #(= :werewolf (e/team-of-player state %)) living))
-      ;; She can only heal someone actually dying tonight.
-      :hexe-heal       (mapv :player (filter #(= :werwolf (:cause %)) (:pending-deaths state)))
+      ;; She can only heal someone actually dying tonight — not a victim who
+      ;; has walked out since, on whom the heal was spent for nothing.
+      :hexe-heal       (mapv :player (filter #(= :werwolf (:cause %)) (pending-alive state)))
       ;; Everyone living, HIMSELF INCLUDED — guarding your own door is a real
       ;; choice and the rules allow it — except whoever he guarded last night.
       ;; The ban is read from the registry rather than named here, so a second
