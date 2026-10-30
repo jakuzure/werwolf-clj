@@ -13,11 +13,16 @@
 const { defineConfig, devices } = require('@playwright/test');
 const os = require('os');
 const path = require('path');
+const { LIVEKIT_URL } = require('./csp-proxy');
 
 // A fresh database per run. Rooms are persistent, and a suite that inherited
 // yesterday's lobbies would be reading somebody else's state.
 const DB = path.join(os.tmpdir(), `werwolf-browser-${process.pid}.db`);
 const PORT = process.env.WERWOLF_TEST_PORT || '3999';
+// The browsers talk to csp-proxy.js on this port, never to PORT directly, so
+// every spec runs under the security headers production sends. +1000 rather
+// than +1, so that parallel runs on neighbouring ports do not collide.
+const PROXY_PORT = process.env.WERWOLF_TEST_PROXY_PORT || String(Number(PORT) + 1000);
 
 module.exports = defineConfig({
   testDir: __dirname,
@@ -34,7 +39,7 @@ module.exports = defineConfig({
   reporter: [['list']],
 
   use: {
-    baseURL: `http://localhost:${PORT}`,
+    baseURL: `http://localhost:${PROXY_PORT}`,
     // localhost is a secure context, which is what makes getUserMedia available
     // at all — a phone reaching a dev server by LAN IP over plain HTTP cannot do
     // this, which is why voice testing on real devices needs the deployed TLS.
@@ -64,7 +69,7 @@ module.exports = defineConfig({
 
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
 
-  webServer: {
+  webServer: [{
     command: 'clojure -M -m werwolf.main',
     // Playwright runs webServer from the CONFIG's directory, not the repo root,
     // so without this `clojure` starts in test/browser where there is no deps.edn
@@ -102,9 +107,18 @@ module.exports = defineConfig({
       // than failing, so `bb test:browser` is useful without LiveKit running —
       // except under WERWOLF_REQUIRE_LIVEKIT, which CI sets; see liveKitUp.
       MEDIA_PROVIDER: 'livekit',
-      LIVEKIT_URL: process.env.LIVEKIT_URL || 'ws://localhost:7880',
+      LIVEKIT_URL,
       LIVEKIT_API_KEY: 'devkey',
       LIVEKIT_API_SECRET: 'secret',
     },
-  },
+  }, {
+    command: 'node test/browser/csp-proxy.js',
+    cwd: path.resolve(__dirname, '../..'),
+    // Through the proxy: it answers 502 until the server behind it is up, so
+    // this also waits for the server, whichever of the two starts first.
+    url: `http://localhost:${PROXY_PORT}/health`,
+    reuseExistingServer: false,
+    timeout: 180_000,
+    env: { PORT, PROXY_PORT, LIVEKIT_URL },
+  }],
 });
