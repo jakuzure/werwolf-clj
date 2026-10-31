@@ -14,12 +14,12 @@
   metosin/reitit-ring                 {:mvn/version "0.11.0"}
   integrant/integrant                 {:mvn/version "1.0.1"}
   aero/aero                           {:mvn/version "1.1.6"}
-  com.cognitect/transit-clj           {:mvn/version "1.1.363"}
+  com.cognitect/transit-clj           {:mvn/version "1.1.367"}
   buddy/buddy-sign                    {:mvn/version "3.6.1-359"}
 
   ;; --- persistence ---
   com.github.seancorfield/next.jdbc   {:mvn/version "1.4.72"}
-  org.xerial/sqlite-jdbc              {:mvn/version "3.53.4.0"}
+  org.xerial/sqlite-jdbc              {:mvn/version "3.54.1.0"}
 
   ;; --- metrics (werwolf.metrics) ---
   io.prometheus/prometheus-metrics-core                  {:mvn/version "1.10.0"}
@@ -40,7 +40,7 @@
                  djblue/portal               {:mvn/version "0.68.1"}
                  org.clojure/test.check      {:mvn/version "1.1.3"}
                  nrepl/nrepl                 {:mvn/version "1.8.0"}
-                 cider/cider-nrepl           {:mvn/version "0.63.1"}}
+                 cider/cider-nrepl           {:mvn/version "0.64.0"}}
    :main-opts   ["-m" "nrepl.cmdline" "--middleware" "[cider.nrepl/cider-middleware]"
                  "--interactive"]}
 
