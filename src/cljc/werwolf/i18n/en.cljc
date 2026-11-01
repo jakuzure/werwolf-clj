@@ -18,6 +18,9 @@
    :conn/connected    "connected"
    :conn/disconnected "disconnected — trying again…"
 
+   :update/available  "There is a new version. You keep your seat."
+   :update/reload     "Reload"
+
    :locale/de         "Deutsch"
    :locale/en         "English"
 

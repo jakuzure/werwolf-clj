@@ -15,6 +15,9 @@
    :conn/connected    "verbunden"
    :conn/disconnected "getrennt — versuche erneut zu verbinden…"
 
+   :update/available  "Es gibt eine neue Version. Dein Platz bleibt erhalten."
+   :update/reload     "Neu laden"
+
    :locale/de         "Deutsch"
    :locale/en         "English"
 

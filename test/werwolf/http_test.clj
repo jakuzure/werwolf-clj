@@ -82,3 +82,12 @@
       (is (= 200 (:status resp)))
       (is (= "application/json" (get-in resp [:headers "content-type"])))
       (is (re-matches #"\{\"version\":\"[0-9][^\"]*\",\"commit\":\"[0-9a-z]+\"\}" body) body))))
+
+(deftest the-bundle-fingerprint-follows-the-served-files
+  (testing "one short id for the page, the scripts and the stylesheet: what the
+            socket's hello tells a tab, so it can see a deploy went by"
+    (let [fp (http/bundle-fingerprint)]
+      (is (re-matches #"[0-9a-f]{16}" fp))
+      (is (= fp (http/bundle-fingerprint)) "stable while nothing changes")
+      (is (not= fp (subs (get-in (doto (GET "/") slurp-body) [:headers "ETag"]) 1 17))
+          "not merely the page's own tag: the page rarely changes, the script does"))))

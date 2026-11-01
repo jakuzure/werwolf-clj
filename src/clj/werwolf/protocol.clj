@@ -196,9 +196,12 @@
 
 (defn on-open
   "Greet the socket. The client needs the protocol version before it decides
-   whether it can talk to this server at all."
-  [deps sock]
-  (reply! deps sock {:type :server/hello :protocol proto/protocol-version}))
+   whether it can talk to this server at all, and the bundle fingerprint to
+   notice, on a reconnect, that a deploy has gone by (see
+   http/bundle-fingerprint). Absent rather than nil when the handler has none."
+  [{:keys [bundle] :as deps} sock]
+  (reply! deps sock (cond-> {:type :server/hello :protocol proto/protocol-version}
+                      bundle (assoc :bundle bundle))))
 
 (defn- normalise
   "Nobody types a room code the way it was printed. Done BEFORE validation, so

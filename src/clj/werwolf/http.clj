@@ -74,6 +74,24 @@
           (swap! etags assoc k tag)
           tag))))
 
+(defn bundle-fingerprint
+  "One short id for the files a tab loads: the page, the scripts (the voice
+   module is fetched lazily, so a deploy may change it alone) and the
+   stylesheet, as they are served right now. Whichever of them exist; a dev
+   server before its first build has only the page.
+
+   Sent in the socket's hello, so a tab that reconnects after a deploy can see
+   that the server now serves other files than the ones it runs. The tab cannot
+   know that by itself: the nix build is byte-identical for every commit that
+   does not change it, so the bundle carries no commit (see
+   werwolf.build-info), and the browser revalidates scripts only on a reload,
+   which is exactly what an open game tab never does."
+  []
+  (let [tags (keep #(some-> (io/resource (str "public/" %)) etag-for)
+                   ["index.html" "js/main.js" "js/audio.js" "css/main.css"])]
+    (subs (sha256-hex (java.io.ByteArrayInputStream. (.getBytes (str/join tags) "UTF-8")))
+          0 16)))
+
 (defn- resource-for
   "The classpath resource a successful static response came from. Only called
    for a 200, i.e. a path the resource handler already accepted, so this is the
@@ -261,7 +279,10 @@
 
 (defn handler [deps]
   (ring/ring-handler
-   (router deps)
+   ;; Fingerprinted once, when the server comes up: in production the jar
+   ;; never changes underneath it, and in development a rebuilt bundle is
+   ;; hot-loaded into the tab anyway, so a reconnect must not call it old.
+   (router (assoc deps :bundle (bundle-fingerprint)))
    (ring/routes
     ;; ring's mime table predates web app manifests and would send this one
     ;; with no type at all. Chrome is lenient about that, but the spec names

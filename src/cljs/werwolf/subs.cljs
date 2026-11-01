@@ -10,6 +10,16 @@
             [werwolf.i18n.core :as i18n]))
 
 (rf/reg-sub ::conn-status (fn [db _] (:conn/status db)))
+
+(defn update-available?
+  "The server serves a different bundle than the one this tab runs, and the
+   player has not waved that particular one away. Only ever offered, never
+   acted on: a reload mid-vote or mid-sentence would cost the player what they
+   were doing, while the old code keeps working until the wire changes."
+  [{:bundle/keys [loaded served dismissed]}]
+  (boolean (and loaded served (not= loaded served) (not= served dismissed))))
+
+(rf/reg-sub ::update-available? (fn [db _] (update-available? db)))
 (rf/reg-sub ::screen      (fn [db _] (:screen db)))
 (rf/reg-sub ::me          (fn [db _] (:me db)))
 (rf/reg-sub ::view        (fn [db _] (:view db)))

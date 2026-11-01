@@ -43,6 +43,13 @@
 
 (def initial-db
   {:conn/status :connecting
+   ;; Which bundle the server served when this tab loaded, which it serves
+   ;; now, and which the player has waved away: from :server/hello. NOT
+   ;; reset on leave: a tab runs the same code whatever room it is in, and
+   ;; forgetting would take the build after the next deploy for the one loaded.
+   :bundle/loaded    nil
+   :bundle/served    nil
+   :bundle/dismissed nil
    :screen      :landing
    :me          nil          ; {:room-id :player-id :host?} from :server/welcome
    :view        nil          ; the server's redacted state — the only game truth
@@ -574,8 +581,23 @@
 
 (defmethod handle-server :default [db _] db)
 
-(defmethod handle-server :server/hello [db msg]
-  (assoc db :server/protocol (:protocol msg)))
+(defmethod handle-server :server/hello [db {:keys [protocol bundle]}]
+  ;; The first hello says which files this tab was served; every later one
+  ;; (a reconnect) says what the server serves now. The tab cannot tell by
+  ;; itself: the bundle carries no commit, and a game tab never reloads.
+  (cond-> (assoc db :server/protocol protocol)
+    bundle (assoc :bundle/served bundle)
+    (and bundle (nil? (:bundle/loaded db))) (assoc :bundle/loaded bundle)))
+
+(defn dismiss-update [db]
+  (assoc db :bundle/dismissed (:bundle/served db)))
+
+(rf/reg-event-db ::dismiss-update (fn [db _] (dismiss-update db)))
+
+;; A plain reload. The seat is in localStorage and the resume hands the same
+;; game back, so the new code comes up where the old one left off.
+(rf/reg-fx ::reload-page (fn [_] (.reload js/location)))
+(rf/reg-event-fx ::reload-app (fn [_ _] {::reload-page true}))
 
 (defmethod handle-server :server/pong [db _] db)
 

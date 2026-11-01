@@ -1188,3 +1188,48 @@
     (is (nil? (wake/hold! true)))
     (is (nil? (wake/hold! false)))
     (is (nil? (wake/install!)))))
+
+;; ------------------------------------------------------------ new version ---
+
+(deftest a-changed-bundle-on-reconnect-offers-a-reload
+  (testing "the first hello says which bundle this tab was served; the tab
+            cannot know that itself, since the nix build carries no commit"
+    (let [db' (apply* db {:type :server/hello :protocol 1 :bundle "aaa"})]
+      (is (= "aaa" (:bundle/loaded db')))
+      (is (not (sub/update-available? db')))))
+  (testing "a reconnect to the same build changes nothing"
+    (let [db' (apply* db {:type :server/hello :protocol 1 :bundle "aaa"}
+                      {:type :server/hello :protocol 1 :bundle "aaa"})]
+      (is (not (sub/update-available? db')))))
+  (testing "a reconnect to a server serving other files: a deploy happened
+            since this tab loaded, and the tab still runs the old code"
+    (let [db' (apply* db {:type :server/hello :protocol 1 :bundle "aaa"}
+                      {:type :server/hello :protocol 1 :bundle "bbb"})]
+      (is (sub/update-available? db'))
+      (is (= "aaa" (:bundle/loaded db')) "what was loaded does not move")))
+  (testing "a hello without a fingerprint (a dev server before the first
+            build) never claims anything"
+    (let [db' (apply* db {:type :server/hello :protocol 1}
+                      {:type :server/hello :protocol 1})]
+      (is (not (sub/update-available? db'))))))
+
+(deftest a-dismissed-update-stays-dismissed-until-the-next-one
+  (let [db' (-> (apply* db {:type :server/hello :protocol 1 :bundle "aaa"}
+                        {:type :server/hello :protocol 1 :bundle "bbb"})
+                ev/dismiss-update)]
+    (is (not (sub/update-available? db')))
+    (testing "the same build again, after another reconnect, is still dismissed"
+      (is (not (sub/update-available?
+                (apply* db' {:type :server/hello :protocol 1 :bundle "bbb"})))))
+    (testing "yet another deploy is news again"
+      (is (sub/update-available?
+           (apply* db' {:type :server/hello :protocol 1 :bundle "ccc"}))))))
+
+(deftest leaving-a-room-keeps-what-is-known-about-the-bundle
+  (testing "the reset on leave must not forget which bundle this tab runs:
+            the next reconnect would take the new build for the one loaded"
+    (let [db' (:db (ev/leave-fx {:db (apply* db {:type :server/hello :protocol 1 :bundle "aaa"}
+                                             {:type :server/welcome :room-id "ABCD" :player-id 1
+                                              :host? true :token "t"})}
+                                [::ev/leave]))]
+      (is (= "aaa" (:bundle/loaded db'))))))

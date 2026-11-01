@@ -194,6 +194,20 @@
       [:div {:class "bg-amber-900/80 text-amber-100 px-4 py-2 text-sm text-center"}
        (t (keyword "conn" (name status)))])))
 
+(defn- update-banner
+  "A deploy went by while this tab was open. Offered, not forced: see
+   subs/update-available?."
+  []
+  (when @(rf/subscribe [::sub/update-available?])
+    [:div {:class "bg-sky-900/80 text-sky-100 px-4 py-2 text-sm flex items-center justify-between gap-3"}
+     [:span (t :update/available)]
+     [:span {:class "flex items-center gap-2 shrink-0"}
+      [:button {:class "px-3 py-1 rounded bg-sky-700 hover:bg-sky-600 text-sky-50"
+                :on-click #(rf/dispatch [::ev/reload-app])}
+       (t :update/reload)]
+      [:button {:class "px-2 opacity-70 hover:opacity-100"
+                :on-click #(rf/dispatch [::ev/dismiss-update])} "×"]]]))
+
 (defn- error-banner []
   (when-let [code @(rf/subscribe [::sub/error])]
     [:div {:class "bg-rose-900/90 text-rose-50 px-4 py-2 text-sm flex justify-between"}
@@ -2494,6 +2508,7 @@
                    :transition "background-color 1.2s ease"}}
      [room-glow light]
      [connection-banner]
+     [update-banner]
      [error-banner]
      [:div {:class "relative max-w-6xl mx-auto p-4 sm:p-6"}
       (case screen

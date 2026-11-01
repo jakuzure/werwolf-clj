@@ -811,3 +811,19 @@
           s (seat! deps {:type :client/create :name "Anna" :password secret})]
       (is (= [:malformed] (codes s)))
       (is (not (said-anywhere? s "Geheim"))))))
+
+(deftest a-new-socket-is-told-which-bundle-is-served
+  (testing "so a tab that reconnects after a deploy can tell its code is old:
+            the bundle itself carries no commit (the nix build is the same for
+            every commit that does not change it), but the server knows the
+            fingerprint of the files it serves"
+    (with-deps [deps]
+      (let [s (sock)]
+        (protocol/on-open (assoc deps :bundle "f00d") s)
+        (is (= "f00d" (:bundle (first (got s)))))))
+    (testing "and says nothing when the handler has none, rather than a nil
+              the client would have to special-case"
+      (with-deps [deps]
+        (let [s (sock)]
+          (protocol/on-open deps s)
+          (is (not (contains? (first (got s)) :bundle))))))))
