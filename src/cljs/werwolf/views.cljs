@@ -515,14 +515,23 @@
         here    [(:phase view) (:night view) cursor]
         skip    (cond (and cursor (contains? actions :gm/skip-role)) :gm/skip-role
                       (contains? actions :advance-phase)              :advance-phase)
+        ;; What his button does right now, as the server says it: in a room
+        ;; without a clock the night's calls, the morning and the closing of
+        ;; the ballot are his, and the button names each. Anything else is
+        ;; the override, worded as it always was.
+        step    @(rf/subscribe [::sub/next-step])
         fire!   (fn []
                   (rf/dispatch (if (= :gm/skip-role skip)
                                  [::ev/act-with :gm/skip-role {:role cursor}]
                                  [::ev/act :advance-phase]))
                   (rf/dispatch [::ev/form-set :skip-confirm nil]))
-        label   (if (= :gm/skip-role skip)
-                  (t :narrator/skip-role (str (i18n/icon-of cursor) " " (role-name cursor)))
-                  (t (if (seq owing) :narrator/advance :narrator/advance-free)))]
+        label   (case (:step step)
+                  :call       (t :narrator/call (str (i18n/icon-of (:role step)) " " (role-name (:role step))))
+                  :morning    (t :narrator/morning)
+                  :close-vote (t :narrator/close-vote)
+                  (if (= :gm/skip-role skip)
+                    (t :narrator/skip-role (str (i18n/icon-of cursor) " " (role-name cursor)))
+                    (t (if (seq owing) :narrator/advance :narrator/advance-free))))]
     [:div {:class "mt-2 space-y-2"}
      (if (seq owing)
        [:div {:class "flex flex-wrap items-center gap-1.5 text-sm" :data-testid "owing"}

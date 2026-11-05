@@ -353,20 +353,26 @@
 
 (defmethod handle :advance-phase
   ;; What it does is `phases/advance-events`' business: the next day phase, or,
-  ;; in a room without a clock, whatever the clock would have done. The second
-  ;; kind is logged as an override, because it ends a turn somebody else was
-  ;; owed — a Jäger's shot, a wolf's vote — and the table must be able to see
-  ;; that it was the Spielleiter and not the player who closed it. Letting the
-  ;; night fall on a verdict closes nobody's turn, so it is not one.
+  ;; in a room without a clock, whatever the clock would have done, and in a
+  ;; paced room the night's next call, the morning and the closed ballot
+  ;; (see `phases/next-step`). Only the override is logged, the one that ends
+  ;; a turn somebody else was owed, a Jäger's shot or a wolf's vote, because
+  ;; the table must be able to see that it was the Spielleiter and not the
+  ;; player who closed it. Letting the night fall on a verdict closes
+  ;; nobody's turn, and neither do a call, the morning or a ballot everybody
+  ;; has cast: a line for each call would also hand the table the turn
+  ;; boundaries the night keeps from it (view/night-progress?), since the
+  ;; Chronik is public and live.
   [state {:keys [player]}]
   (if-not (allowed? state player :advance-phase)
     (err :not-allowed {:action :advance-phase})
     (if-let [evs (phases/advance-events state)]
-      (if (or (next-phase (:phase state)) (phases/verdict-held? state))
-        evs
+      (if (and (= :end-turn (:step (phases/next-step state)))
+               (not (next-phase (:phase state))))
         (into [{:type :gm/forced :actor player :action :advance-phase
                 :detail {:phase (:phase state)}}]
-              evs))
+              evs)
+        evs)
       (err :cannot-advance {:phase (:phase state)}))))
 
 ;; ---- GM overrides -------------------------------------------------------
@@ -435,8 +441,10 @@
       (not (allowed? state player :gm/skip-role)) (err :not-allowed {:action :gm/skip-role})
       (not (contains? (set (phases/legal-choices state :gm/skip-role)) role))
       (err :invalid-choice {:role role})
-      :else [{:type :gm/forced :actor player :action :skip-role :detail {:role role}}
-             {:type :night/role-completed :role role}])))
+      ;; Ends the turn the way the clock would: a pack that has agreed still
+      ;; eats, a split one does not. See `phases/turn-cut-short`.
+      :else (into [{:type :gm/forced :actor player :action :skip-role :detail {:role role}}]
+                  (phases/turn-cut-short state)))))
 
 (defmethod handle :gm/reassign-role
   ;; The deal was wrong, or somebody has to be written out of one role and into

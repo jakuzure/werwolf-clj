@@ -67,10 +67,12 @@
 (defn- room-map [ctx room-id] (get @(:rooms ctx) room-id))
 
 (defn- begin!
-  "Narrated: start, then the Spielleiter begins the night."
+  "Narrated: start, then the Spielleiter begins the night and calls its first
+   role, as a room without a clock waits for him to (phases/paced?)."
   [ctx room-id]
   (room/submit! ctx room-id 0 {:type :start-game})
-  (room/submit! ctx room-id 0 {:type :begin-night}))
+  (room/submit! ctx room-id 0 {:type :begin-night})
+  (room/submit! ctx room-id 0 {:type :advance-phase}))
 
 (defn- tick-until
   "Tick second by second from `from` until `pred` holds or `limit-ms` is reached.
@@ -93,7 +95,10 @@
     (let [ph (phase ctx room-id)]
       (when (and (not= :discussion ph) (< guard 30))
         (if (= :night ph)
-          (room/submit! ctx room-id 0 {:type :gm/skip-role})
+          ;; The role being called is skipped; between two calls and at the
+          ;; morning there is nothing to skip, and his button moves the night.
+          (when-not (:ok? (room/submit! ctx room-id 0 {:type :gm/skip-role}))
+            (room/submit! ctx room-id 0 {:type :advance-phase}))
           (when-not (:ok? (room/submit! ctx room-id 0 {:type :advance-phase}))
             ;; The clock the hook re-arms from must move with the tick, or the
             ;; next phase begins, by the scheduler's clock, before this one

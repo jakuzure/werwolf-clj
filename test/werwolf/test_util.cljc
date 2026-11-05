@@ -76,16 +76,33 @@
                       :centre (roles/centre-for (vals assignments))}
                      {:type :phase/changed :phase :setup :deadline nil}]))))
 
+(defn advance!
+  "The Spielleiter presses his button: the next call, the morning, the closed
+   ballot, or the override, whatever `phases/next-step` says it is."
+  [state]
+  (let [r (engine/execute state {:type :advance-phase :player 0})]
+    (if (engine/error? r)
+      (throw (ex-info (str "advance rejected: " (:error r))
+                      {:error r :phase (:phase state) :cursor (:night-cursor state)}))
+      (:state r))))
+
 (defn narrated-game-with
-  "The same, past setup: night 1 has fallen and settled. Like `game-with`, the
-   election is marked held and the classic first night is on unless asked."
+  "The same, past setup: night 1 has fallen and settled, and the Spielleiter
+   has called its first role. A narrated room has no clock, so the night waits
+   for his call (see `phases/paced?`), and nearly every test here is about
+   what the called role then does; pass `{:called? false}` for the night as it
+   waits on him. Like `game-with`, the election is marked held and the
+   classic first night is on unless asked."
   ([assignments] (narrated-game-with assignments {}))
-  ([assignments {:keys [election?] :as opts}]
-   (first
-    (phases/settle
-     (-> (narrated-setup-with assignments opts)
-         (cond-> (not election?) (assoc :election-held? true))
-         (e/apply-event {:type :night/began :night 1}))))))
+  ([assignments {:keys [election? called?] :or {called? true} :as opts}]
+   (let [s (first
+            (phases/settle
+             (-> (narrated-setup-with assignments opts)
+                 (cond-> (not election?) (assoc :election-held? true))
+                 (e/apply-event {:type :night/began :night 1}))))]
+     (if (and called? (= :call (:step (phases/next-step s))))
+       (advance! s)
+       s))))
 
 (defn exec!
   "Run a command, THROWING on rejection. Tests must not silently no-op — that is

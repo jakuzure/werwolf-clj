@@ -365,6 +365,30 @@
          (every? #(contains? votes %) wolves)
          (some? (pack-choice state)))))
 
+(defn turn-cut-short
+  "The events that end the role being called without waiting for it, or nil
+   when none is being called. The clock's expiry, the Spielleiter's skip and
+   his advance in a room without a clock all go through here, so the three
+   agree on what a pack cut short eats.
+
+   For the wolves that means what it means at the table when the narrator
+   stops waiting: a pack that has agreed on one victim eats him, a pack still
+   split eats nobody. The clock used to hand a split pack whoever led the
+   vote, so that stalling could not buy the village a free night; the
+   playtest showed the other side of that coin, two wolves who could not come
+   round to each other being decided for. Silence is not dissent: a packmate
+   who never voted does not stop the others' agreement, just as uncast
+   ballots are abstentions by day. The skip used to eat nobody whatever the
+   ballots said while the clock in the same room ate the agreed victim, so
+   the button the Spielleiter saw and the clock he had switched off disagreed
+   about the same pack."
+  [state]
+  (let [cursor (:night-cursor state)]
+    (when cursor
+      (cond-> [{:type :night/role-completed :role cursor}]
+        (and (= :werwolf cursor) (pack-choice state))
+        (conj {:type :werewolf/chose :target (pack-choice state)})))))
+
 ;; --------------------------------------------------------- auto-events ---
 
 (defn pending-alive
@@ -501,24 +525,40 @@
                   (empty? (remove not-really-acting? (legal-actions state pid))))
                 hs))))
 
-(defn- night-auto [state]
-  (let [q (night-queue state)]
-    (cond
-      (empty? q)
-      (into [{:type :night/ended}]
-            ;; A night where nobody died has to say so. Otherwise the Chronik
-            ;; jumps from "the night falls" to "the village gathers" and players
-            ;; cannot tell a peaceful night from a missing entry. True on the
-            ;; first night by default, and whenever the Hexe's heal cancels the
-            ;; only death.
-            (if (empty? (pending-alive state))
-              [{:type :night/quiet :night (:night state)}
-               {:type :phase/changed :phase :day-reveal :deadline nil}]
-              [{:type :phase/changed :phase :day-reveal :deadline nil}]))
+(declare paced?)
 
-      ;; Point the cursor at whoever is next.
-      (not= (:night-cursor state) (first q))
-      [{:type :night/role-turn :role (first q)}]
+(defn- morning-events
+  "The events that end the night: its last line, the word that nobody died
+   when nobody did, and the day."
+  [state]
+  (into [{:type :night/ended}]
+        ;; A night where nobody died has to say so. Otherwise the Chronik
+        ;; jumps from "the night falls" to "the village gathers" and players
+        ;; cannot tell a peaceful night from a missing entry. True on the
+        ;; first night by default, and whenever the Hexe's heal cancels the
+        ;; only death.
+        (if (empty? (pending-alive state))
+          [{:type :night/quiet :night (:night state)}
+           {:type :phase/changed :phase :day-reveal :deadline nil}]
+          [{:type :phase/changed :phase :day-reveal :deadline nil}])))
+
+(defn- night-auto [state]
+  (let [q      (night-queue state)
+        cursor (:night-cursor state)]
+    (cond
+      ;; Every turn is done. In a paced room the village wakes on the
+      ;; Spielleiter's word (see `paced?`), everywhere else at once.
+      (empty? q)
+      (when-not (paced? state) (morning-events state))
+
+      ;; Point the cursor at whoever is next. In a paced room a finished turn
+      ;; leaves the cursor empty and the next call is the Spielleiter's. A
+      ;; cursor still on a role the queue has dropped, its holder's card
+      ;; rewritten mid-turn, is pointed on as before: the engine righting
+      ;; itself, not a call.
+      (not= cursor (first q))
+      (when-not (and (paced? state) (nil? cursor))
+        [{:type :night/role-turn :role (first q)}])
 
       :else
       (let [cursor (first q)]
@@ -641,12 +681,16 @@
         ;; the accusation step only added a round of waiting: the running
         ;; tally does what naming the accused did. The first day has no ballot
         ;; at all (see trial-day?) and ends when everybody says they are done.
+        ;;
+        ;; In a paced room the last answer does not close the day: the
+        ;; Spielleiter does, once everybody's is in (see `paced?`).
         :discussion
-        (if (trial-day? state)
-          (when (votes-done? state)
-            [{:type :phase/changed :phase :day-resolve :deadline nil}])
-          (when (ready-done? state)
-            (leave-day-phase state :discussion)))
+        (when-not (paced? state)
+          (if (trial-day? state)
+            (when (votes-done? state)
+              [{:type :phase/changed :phase :day-resolve :deadline nil}])
+            (when (ready-done? state)
+              (leave-day-phase state :discussion))))
 
         ;; A game rehydrated from before the day was one step, caught between
         ;; its old accusation and its old ballot. Back into the open vote, with
@@ -727,22 +771,9 @@
       (contains? timed-phases phase)
       (into [{:type :phase/timed-out :phase phase}]
             (case phase
-              ;; End the current role's turn. For the wolves that means what
-              ;; it means at the table when the narrator stops waiting: a pack
-              ;; that has agreed on one victim eats him, a pack still split
-              ;; eats nobody. The clock used to hand a split pack whoever led
-              ;; the vote, so that stalling could not buy the village a free
-              ;; night; the playtest showed the other side of that coin, two
-              ;; wolves who could not come round to each other being decided
-              ;; for. Silence is not dissent: a packmate who never voted does
-              ;; not stop the others' agreement, just as uncast ballots are
-              ;; abstentions by day.
-              :night
-              (let [cursor (:night-cursor state)]
-                (when cursor
-                  (cond-> [{:type :night/role-completed :role cursor}]
-                    (and (= :werwolf cursor) (pack-choice state))
-                    (conj {:type :werewolf/chose :target (pack-choice state)}))))
+              ;; End the current role's turn: `turn-cut-short`, which the
+              ;; Spielleiter's skip shares, so his button and the clock agree.
+              :night (turn-cut-short state)
 
               ;; The Jäger who never fires simply does not fire — the shot is
               ;; his to take, not the server's to guess. Same for a
@@ -771,34 +802,94 @@
    button of their own while there is a clock."
   #{:night :election :reaction})
 
+(defn paced?
+  "Does the Spielleiter call each step of the game himself? A room with a
+   narrator and no clock.
+
+   The playtest with bots at the table: a bot answers seconds after its role
+   is called, so the night ran from role to role and the day closed on the
+   last bot's ballot while the Spielleiter was still narrating the step
+   before. At a table the narrator waits for his own cue. So in such a room
+   the night's calls, the morning and the closing of the ballot wait for his
+   `:advance-phase`; a role's turn still ends by itself, as it always did.
+   With a clock the clock has that job, as it does when he goes missing and
+   `host-absent-events` switches it on for him. A host who plays with the
+   clock off paces nobody: his table has no narrator to wait for."
+  [state]
+  (boolean (and (e/narrator state) (not (timed? state)))))
+
+(defn next-step
+  "What the Spielleiter's `:advance-phase` does right now, as a fact for his
+   console, or nil when it has nothing to do:
+
+     {:step :call :role r}  the night's next role is called (paced rooms)
+     {:step :morning}       the night ends and the village wakes (paced rooms)
+     {:step :close-vote}    the ballot everybody has cast is closed (paced rooms)
+     {:step :close-day}     the first day's talk, everybody done, ends (paced rooms)
+     {:step :nightfall}     the night falls on the verdict
+     {:step :end-turn}      the override: a turn or phase ends with players still owed
+
+   Sent in his notes so the button can say what it does without the client
+   knowing the rule; `advance-events` is built from the same answer, so the
+   label and the deed cannot drift apart."
+  [state]
+  (let [phase (:phase state)]
+    (cond
+      ;; With a clock or without, like the day: calling the night after the
+      ;; verdict is the narrator's line, and nobody is owed anything here. Only
+      ;; the clock could end it otherwise, and a room whose clock is off would
+      ;; never see the night again.
+      (verdict-held? state) {:step :nightfall}
+
+      (contains? next-phase phase)
+      (cond
+        (and (paced? state) (trial-day? state) (votes-done? state))       {:step :close-vote}
+        (and (paced? state) (not (trial-day? state)) (ready-done? state)) {:step :close-day}
+        :else                                                             {:step :end-turn})
+
+      (and (paced? state) (= :night phase))
+      (let [cursor (:night-cursor state)]
+        (cond
+          (some? cursor)               {:step :end-turn}
+          (empty? (night-queue state)) {:step :morning}
+          :else                        {:step :call :role (first (night-queue state))}))
+
+      (and (not (timed? state)) (contains? clock-ended phase))
+      (when (seq (rest (timeout-events state))) {:step :end-turn})
+
+      :else nil)))
+
 (defn advance-events
-  "What `:advance-phase` does right now, or nil when it has nothing to do.
+  "What `:advance-phase` does right now, or nil when it has nothing to do;
+   `next-step` names the cases.
 
    In the day phases it is what it always was: the host moving the discussion
-   along. In a room WITHOUT a clock it also covers every phase only the clock
-   used to end, and there it does exactly what the clock would have done —
+   along, and in a paced room also the closing of a ballot everybody has
+   cast. In a room WITHOUT a clock it also covers every phase only the clock
+   used to end, and there it does exactly what the clock would have done:
    `timeout-events`, minus the line saying time ran out, because it did not.
 
    That is what makes switching the clock off safe. Without it a Jäger who has
    wandered off, a ballot one player never casts, or a wolf asleep at his phone
    would hold the table forever: nothing else ends those phases. Reusing the
    timeout rule rather than writing a second one means the Spielleiter's button
-   can never invent a decision the clock would not have."
+   can never invent a decision the clock would not have.
+
+   And in a paced room the steps the narrator used to get for free, the next
+   role's call and the morning: `night-auto`'s own events, handed to his
+   button instead of fired on their own."
   [state]
-  (let [phase (:phase state)]
-    (cond
-      (contains? next-phase phase)
-      (leave-day-phase state phase)
-
-      ;; With a clock or without, like the day: calling the night after the
-      ;; verdict is the narrator's line, and nobody is owed anything here. Only
-      ;; the clock could end it otherwise, and a room whose clock is off would
-      ;; never see the night again.
-      (verdict-held? state)
-      (nightfall state)
-
-      (and (not (timed? state)) (contains? clock-ended phase))
-      (some-> (seq (rest (timeout-events state))) vec))))
+  (let [phase (:phase state)
+        {:keys [step role]} (next-step state)]
+    (case step
+      :nightfall (nightfall state)
+      :call      [{:type :night/role-turn :role role}]
+      :morning   (morning-events state)
+      (:close-vote :close-day :end-turn)
+      (if (contains? next-phase phase)
+        (leave-day-phase state phase)
+        (some-> (seq (rest (timeout-events state))) vec))
+      nil)))
 
 (defn host-absent-events
   "What it MEANS that the host has gone missing, or nil when there is nothing

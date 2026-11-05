@@ -416,7 +416,10 @@
                 (recur (:state r) (inc turn) (into log (:events r)))))
             ;; Nobody can move: only the clock or the Spielleiter could. Stand
             ;; in for them with what they would do — the host starts the game
-            ;; and begins the night; everywhere else the clock's own expiry.
+            ;; and begins the night; then his button, which in a room without
+            ;; a clock calls the next role, wakes the village and closes the
+            ;; ballot (phases/paced?); and where he has nothing to press, the
+            ;; clock's own expiry.
             (case (:phase s)
               (:lobby :setup)
               (let [r (engine/execute s {:type (if (= :lobby (:phase s)) :start-game :begin-night) :player 0})]
@@ -424,7 +427,7 @@
                   {:ok? false :reason :deadlock :seed seed :players n :turn turn :phase (:phase s)
                    :error (:error r)}
                   (recur (:state r) (inc turn) (into log (:events r)))))
-              (let [evs (engine/timeout-events s)]
+              (let [evs (or (phases/advance-events s) (engine/timeout-events s))]
                 (if (empty? evs)
                   {:ok? false :reason :deadlock :seed seed :players n :turn turn :phase (:phase s)}
                   (let [[s' auto] (engine/settle (engine/apply-all s evs))]

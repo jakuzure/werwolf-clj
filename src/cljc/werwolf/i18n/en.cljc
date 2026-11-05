@@ -243,6 +243,9 @@
    :narrator/skip-role    (fn [role] (str "Skip " role))
    :narrator/advance      "Move on without waiting"
    :narrator/advance-free "Move on"
+   :narrator/call         (fn [role] (str "Call " role))
+   :narrator/morning      "Wake the village"
+   :narrator/close-vote   "Close the vote"
    :narrator/really       (fn [n] (str "Really? " n " still to act"))
    :narrator/keep-waiting "Keep waiting"
    :narrator/night    "Tonight"

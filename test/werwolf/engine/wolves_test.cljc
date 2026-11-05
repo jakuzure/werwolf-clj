@@ -86,17 +86,21 @@
                 (-> (tu/narrated-game-with table)
                     (exec! {:type :werewolf-vote :player 1 :target 3})
                     (exec! {:type :werewolf-vote :player 2 :target 4})))]
+    ;; A narrated room has no clock, so the morning waits for the
+    ;; Spielleiter's word as well (phases/paced?): `advance!` wakes the village.
     (testing "skipping the role"
       (let [s (split)
-            s (exec! s {:type :gm/skip-role :player 0 :role :werwolf})]
-        (is (nil? (chose s)))
+            s (exec! s {:type :gm/skip-role :player 0 :role :werwolf})
+            _ (is (nil? (chose s)))
+            s (tu/advance! s)]
         (is (= [1 2 3 4 5] (alive s)))
         (is (quiet? s))))
     (testing "and ending the turn as the clock would, in a room without one"
       (let [s (split)
             _ (is (contains? (phases/legal-actions s 0) :advance-phase))
-            s (exec! s {:type :advance-phase :player 0})]
-        (is (nil? (chose s)))
+            s (exec! s {:type :advance-phase :player 0})
+            _ (is (nil? (chose s)))
+            s (tu/advance! s)]
         (is (= [1 2 3 4 5] (alive s)))
         (is (quiet? s))))))
 

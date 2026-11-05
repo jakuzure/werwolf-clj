@@ -185,12 +185,17 @@
                           (or (not acts-on-even-nights?) (even? n))
                           (or (not skips-first-night?) (not= 1 n) (:first-night-kill? state)))))
           order  (filterv #(or (= % cursor) (calls? %)) (roles/night-acting-ids))
-          at     (if cursor (.indexOf order cursor) -1)]
+          at     (if cursor (.indexOf order cursor) -1)
+          ;; What the night has recorded as done, and not only what lies
+          ;; before the cursor: in a paced room the cursor is empty between
+          ;; two calls, and the strip has to read right while the
+          ;; Spielleiter decides whom to call next.
+          done   (set (get-in state [:night-actions :completed]))]
       (if progress?
         (into [] (map-indexed (fn [i r] {:role r
-                                         :state (cond (neg? at) :todo
-                                                      (< i at)  :done
-                                                      (= i at)  :current
+                                         :state (cond (= i at)  :current
+                                                      (done r)  :done
+                                                      (and (not (neg? at)) (< i at)) :done
                                                       :else     :todo)}))
               order)
         (mapv (fn [r] {:role r}) order)))))
@@ -416,6 +421,10 @@
                        ;; the holders of the role being called, which is why it
                        ;; lives here and nowhere public.
                        :owing  (phases/owing state)
+                       ;; What his button does right now: the next call, the
+                       ;; morning, the closed ballot, or the override. His
+                       ;; alone, since a call names the role about to wake.
+                       :next-step (phases/next-step state)
                        ;; Why his deal in :setup cannot begin. His alone: "no
                        ;; werewolf" said to the table would be a role leak.
                        :deal-problem (phases/deal-problem state)})})))

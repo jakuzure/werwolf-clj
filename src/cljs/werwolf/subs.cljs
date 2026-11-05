@@ -174,6 +174,11 @@
 ;; Who the game is still waiting on. Built by the server for the Spielleiter
 ;; only, so for everybody else this is simply empty.
 (rf/reg-sub ::owing :<- [::narrator-info] (fn [n _] (vec (:owing n))))
+;; What the Spielleiter's button does right now: {:step :call :role r},
+;; :morning, :close-vote, :close-day, :nightfall or :end-turn. Decided by the
+;; server (phases/next-step), so the label can name the deed without the
+;; client knowing when a room waits for him.
+(rf/reg-sub ::next-step :<- [::narrator-info] (fn [n _] (:next-step n)))
 
 ;; Which ROLE the narrator is calling right now, and which player holds it is
 ;; not in the view. Sent to whoever may watch the night move: the Spielleiter,
