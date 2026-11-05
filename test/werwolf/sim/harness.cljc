@@ -102,7 +102,10 @@
   [n seed]
   (let [hunter (first (filter roles/hunts? roles/special-ids))
         [s1 w] (rng/rand-int seed (max 1 (quot n 3)))
-        start  {hunter (min (inc w) (dec n))}
+        ;; Capped at the box like every other card: a third of eighteen is
+        ;; six wolves, and a deck the registry refuses is not a deck the
+        ;; lobby could have made.
+        start  {hunter (min (inc w) (dec n) (or (roles/max-count hunter) (dec n)))}
         [s2 order] (rng/shuffle s1 (remove #{hunter} roles/special-ids))]
     (first
      (reduce (fn [[deck s] id]

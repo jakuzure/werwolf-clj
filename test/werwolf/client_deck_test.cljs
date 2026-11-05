@@ -5,7 +5,8 @@
    shown back. It is per-room, like the view, so every way out of a seat has
    to drop it — or the next room a host opens starts from the last one's tap."
   (:require [cljs.test :refer [deftest is testing]]
-            [werwolf.events :as ev]))
+            [werwolf.events :as ev]
+            [werwolf.subs :as sub]))
 
 (def ^:private host-mid-tap
   "A host in a lobby whose last tap is still on its way."
@@ -14,6 +15,21 @@
                                   :host? true :token "t"})
         db     (assoc seated :view {:phase :lobby :deck {:werwolf 1}})]
     (:db (ev/deck-step-fx {:db db} [::ev/deck-step :werwolf 1 nil]))))
+
+(deftest the-stepper-stops-where-the-server-says
+  (testing "the limit on a wolf is the server's word, like every other: the
+            panel reads it from `:deck-roles` and keeps no number of its own"
+    (let [panel (fn [deck]
+                  (sub/deck-panel {:deck deck :deck-preview {:dealt deck}
+                                   :deck-roles [{:role :werwolf :max 4} {:role :seherin :max 1}]
+                                   :players {0 {} 1 {} 2 {} 3 {} 4 {} 5 {}}}
+                                  nil))
+          row   (fn [deck role] (first (filter #(= role (:role %)) (:rows (panel deck)))))]
+      (is (true? (:can-add? (row {:werwolf 3} :werwolf))))
+      (is (false? (:can-add? (row {:werwolf 4} :werwolf))))
+      (is (= {:werwolf 4} (sub/deck-step {:werwolf 4} :werwolf 1 4))
+          "and a tap past it asks for nothing")
+      (is (false? (:can-add? (row {:werwolf 4 :seherin 1} :seherin)))))))
 
 (deftest every-way-out-of-a-seat-drops-the-draft
   (is (= {:werwolf 2} (:deck/draft host-mid-tap)) "the precondition: a tap in flight")

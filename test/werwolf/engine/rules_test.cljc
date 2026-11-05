@@ -409,6 +409,31 @@
         (is (nil? (phases/deal-problem s)))
         (is (contains? (phases/legal-actions s 0) :begin-night))))))
 
+(deftest a-deal-with-more-of-a-role-than-the-box-holds-is-not-a-game
+  (testing "a Spielleiter rewrote cards in the Rollenvergabe until ten players
+            were Seherinnen, and the night began. The reassign stays free, it
+            is how he corrects a deal; the night is what waits"
+    (let [s (tu/narrated-setup-with {1 :werwolf 2 :seherin 3 :dorfbewohner
+                                     4 :dorfbewohner 5 :dorfbewohner})
+          s (exec! s {:type :gm/reassign-role :player 0 :target 3 :role :seherin})]
+      (is (= :seherin (tu/role-of s 3)) "the correction itself is not refused")
+      (is (= [:too-many-of-role {:role :seherin :max 1}] (phases/deal-problem s)))
+      (is (not (contains? (phases/legal-actions s 0) :begin-night)))
+      (is (= {:error :deal-unplayable
+              :detail {:problem [:too-many-of-role {:role :seherin :max 1}]}}
+             (second (try-exec s {:type :begin-night :player 0})))
+          "and refused with the card and its limit")
+      (let [s (exec! s {:type :gm/reassign-role :player 0 :target 3 :role :dorfbewohner})]
+        (is (nil? (phases/deal-problem s)))
+        (is (contains? (phases/legal-actions s 0) :begin-night)))))
+  (testing "a pack of five is one wolf more than the box holds, however big
+            the table"
+    (let [s (tu/narrated-setup-with (zipmap (range 1 13)
+                                            (concat (repeat 5 :werwolf)
+                                                    (repeat 7 :dorfbewohner))))]
+      (is (= [:too-many-of-role {:role :werwolf :max 4}] (phases/deal-problem s)))
+      (is (not (contains? (phases/legal-actions s 0) :begin-night))))))
+
 ;; ------------------------------------------------- the verdict's moment ---
 
 (def ^:private seven

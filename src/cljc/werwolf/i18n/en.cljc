@@ -125,6 +125,11 @@
    :deck/problem-no-werewolf    "At least one Werwolf has to play"
    :deck/problem-no-villager    "At least one card has to belong to the village"
    :deck/problem-too-many-werewolves "The werewolves must be fewer than everybody else together"
+   :deck/problem-too-many-of-role
+   (fn [role n]
+     (if (= 1 n)
+       (str "The box holds only one “" role "” card")
+       (str "The box holds only " (get {2 "two" 3 "three" 4 "four"} n n) " “" role "” cards")))
    :setup/problem               (fn [why] (str "The night cannot begin like this: " why))
 
    ;; ------------------------------------------------------------ phases ---
