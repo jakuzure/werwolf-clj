@@ -11,6 +11,7 @@
             [clojure.test :refer [deftest is testing]]
             [werwolf.engine.core :as engine]
             [werwolf.engine.events :as e]
+            [werwolf.engine.phases :as phases]
             [werwolf.engine.recap :as recap]
             [werwolf.engine.roles :as roles]
             [werwolf.engine.view :as view]
@@ -91,12 +92,24 @@
    {:type :mayor-appoint :player 5 :target 3}
    {:type :jaeger-shoot :player 5 :target 2}])
 
+(defn- paced
+  "The Spielleiter's calls, the morning and the closing of the ballot, pressed
+   as he would before the next scripted move. The room has no clock, so it
+   waits for each of them (phases/paced?); the script tells the players' game
+   and his overrides, not his pacing. Returns [state events-so-far]."
+  [[s evs]]
+  (if (#{:call :morning :close-vote :close-day} (:step (phases/next-step s)))
+    (let [r (engine/execute s {:type :advance-phase :player 0})]
+      (recur [(:state r) (into evs (:events r))]))
+    [s evs]))
+
 (defn- play
   "Run commands from a log, returning [state full-log]. Throws on a refusal —
    a script that silently stops halfway would test a different game."
   [events cmds]
-  (reduce (fn [[s evs] cmd]
-            (let [r (engine/execute s cmd)]
+  (reduce (fn [acc cmd]
+            (let [[s evs] (paced acc)
+                  r (engine/execute s cmd)]
               (when (engine/error? r)
                 (throw (ex-info "command rejected" {:cmd cmd :error r :phase (:phase s)})))
               [(:state r) (into evs (:events r))]))

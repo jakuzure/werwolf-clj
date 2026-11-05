@@ -127,12 +127,57 @@ async function everyone(pages, name, targetSeat) {
   return n;
 }
 
-/** Play one night: each role acts in registry order. */
-async function playNight(roles, { eat, inspect, guard }) {
-  if (inspect != null) await actAs(roles, 'Seherin', ACT.inspect, inspect, { optional: true });
-  if (guard != null) await actAs(roles, 'Beschützer', ACT.guard, guard, { optional: true });
-  if (eat != null) await actAs(roles, 'Werwolf', ACT.eat, eat);
+// The Spielleiter's own steps in a room without a clock: each role is called
+// by him, the village wakes on his word, the ballot closes when he says so and
+// the night falls on the verdict when he lets it. Each is the one button on
+// his Jetzt card, labelled with the step it takes; the labels that cut a
+// player's turn short ("… überspringen", "Weiter, ohne zu warten") are never
+// matched here, so a race can at worst press nothing.
+const STEP = {
+  call:      / rufen$/,
+  morning:   /^Das Dorf wecken$/,
+  closeVote: /^Abstimmung schließen$/,
+  nightfall: /^Weiter$/,
+};
+
+/**
+ * Press the Spielleiter's button once it offers `step`, then wait for its label
+ * to change: pressing the same label twice would take the NEXT step before
+ * anybody had acted. False when the step never came, which is how a role not
+ * at the table is passed over.
+ */
+async function pace(sl, step) {
+  const btn = sl.getByTestId('narrator-skip');
+  const offered = await expect(btn).toHaveText(step, { timeout: 10_000 }).then(() => true, () => false);
+  if (!offered) return false;
+  const label = (await btn.innerText()).trim();
+  await btn.click();
+  await expect(btn).not.toHaveText(label, { timeout: 10_000 }).catch(() => {});
+  return true;
+}
+
+/**
+ * Play one night: the Spielleiter (`sl`) calls each role in registry order and
+ * the role acts, then he wakes the village. A role that is not at the table is
+ * not called, so its act is optional and the call for it simply finds the
+ * next role's label instead.
+ */
+async function playNight(roles, { sl, eat, inspect, guard }) {
+  if (inspect != null) {
+    await pace(sl, STEP.call);
+    await actAs(roles, 'Seherin', ACT.inspect, inspect, { optional: true });
+  }
+  if (guard != null) {
+    await pace(sl, STEP.call);
+    await actAs(roles, 'Beschützer', ACT.guard, guard, { optional: true });
+  }
+  if (eat != null) {
+    await pace(sl, STEP.call);
+    await actAs(roles, 'Werwolf', ACT.eat, eat);
+  }
+  await pace(sl, STEP.call);
   await actAs(roles, 'Hexe', ACT.hexePass, null, { optional: true });
+  await pace(sl, STEP.morning);
 }
 
 /**
@@ -145,8 +190,13 @@ async function playNight(roles, { eat, inspect, guard }) {
  *
  * Each page votes ONCE. The buttons stay after a vote, so a sweep with
  * `everyone` afterwards would change votes rather than cast missing ones.
+ *
+ * The last vote no longer closes the ballot: the Spielleiter, `pages[0]`,
+ * does, once everybody's is in. The verdict then rests on the table until he
+ * lets the night fall, which is the caller's to do (or to look at first).
  */
 async function playDay(pages, { lynch, roles, election = false }) {
+  const [sl] = pages;
   // ONLY the first day holds an election, so waiting for one on later days burns
   // the full timeout against a button that will never appear — which is what
   // pushed the three-night game past its limit. Abstaining elects nobody, keeping
@@ -155,6 +205,7 @@ async function playDay(pages, { lynch, roles, election = false }) {
 
   if (lynch == null) {
     await everyone(pages, ACT.voteAbstain);
+    await pace(sl, STEP.closeVote);
     return;
   }
 
@@ -163,6 +214,7 @@ async function playDay(pages, { lynch, roles, election = false }) {
     if (r.seat === lynch) await tryAct(r.page, ACT.voteAbstain);
     else await tryAct(r.page, ACT.vote, lynch);
   }
+  await pace(sl, STEP.closeVote);
 }
 
-module.exports = { ACT, tryAct, actAs, everyone, playNight, playDay };
+module.exports = { ACT, STEP, pace, tryAct, actAs, everyone, playNight, playDay };

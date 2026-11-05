@@ -85,9 +85,14 @@
         (is (= {1 :werwolf 2 :werwolf} (:known-roles (view/view-for s 1)))
             "and the pack meets once the night has fallen")))))
 
+;; A narrated room has no clock, so between two roles, at the morning and at
+;; the end of the ballot the game waits for the Spielleiter (phases/paced?):
+;; `tu/advance!` is him pressing his button.
+
 (deftest the-narrator-sees-the-night-as-it-happens
   (let [s (tu/narrated-game-with cast-of-5)
         s (exec! s {:type :seherin-inspect :player 4 :target 2})
+        s (tu/advance! s)
         s (exec! s {:type :werewolf-vote :player 2 :target 5})
         sl (:night-info (view/view-for s 0))]
     (is (= {2 5} (:werewolf-votes sl)))
@@ -116,15 +121,19 @@
     (testing "and by day, nobody waits on him"
       (let [s (-> s
                   (exec! {:type :seherin-inspect :player 4 :target 2})
+                  tu/advance!
                   (exec! {:type :werewolf-vote :player 2 :target 5})
-                  (exec! {:type :hexe-pass :player 3}))
+                  tu/advance!
+                  (exec! {:type :hexe-pass :player 3})
+                  tu/advance!)
             _ (is (= :discussion (:phase s)))
             _ (is (not (contains? (phases/legal-actions s 0) :vote)))
             _ (doseq [pid (engine/living-ids s)]
                 (is (not (some #{0} (phases/legal-targets s pid :vote)))))
             s (reduce #(exec! %1 {:type :vote-abstain :player %2}) s (engine/living-ids s))]
-        (is (not= :discussion (:phase s))
-            "every PLAYER voted, and that was enough")))))
+        (is (= {:step :close-vote} (phases/next-step s))
+            "every PLAYER voted, and that was enough: the ballot is his to close")
+        (is (not= :discussion (:phase (tu/advance! s))))))))
 
 (deftest the-gm-cannot-kill-or-recast-the-narrator
   (let [s (tu/narrated-game-with cast-of-5)]
@@ -209,7 +218,8 @@
     (let [s (exec! s {:type :begin-night :player 0})]
       (is (= :night (:phase s)))
       (is (= 1 (:night s)))
-      (is (some? (:night-cursor s)) "the night is running")
+      (is (nil? (:night-cursor s)) "and waits for him to call the first role")
+      (is (= {:step :call :role :seherin} (phases/next-step s)))
       (is (= :not-allowed (:error (second (try-exec s {:type :begin-night :player 0}))))
           "once"))))
 
@@ -278,12 +288,16 @@
             Spielleiter lets the night fall"
     (let [s (tu/narrated-game-with cast-of-5)
           s (exec! s {:type :seherin-inspect :player 4 :target 2})
+          s (tu/advance! s)
           s (exec! s {:type :werewolf-vote :player 2 :target 1})
+          s (tu/advance! s)
           s (exec! s {:type :hexe-pass :player 3})
+          s (tu/advance! s)
           s (reduce (fn [s v] (exec! s (if (= 5 v)
                                          {:type :vote-abstain :player v}
                                          {:type :vote :player v :target 5})))
-                    s (engine/living-ids s))]
+                    s (engine/living-ids s))
+          s (tu/advance! s)]
       (is (= :day-resolve (:phase s)))
       (doseq [pid (keys (:players s))]
         (is (= :dorfbewohner (get-in (view/view-for s pid) [:known-roles 5]))
@@ -300,6 +314,7 @@
               that half-voted still eats"
       (let [s (tu/narrated-game-with cast-of-5)
             s (exec! s {:type :seherin-inspect :player 4 :target 2})
+            s (tu/advance! s)
             _ (is (= :werwolf (:night-cursor s)))
             s (exec! s {:type :advance-phase :player 0})]
         (is (not= :werwolf (:night-cursor s)))
@@ -310,7 +325,8 @@
     (testing "the election"
       (let [s (tu/narrated-game-with cast-of-5 {:first-night-kill? false :election? true})
             ;; On a peaceful first night only the Seherin wakes.
-            s (exec! s {:type :seherin-inspect :player 4 :target 2})]
+            s (exec! s {:type :seherin-inspect :player 4 :target 2})
+            s (tu/advance! s)]
         (is (= :election (:phase s)))
         (let [s (exec! s {:type :elect :player 1 :target 4})
               s (exec! s {:type :advance-phase :player 0})]
@@ -319,7 +335,8 @@
     (testing "a Jäger who never fires"
       (let [s (tu/narrated-game-with {1 :jaeger 2 :werwolf 3 :dorfbewohner
                                       4 :dorfbewohner 5 :dorfbewohner})
-            s (exec! s {:type :werewolf-vote :player 2 :target 1})]
+            s (exec! s {:type :werewolf-vote :player 2 :target 1})
+            s (tu/advance! s)]
         (is (= :reaction (:phase s)))
         (is (contains? (phases/legal-actions s 0) :advance-phase))
         (let [s (exec! s {:type :advance-phase :player 0})]

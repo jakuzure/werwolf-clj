@@ -247,6 +247,11 @@
    :narrator/skip-role    (fn [role] (str role " überspringen"))
    :narrator/advance      "Weiter, ohne zu warten"
    :narrator/advance-free "Weiter"
+   ;; Ohne Uhr ruft er jeden Schritt selbst auf (phases/paced?): die Rolle,
+   ;; den Morgen, das Ende der Abstimmung.
+   :narrator/call         (fn [role] (str role " rufen"))
+   :narrator/morning      "Das Dorf wecken"
+   :narrator/close-vote   "Abstimmung schließen"
    :narrator/really       (fn [n] (str "Wirklich? " n " " (if (= 1 n) "fehlt" "fehlen") " noch"))
    :narrator/keep-waiting "Doch warten"
    :narrator/night    "Nachtgeschehen"

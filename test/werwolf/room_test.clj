@@ -85,14 +85,17 @@
 
 (defn- advance-to-wolves!
   "Skip the night roles ahead of the werewolves using the GM override, so chat
-   tests do not depend on how the Seherin happens to play."
+   tests do not depend on how the Seherin happens to play. A narrated room has
+   no clock, so each role is called by the Spielleiter first (phases/paced?):
+   between two roles there is nothing to skip, and his button is the call."
   [ctx room-id]
   (loop [guard 0]
     (let [st (room/state-of ctx room-id)]
       (when (and (= :night (:phase st))
                  (not= :werwolf (:night-cursor st))
-                 (< guard 10))
-        (room/submit! ctx room-id (:host st) {:type :gm/skip-role})
+                 (< guard 12))
+        (room/submit! ctx room-id (:host st)
+                      {:type (if (:night-cursor st) :gm/skip-role :advance-phase)})
         (recur (inc guard))))))
 
 (defn- age-room!

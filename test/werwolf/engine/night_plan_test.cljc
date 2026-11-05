@@ -54,9 +54,13 @@
             (is (= roster (:night-plan v)) (str "seat " pid))
             (is (not (contains? v :night-cursor)) (str "seat " pid)))))
       (testing "and the list does not change as the night moves on"
+        ;; Each role is called by the Spielleiter in a room without a clock
+        ;; (phases/paced?): `tu/advance!` is his call.
         (let [s (-> s
                     (exec! {:type :amor-link :player 5 :a 1 :b 6})
-                    (exec! {:type :seherin-inspect :player 4 :target 2}))]
+                    tu/advance!
+                    (exec! {:type :seherin-inspect :player 4 :target 2})
+                    tu/advance!)]
           (is (= [[:amor :done] [:seherin :done] [:werwolf :current] [:hexe :todo]] (plan s 0)))
           (doseq [pid (others s)]
             (let [v (engine/view-for s pid)]
@@ -99,11 +103,16 @@
             nobody learns it from the list before he is called"
     (let [s (-> (tu/narrated-setup-with {1 :werwolf 2 :beschuetzer 3 :seherin
                                          4 :dorfbewohner 5 :dorfbewohner})
-                (exec! {:type :begin-night :player 0}))
+                (exec! {:type :begin-night :player 0})
+                ;; The Spielleiter calls the Seherin; the room has no clock.
+                tu/advance!)
           listed? (fn [s pid] (boolean (some #{:beschuetzer} (map :role (view/night-plan s pid)))))]
       (is (not (listed? s 0)))
       (is (not (listed? s 3)))
-      (let [s (exec! s {:type :seherin-inspect :player 3 :target 1})]
+      (let [s (-> s
+                  (exec! {:type :seherin-inspect :player 3 :target 1})
+                  ;; And calls him next; his button already names him.
+                  tu/advance!)]
         (is (= [:beschuetzer :current] (first (filter #(= :beschuetzer (first %)) (plan s 0))))
             "on the Spielleiter's list, who is calling him")
         (testing "and never on the players' list: joining it would say when he was called"

@@ -59,7 +59,7 @@ test.describe('a game played to the end', () => {
 
     // The wolf eats the villager; the village then condemns the Hexe, which
     // decides nothing — a wolf, the Seherin and the Jäger play on.
-    await playNight(roles, { inspect: seatOf(roles, 'Werwolf'), eat: seatOf(roles, 'Dorfbewohner') });
+    await playNight(roles, { sl, inspect: seatOf(roles, 'Werwolf'), eat: seatOf(roles, 'Dorfbewohner') });
     await playDay(pages, { lynch: seatOf(roles, 'Hexe'), roles, election: true });
 
     // Every screen, the Spielleiter's too, turns her card over, and it is still day.
@@ -84,12 +84,13 @@ test.describe('a game played to the end', () => {
     const g = await startAndDeal(browser);
     pages = g.pages;
     const { roles } = g;
+    const [sl] = pages;
     const wolf = seatOf(roles, 'Werwolf');
     const villager = seatOf(roles, 'Dorfbewohner');
 
     // Night one. The wolves eat the plain villager — deliberately not the Jäger,
     // whose dying shot would be a second thing happening at once.
-    await playNight(roles, { inspect: wolf, eat: villager });
+    await playNight(roles, { sl, inspect: wolf, eat: villager });
 
     // The first day: election, discussion, then the village hangs the wolf.
     await playDay(pages, { lynch: wolf, roles, election: true });
@@ -122,6 +123,7 @@ test.describe('a game played to the end', () => {
     const g = await startAndDeal(browser);
     pages = g.pages;
     const { roles } = g;
+    const [sl] = pages;
     const wolf = seatOf(roles, 'Werwolf');
     const seer = seatOf(roles, 'Seherin');
     const witch = seatOf(roles, 'Hexe');
@@ -131,7 +133,7 @@ test.describe('a game played to the end', () => {
     // Night one: eat the Jäger, and aim his dying shot at the villager. Two of
     // the four fall in one night, which is the only way a lone wolf gets there
     // before the Jäger takes HIM with him.
-    await playNight(roles, { inspect: wolf, eat: hunter });
+    await playNight(roles, { sl, inspect: wolf, eat: hunter });
     // His shot is a reaction, and the whole table waits on it.
     await actAs(roles, 'Jäger', ACT.shoot, villager);
 
@@ -141,11 +143,11 @@ test.describe('a game played to the end', () => {
     // Night two: the Seherin looks at the HEXE, not the wolf again — a target she
     // already knows is excluded from her list, so re-picking it would silently do
     // nothing and stall the night on her turn.
-    await playNight(roles, { inspect: witch, eat: seer });
+    await playNight(roles, { sl, inspect: witch, eat: seer });
     await playDay(pages, { lynch: null, roles });
 
     // Night three: the Hexe, and the wolf is alone.
-    await playNight(roles, { eat: witch });
+    await playNight(roles, { sl, eat: witch });
 
     for (const { page } of roles) {
       await expect(page.getByTestId('recap'))
