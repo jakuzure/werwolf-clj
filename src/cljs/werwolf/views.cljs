@@ -2248,7 +2248,7 @@
        ;; to lose any more, and this is the move the screen exists to offer —
        ;; asking 'really?' of the only way forward is friction, not safety.
        (when (contains? actions :leave)
-         [btn (t :game/new-round) #(rf/dispatch [::ev/leave])
+         [btn (t :game/leave-room) #(rf/dispatch [::ev/leave])
           {:tone (if (contains? actions :play-again) :quiet :primary)}])
        [table-record]
        ;; Below the way out rather than above it: the story is for reading at

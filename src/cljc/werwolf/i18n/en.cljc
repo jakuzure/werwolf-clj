@@ -283,7 +283,7 @@
    :chat/tag-dead "Dead"
    :chat/tag-narrator "Narrator"
    :game/paused         "Clock paused"
-   :game/new-round      "Back to the start"
+   :game/leave-room     "Leave the room"
    :game/play-again-wait "The narrator can start another game with all of you."
    :game/dead-hint      "You are dead — you are only watching now."
 

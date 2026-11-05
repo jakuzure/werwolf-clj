@@ -288,7 +288,7 @@
    :chat/tag-dead "Tote"
    :chat/tag-narrator "SL"
    :game/paused         "Zeit angehalten"
-   :game/new-round      "Zurück zum Start"
+   :game/leave-room     "Raum verlassen"
    :game/play-again-wait "Der Spielleiter kann gleich noch ein Spiel mit euch allen starten."
    :game/dead-hint      "Du bist tot — du schaust nur noch zu."
 
