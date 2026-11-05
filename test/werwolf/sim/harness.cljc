@@ -135,6 +135,25 @@
    rule eventually tests the duplicate."
   phases/no-target-actions)
 
+(defn- pack-lead
+  "The victim a simulated wolf falls in behind: the lowest seat among the
+   living players the pack's ballots name, or nil while none has voted.
+
+   Test-only behaviour, not a rule. The engine keeps the pack's turn open
+   until every wolf names the same victim, and wolves voting at random reach
+   that only by chance: with the vote on offer again after every cast, the
+   packs of fifteen players and up re-voted until the game hit `max-turns`.
+   So the first wolf picks at random and the rest follow him; whom a real
+   pack would settle on is nobody's business here. The lowest seat rather
+   than the first ballot, because the ballots are a map and a game must not
+   depend on its iteration order."
+  [state]
+  (let [living (set (e/living-ids state))]
+    (some->> (vals (get-in state [:night-actions :werewolf-votes] {}))
+             (filter living)
+             seq
+             (apply min))))
+
 (defn- build-command
   "Turn (player, action) into a full command, drawing any target from
    legal-targets. Returns [seed' cmd] or [seed' nil] when no legal target exists."
@@ -178,6 +197,16 @@
         [seed nil]
         [seed {:type :vote :player pid :target (apply min targets)}])
 
+      ;; The pack's ballot, for the same reason: the first wolf to vote picks
+      ;; at random and every packmate falls in behind him. See `pack-lead`.
+      (= :werewolf-vote action)
+      (let [lead (pack-lead state)]
+        (cond
+          (empty? targets)        [seed nil]
+          (some #{lead} targets)  [seed {:type :werewolf-vote :player pid :target lead}]
+          :else (let [[s1 t] (rng/rand-nth seed targets)]
+                  [s1 {:type :werewolf-vote :player pid :target t}])))
+
       ;; Everything else is "pick one legal target".
       :else
       (if (empty? targets)
@@ -195,7 +224,14 @@
         ;; See the :vote branch of `build-command`: one vote each, never an
         ;; abstention, and never the same ballot cast twice.
         :when  (not (and (#{:vote :vote-abstain} action)
-                         (or (= :vote-abstain action) (phases/voted-today? state pid))))]
+                         (or (= :vote-abstain action) (phases/voted-today? state pid))))
+        ;; And a wolf whose ballot already names the pack's lead has nothing
+        ;; to change: offered again, he would cast the same ballot for ever.
+        ;; See `pack-lead`.
+        :when  (not (and (= :werewolf-vote action)
+                         (some? (pack-lead state))
+                         (= (pack-lead state)
+                            (get-in state [:night-actions :werewolf-votes pid]))))]
     [pid action]))
 
 (defn step

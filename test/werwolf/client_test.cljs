@@ -933,6 +933,27 @@
       (is (false? (sub/voted? (assoc view :trial? false :votes {1 2})))
           "the first day has no ballot to have cast"))))
 
+(deftest a-wolf-who-has-voted-waits-for-the-pack
+  (testing "the pack's ballot stays open until the wolves agree, so the vote
+            is offered again; a wolf whose ballot is in is waiting, not dran"
+    (let [view {:phase :night :night-cursor :werwolf
+                :me {:id 1 :alive? true :role :werwolf}
+                :actions #{:chat :werewolf-vote}
+                :night-info {:werewolf-votes {}}}]
+      (is (false? (sub/voted? view)))
+      (is (true? (sub/my-turn? view)))
+      (let [cast (assoc-in view [:night-info :werewolf-votes] {1 3 2 4})]
+        (is (true? (sub/voted? cast)))
+        (is (false? (sub/my-turn? cast)) "waiting for the pack to come round")
+        (is (= 3 (sub/own-vote cast)) "and told where his own vote stands")
+        (is (false? (sub/asleep? cast false)) "awake, with the pack"))
+      (is (false? (sub/voted? (assoc-in view [:night-info :werewolf-votes] {2 4})))
+          "a packmate's ballot is not his")
+      (is (false? (sub/voted? (-> view
+                                  (assoc :actions #{:weisser-kill :weisser-pass :chat})
+                                  (assoc-in [:night-info :werewolf-votes] {1 3 2 3}))))
+          "the Weißer Werwolf's own turn is his, whatever the tally still shows"))))
+
 (deftest asleep-is-night-with-nothing-to-do-and-not-your-turn
   ;; No cursor in the fixture on purpose: a player in a narrated room is not
   ;; sent one, and asleep must come out the same without it.

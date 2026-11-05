@@ -388,12 +388,34 @@
 (rf/reg-sub ::table-record :<- [::view] (fn [v _] (table-record v)))
 
 (defn voted?
-  "Has this player cast today's ballot? It stays open to change, so the vote
-   buttons are still offered — but the game is no longer waiting on them."
-  [{:keys [phase trial? votes me]}]
-  (boolean (and (= :discussion phase) trial? me (contains? votes (:id me)))))
+  "Has this player cast the ballot that is open? Today's by day, the pack's
+   at night. Both stay open to change, so the vote buttons are still offered,
+   but the game is no longer waiting on him: by day for the rest of the
+   table, at night for the pack to come round to one victim.
+
+   The night's answer is his own entry in the tally the server sends the
+   pack, a fact about what he cast and not a rule worked out here. Only
+   while the vote is on offer: the Weißer Werwolf keeps his entry in the
+   tally through his own turn, two calls later, and that turn is his."
+  [{:keys [phase trial? votes night-info actions me]}]
+  (boolean (and me
+                (case phase
+                  :discussion (and trial? (contains? votes (:id me)))
+                  :night (and (contains? actions :werewolf-vote)
+                              (contains? (:werewolf-votes night-info) (:id me)))
+                  false))))
 
 (rf/reg-sub ::voted? :<- [::view] (fn [v _] (voted? v)))
+
+(defn own-vote
+  "Whom this player's standing ballot names, today's or the pack's; nil for
+   an abstention or no ballot. Read from what the server shows back, like
+   `voted?`."
+  [{:keys [phase votes night-info me]}]
+  (case phase
+    :discussion (get votes (:id me))
+    :night (get-in night-info [:werewolf-votes (:id me)])
+    nil))
 
 (defn my-turn?
   "Is the game waiting on this player? A move of their own to make, not a vote

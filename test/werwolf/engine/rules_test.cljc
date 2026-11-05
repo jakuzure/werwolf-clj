@@ -347,11 +347,13 @@
                            4 :dorfbewohner 5 :dorfbewohner})
           s (exec! s {:type :werewolf-vote :player 1 :target 0})
           s (exec! s {:type :leave :player 1})
-          s (exec! s {:type :werewolf-vote :player 2 :target 5})
+          s (exec! s {:type :werewolf-vote :player 2 :target 4})
+          _ (is (= :werwolf (:night-cursor s))
+                "his ballot for seat 0 is nobody's say, and seat 3 has not voted")
           s (exec! s {:type :werewolf-vote :player 3 :target 4})]
       (is (false? (get-in s [:players 4 :alive?]))
-          "the living pack split 1–1, which breaks to the lower seat")
-      (is (true? (get-in s [:players 0 :alive?])) "not to the departed wolf's pick"))))
+          "the two living wolves agreed, and that is the whole pack")
+      (is (true? (get-in s [:players 0 :alive?])) "not the departed wolf's pick"))))
 
 (deftest the-pack-does-not-eat-somebody-who-has-left
   (testing "one wolf's victim walks out before the other wolf votes. The pack
@@ -896,7 +898,9 @@
           (is (= (alive s) (alive (first (phases/settle s'))))))))))
 
 (deftest wolves-who-run-out-of-time-still-eat
-  (testing "deciding nothing would hand the village a free night for stalling"
+  (testing "one wolf named a victim and the other said nothing: silence is
+            not dissent, so the pack had agreed and the clock does not take
+            that away"
     (let [s (tu/game-with {0 :dorfbewohner 1 :werwolf 2 :werwolf 3 :seherin 4 :jaeger})
           s (exec! s {:type :seherin-inspect :player 3 :target 1})
           ;; Only ONE of the two wolves votes, then the clock runs out.

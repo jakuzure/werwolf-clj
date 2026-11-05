@@ -302,6 +302,7 @@
    ;; table has to be able to say it out loud and be understood by everyone at it.
    :turn/yours   "Your turn"
    :turn/hint    "Choose your move"
+   :turn/pack-hint "The night moves on once you have agreed on a victim. Until then you can change your vote."
    :turn/urgent  "Everyone is waiting for you"
    :turn/calling (fn [role] (str "The Spielleiter calls: " role))
    :turn/narrating "You are running the game"
