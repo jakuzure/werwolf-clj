@@ -86,14 +86,16 @@ test.describe('a real game', () => {
     }
     await expect(sl.getByTestId('my-role')).toHaveText(DE.narrator);
 
-    // He rearranges the deal: the villager becomes a second Jäger, and only that
-    // player's own card changes.
+    // He rearranges the deal: the Jäger becomes a second villager, and only that
+    // player's own card changes. A villager rather than a second special: the
+    // box holds one of each, and the night does not fall on a deal it does not
+    // hold, so a second Jäger would leave him without the button below.
     const roles = [];
     for (const p of players) roles.push(await myRole(p));
-    const villager = roles.indexOf('Dorfbewohner');
-    const villagerSeat = myIdFrom(frames[villager + 1]);
-    await sl.getByTestId(`assign-${villagerSeat}`).selectOption('jaeger');
-    await expect(players[villager].getByTestId('my-role')).toHaveText('Jäger', { timeout: 15_000 });
+    const hunter = roles.indexOf('Jäger');
+    const hunterSeat = myIdFrom(frames[hunter + 1]);
+    await sl.getByTestId(`assign-${hunterSeat}`).selectOption('dorfbewohner');
+    await expect(players[hunter].getByTestId('my-role')).toHaveText('Dorfbewohner', { timeout: 15_000 });
 
     await sl.getByRole('button', { name: DE.beginNight }).click();
     await expect(sl.getByRole('heading', { name: 'Nacht' })).toBeVisible({ timeout: 15_000 });

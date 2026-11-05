@@ -113,9 +113,14 @@
     (is (= :invalid-count (:error (refused {:werwolf 1.5}))))
     (is (= :invalid-deck (:error (refused [[:werwolf 1]]))))
     (testing "no deck holds more cards than the room has seats"
-      (is (= {:error :deck-too-large :detail {:max 18}} (refused {:werwolf 19}))))
-    (testing "wolves have no limit but the table"
-      (is (= {:werwolf 5} (:deck (set-deck s {:werwolf 5})))))))
+      (is (= {:error :deck-too-large :detail {:max 5}}
+             (second (try-exec (assoc s :max-players 5)
+                               {:type :gm/set-deck :player 0
+                                :deck {:werwolf 4 :seherin 1 :hexe 1}})))))
+    (testing "the box holds four wolves, and that is where the pack stops"
+      (is (= {:werwolf 4} (:deck (set-deck s {:werwolf 4}))))
+      (is (= {:error :too-many-of-role :detail {:role :werwolf :max 4}}
+             (refused {:werwolf 5}))))))
 
 ;; ------------------------------------------------------------- the start ---
 
@@ -174,6 +179,40 @@
         (is (nil? (phases/deck-problem s)))
         (let [s (exec! s {:type :gm/toggle-narrated :player 0})]
           (is (= :too-many-roles (phases/deck-problem s))))))))
+
+(deftest the-box-holds-one-of-each-special-and-four-wolves
+  (testing "a second Seherin is a card the box does not have, and the problem
+            names the card and the limit, so the banner can say which"
+    (is (= [:too-many-of-role {:role :seherin :max 1}]
+           (roles/cards-problem [:werwolf :seherin :seherin :dorfbewohner :dorfbewohner]))))
+  (testing "four wolves are the box's, a fifth is not"
+    (let [table (fn [wolves] (into (vec (repeat wolves :werwolf)) (repeat 8 :dorfbewohner)))]
+      (is (nil? (roles/cards-problem (table 4))))
+      (is (= [:too-many-of-role {:role :werwolf :max 4}]
+             (roles/cards-problem (table 5))))))
+  (testing "villagers fill whatever the box leaves: as many as there are seats"
+    (is (nil? (roles/cards-problem (into [:werwolf] (repeat 17 :dorfbewohner))))))
+  (testing "a card the box does not hold comes before how the cards play:
+            five wolves against three villagers is both, and the fifth wolf
+            is what he has to take back"
+    (is (= [:too-many-of-role {:role :werwolf :max 4}]
+           (roles/cards-problem (into (vec (repeat 5 :werwolf)) (repeat 3 :dorfbewohner))))))
+  (testing "two cards over: named in the menu's order, on every platform"
+    (is (= [:too-many-of-role {:role :werwolf :max 4}]
+           (roles/cards-problem (concat (repeat 2 :seherin) (repeat 5 :werwolf)
+                                        (repeat 10 :dorfbewohner))))))
+  (testing "the lobby's deck is asked the same question. The menu never
+            builds such a deck, but a log from before the wolves had a limit
+            replays into one, and that room may not start as it stands"
+    (let [s (e/apply-event (lobby 12) {:type :deck/set :deck {:werwolf 5}})]
+      (is (= [:too-many-of-role {:role :werwolf :max 4}] (phases/deck-problem s)))
+      (is (= [:too-many-of-role {:role :werwolf :max 4}]
+             (:deck-problem (view/view-for s 3))))
+      (is (not (contains? (phases/legal-actions s 0) :start-game)))
+      (is (= {:error :deck-unplayable
+              :detail {:problem [:too-many-of-role {:role :werwolf :max 4}]}}
+             (second (try-exec s {:type :start-game :player 0}))))
+      (is (nil? (phases/deck-problem (set-deck s {:werwolf 4}))) "one fewer, and it is a deck"))))
 
 (deftest the-narrators-table-is-dealt-the-chosen-deck
   (let [s (-> (lobby 6 {:narrated? true})
@@ -234,7 +273,8 @@
     (is (= roles/special-ids (mapv :role roles-menu)))
     (is (not (some #{:dorfbewohner} (map :role roles-menu))))
     (is (= (set (remove #{:dorfbewohner} roles/all-ids)) (set (map :role roles-menu))))
-    (is (= {:role :werwolf :max nil} (first roles-menu)) "the pack first")
+    (is (= {:role :werwolf :max 4} (first roles-menu))
+        "the pack first, and the box holds four of them: the stepper stops there")
     (is (= 1 (:max (first (filter #(= :seherin (:role %)) roles-menu)))))))
 
 ;; ------------------------------------------------- the Spielleiter's deal ---

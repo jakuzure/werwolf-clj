@@ -171,6 +171,21 @@
       (is (= :not-host (:error (second (try-exec s {:type :gm/reassign-role :player 1
                                                     :target 2 :role :hexe}))))))))
 
+(deftest the-night-does-not-fall-on-two-seherinnen
+  (testing "the deal he rearranged holds a card the box does not: he is told
+            which, and how many of it there are, and nobody else is told
+            anything"
+    (let [s (tu/narrated-setup-with cast-of-5)
+          s (exec! s {:type :gm/reassign-role :player 0 :target 1 :role :seherin})]
+      (is (not (contains? (phases/legal-actions s 0) :begin-night)))
+      (is (= [:too-many-of-role {:role :seherin :max 1}]
+             (get-in (view/view-for s 0) [:narrator-info :deal-problem])))
+      (is (nil? (:narrator-info (view/view-for s 4)))
+          "the Seherin herself does not learn there is a second one")
+      (is (nil? (:narrator-info (view/view-for s 1))))
+      (doseq [pid (range 6)]
+        (is (nil? (engine/redaction-leaks? s pid)) (str "seat " pid))))))
+
 (deftest a-dealt-table-is-not-a-decided-one
   (testing "while he is arranging the cards, a table he has momentarily left
             without a wolf has not been won by the village"

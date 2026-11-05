@@ -127,6 +127,14 @@
    :deck/problem-no-werewolf    "Mindestens ein Werwolf muss mitspielen"
    :deck/problem-no-villager    "Mindestens eine Karte muss zum Dorf gehören"
    :deck/problem-too-many-werewolves "Die Werwölfe müssen weniger sein als alle anderen zusammen"
+   ;; Der Rollenname steht in Anführungszeichen statt im Satz: „eine Seherin“,
+   ;; aber „ein Jäger“ und „vier Werwölfe“ bräuchten Artikel und Plural, die
+   ;; kein Wörterbuch hier hat.
+   :deck/problem-too-many-of-role
+   (fn [role n]
+     (if (= 1 n)
+       (str "Im Karton liegt nur eine Karte „" role "“")
+       (str "Im Karton liegen nur " (get {2 "zwei" 3 "drei" 4 "vier"} n n) " Karten „" role "“")))
    :setup/problem               (fn [why] (str "So kann die Nacht nicht beginnen: " why))
 
    ;; ------------------------------------------------------------ phases ---

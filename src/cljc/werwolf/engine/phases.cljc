@@ -831,7 +831,9 @@
   "Why the Spielleiter's deal cannot be played as it stands, or nil. Only in
    :setup, where he rearranges the cards by hand: the night does not fall on a
    table of nothing but villagers — the game would be decided before anybody
-   woke. The same reasons as the lobby's deck; see `roles/cards-problem`.
+   woke. Nor on ten Seherinnen: he may rewrite any card to any role, that is
+   his correction tool, and this is where the box's limits catch up with him.
+   The same reasons as the lobby's deck; see `roles/cards-problem`.
 
    The cards of the living only. A player who walks out in :setup is dead
    with his card turned over; counted, the only wolf leaving still looked

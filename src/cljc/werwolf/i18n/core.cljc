@@ -146,14 +146,21 @@
 
 (defn deck-problem-text
   "Why the deck cannot be dealt, in a sentence. `specials` and `players` only
-   matter for the one problem that is about numbers."
+   matter for the one problem that is about numbers.
+
+   A problem is a bare code, or `[code detail]` where the code alone would not
+   tell the host what to take back: a card over the box's limit names the
+   card, and the sentence has to as well."
   [locale problem specials players]
-  (case problem
-    :too-many-roles (t locale :deck/problem-too-many-roles specials players)
-    :no-werewolf    (t locale :deck/problem-no-werewolf)
-    :no-villager    (t locale :deck/problem-no-villager)
-    :too-many-werewolves (t locale :deck/problem-too-many-werewolves)
-    nil))
+  (let [[code detail] (if (keyword? problem) [problem] problem)]
+    (case code
+      :too-many-roles (t locale :deck/problem-too-many-roles specials players)
+      :no-werewolf    (t locale :deck/problem-no-werewolf)
+      :no-villager    (t locale :deck/problem-no-villager)
+      :too-many-werewolves (t locale :deck/problem-too-many-werewolves)
+      :too-many-of-role (t locale :deck/problem-too-many-of-role
+                           (role-name locale (:role detail)) (:max detail))
+      nil)))
 
 ;; ---------------------------------------------------------------- log lines ---
 

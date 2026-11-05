@@ -250,10 +250,21 @@
              (i18n/deck-summary locale {:dorfbewohner 3 :seherin 1 :amor 0}))
           "villagers last, and a zero is not a card")
       (is (not (untranslated? (i18n/deck-summary locale {}))))
-      (doseq [p [:too-many-roles :no-werewolf :no-villager]]
+      (doseq [p [:too-many-roles :no-werewolf :no-villager :too-many-werewolves
+                 [:too-many-of-role {:role :seherin :max 1}]]]
         (is (not (untranslated? (i18n/deck-problem-text locale p 6 5))) (str p)))
       (is (str/includes? (i18n/deck-problem-text locale :too-many-roles 6 5) "5")
-          "the table size is the number the host has to compare against"))))
+          "the table size is the number the host has to compare against")
+      (testing "a card the box has fewer of names the card and the limit: the
+                Spielleiter with ten Seherinnen has to know which card to take
+                back, and the text is the only place he is told"
+        (let [text (fn [role n] (i18n/deck-problem-text
+                                 locale [:too-many-of-role {:role role :max n}] nil nil))]
+          (is (str/includes? (text :seherin 1) (i18n/role-name locale :seherin)))
+          (is (str/includes? (text :werwolf 4) (i18n/role-name locale :werwolf)))
+          (is (str/includes? (text :werwolf 4) (get {:de "vier" :en "four"} locale)))
+          (is (not (str/includes? (text :seherin 1) "1"))
+              "one card is a word, not a figure"))))))
 
 (deftest a-deck-built-step-by-step-is-one-line-in-the-chronik
   (testing "every stepper tap logs the whole deck, and a run of them is one

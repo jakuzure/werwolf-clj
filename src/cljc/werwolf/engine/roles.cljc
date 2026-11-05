@@ -54,7 +54,11 @@
     ;; (:knows-teammates?), not from meeting at night, so skipping the turn
     ;; loses only their night-1 whisper.
     :skips-first-night? true
-    :max-count         nil}
+    ;; The box holds four Werwolf cards. `default-composition` never deals
+    ;; more, so the limit only ever binds a deck or a deal somebody made by
+    ;; hand: a Spielleiter cannot make a fifth wolf out of a card he does not
+    ;; have.
+    :max-count         4}
 
    :dorfbewohner
    {:id                :dorfbewohner
@@ -386,9 +390,18 @@
 (defn cards-problem
   "Why these cards, one per player, are not a game, or nil when they are.
 
+     [:too-many-of-role {:role r :max n}]  more of a card than the box holds
      :no-werewolf          nobody hunts the village
      :no-villager          nobody but the wolves — the game is over before it starts
      :too-many-werewolves  the wolf team is as big as everyone else together
+
+   The box is checked first, and names the card with its limit, because the
+   bare code would not tell the Spielleiter what to take back. A playtest
+   Spielleiter rewrote cards in the Rollenvergabe until ten players were
+   Seherinnen, and the night began: `:gm/reassign-role` ignores `:max-count`
+   on purpose, it is how a deal is corrected, so the start rule is where the
+   box's limits have to bind. In `special-ids` order, so a deal two cards over
+   names the same one on every platform.
 
    :no-werewolf asks for a card that HUNTS, not merely one on the werewolf team.
    The Weißer Werwolf alone is on that team and kills only wolves; with no pack
@@ -402,13 +415,21 @@
    deal. Automatic decks never come close — a quarter of the table at most.
 
    Asked of the lobby's deck and of the Spielleiter's hand-made deal alike, so
-   the two cannot disagree about what a game is."
+   the two cannot disagree about what a game is. `deck-errors` has already
+   refused a lobby deck over the box's limits; a log from before the wolves
+   had one replays into such a deck, and this is what stops it starting."
   [cards]
-  (let [wolves (count (filter #(= :werewolf (team-of %)) cards))]
-    (cond
-      (not (some hunts? cards))           :no-werewolf
-      (= wolves (count cards))            :no-villager
-      (>= (* 2 wolves) (count cards))     :too-many-werewolves)))
+  (let [counts (frequencies cards)
+        wolves (count (filter #(= :werewolf (team-of %)) cards))]
+    (or (some (fn [id]
+                (let [limit (max-count id)]
+                  (when (and limit (> (get counts id 0) limit))
+                    [:too-many-of-role {:role id :max limit}])))
+              special-ids)
+        (cond
+          (not (some hunts? cards))           :no-werewolf
+          (= wolves (count cards))            :no-villager
+          (>= (* 2 wolves) (count cards))     :too-many-werewolves))))
 
 (defn deck-problem
   "Why a custom deck cannot be dealt to a table of n, or nil when it can:
