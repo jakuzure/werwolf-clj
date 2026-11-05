@@ -324,6 +324,9 @@
    :stage/round       (fn [n] (str "Runde " n))
    :stage/called-label "Die Nacht ruft"
    :stage/call-label "Rufe auf, der Reihe nach"
+   ;; Über der bloßen Liste, die Mitspieler mit Spielleitung sehen: welche
+   ;; Rollen die Nacht ruft, nicht wie weit sie ist.
+   :stage/roster-label "Diese Nacht werden gerufen"
    :turn/asleep "Du schläfst"
    :turn/asleep-next (fn [role] (str "Als Nächstes: " role))
    :board/show (fn [n] (str "Spielbrett zeigen (" n ")"))

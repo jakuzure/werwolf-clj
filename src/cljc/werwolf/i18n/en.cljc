@@ -315,6 +315,7 @@
    :stage/round       (fn [n] (str "Round " n))
    :stage/called-label "Tonight calls"
    :stage/call-label "Call, in order"
+   :stage/roster-label "Called tonight, in order"
    :turn/asleep "You are asleep"
    :turn/asleep-next (fn [role] (str "Next up: " role))
    :board/show (fn [n] (str "Show the board (" n ")"))
