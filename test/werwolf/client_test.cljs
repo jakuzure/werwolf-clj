@@ -934,20 +934,34 @@
           "the first day has no ballot to have cast"))))
 
 (deftest asleep-is-night-with-nothing-to-do-and-not-your-turn
-  (let [v {:phase :night :night-cursor :hexe :me {:id 1 :alive? true :role :seherin}}]
+  ;; No cursor in the fixture on purpose: a player in a narrated room is not
+  ;; sent one, and asleep must come out the same without it.
+  (let [v {:phase :night :actions #{:leave :set-locale} :me {:id 1 :alive? true :role :seherin}}]
     (is (true? (sub/asleep? v false)))
     (is (false? (sub/asleep? v true)) "with a move to make you are awake")
     (is (false? (sub/asleep? (assoc v :phase :discussion) false)))
     (is (false? (sub/asleep? (assoc-in v [:me :alive?] false) false)) "the dead watch")
     (is (false? (sub/asleep? (assoc-in v [:me :narrator?] true) false)))
-    (testing "a wolf who has voted waits for the pack, awake"
-      (is (false? (sub/asleep? (assoc v :night-cursor :werwolf :me {:id 1 :alive? true :role :werwolf}) false)))
-      (is (false? (sub/asleep? (assoc v :night-cursor :werwolf :me {:id 1 :alive? true :role :weisser-werwolf}) false))))))
+    (testing "a wolf who has voted waits for the pack, awake: the server keeps
+              the pack's chat open for him, and for nobody else asleep"
+      (is (false? (sub/asleep? (assoc v :actions #{:chat :leave :set-locale}
+                                      :me {:id 1 :alive? true :role :werwolf}) false)))
+      (is (false? (sub/asleep? (assoc v :actions #{:chat :leave :set-locale}
+                                      :me {:id 1 :alive? true :role :weisser-werwolf}) false))))))
 
 (deftest next-up-is-the-first-role-still-to-come
   (is (= :hexe (sub/next-up [{:role :seherin :state :done} {:role :werwolf :state :current}
                              {:role :hexe :state :todo}])))
-  (is (nil? (sub/next-up [{:role :hexe :state :current}]))))
+  (is (nil? (sub/next-up [{:role :hexe :state :current}])))
+  (is (nil? (sub/next-up [{:role :seherin} {:role :hexe}]))
+      "a roster without states, which a narrated room's players get, names nobody"))
+
+(deftest a-plan-without-states-is-the-roster-not-the-progress
+  (testing "the strip tells the two apart by shape alone; which seat gets which
+            is the server's decision"
+    (is (true? (sub/night-progress? [{:role :amor :state :current} {:role :hexe :state :todo}])))
+    (is (false? (sub/night-progress? [{:role :amor} {:role :hexe}])))
+    (is (false? (sub/night-progress? [])))))
 
 (deftest the-ballot-counts-as-the-verdict-does
   (let [v {:phase :discussion :trial? true :votes-needed 3 :mayor 4

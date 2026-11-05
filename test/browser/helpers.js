@@ -14,9 +14,11 @@ const kw = (s) => transit.keyword(s);
  *
  * Frames are inspected STRUCTURALLY rather than by matching role words in the
  * raw text. A regex cannot tell a role from a role BELONGING to somebody: an
- * earlier version flagged the LiveKit room name `werwolf-ply3` and the public
- * `:night-cursor`, neither of which is a leak. This mirrors what the engine's own
- * `foreign-roles-in-view` does — walk the structure and ask whose role it is.
+ * earlier version flagged the LiveKit room name `werwolf-ply3` and the
+ * `:night-cursor`, a role with nobody's name on it (and since then sent to the
+ * Spielleiter alone in a narrated room). Neither is a leak. This mirrors what
+ * the engine's own `foreign-roles-in-view` does: walk the structure and ask
+ * whose role it is.
  */
 function readFrame(raw) {
   try { return reader.read(raw); } catch (_) { return null; }

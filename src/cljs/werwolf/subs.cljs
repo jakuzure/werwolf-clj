@@ -175,31 +175,44 @@
 ;; only, so for everybody else this is simply empty.
 (rf/reg-sub ::owing :<- [::narrator-info] (fn [n _] (vec (:owing n))))
 
-;; Which ROLE the narrator is calling right now. Public by design — a human
-;; narrator says it out loud ("Werwölfe, wacht auf") — and which player holds it
-;; is not in the view. This is most of the answer to "whose turn is it?" at night.
+;; Which ROLE the narrator is calling right now, and which player holds it is
+;; not in the view. Sent to whoever may watch the night move: the Spielleiter,
+;; and everybody in a room without one. A player in a narrated room gets no
+;; such key at all (see view/night-progress?), so nothing a player sees may
+;; depend on it.
 (rf/reg-sub ::night-cursor :<- [::view] (fn [v _] (:night-cursor v)))
 (rf/reg-sub ::night-plan :<- [::view] (fn [v _] (or (:night-plan v) [])))
 
-(defn asleep?
-  "Is this player simply asleep right now: night, alive, playing, nothing to
-   do, and not the role being called? Then the screen says so and keeps quiet,
-   rather than showing a whole board nobody may touch.
+(defn night-progress?
+  "Does the plan say where the night is? The server sends a player in a
+   narrated room the roles alone, `{:role r}` each and no state (see
+   view/night-plan), so the strip can tell the two apart by shape and needs
+   no rule about who gets which."
+  [plan]
+  (boolean (some :state plan)))
 
-   The last condition is the wolf who has voted while the rest of the pack has
-   not: nothing left to do, but awake, and waiting for the others. The pack's
-   turn is the whole wolf team's, the Weißer Werwolf included."
-  [{:keys [phase me night-cursor]} can-act?]
-  (let [role (:role me)
-        called? (or (= night-cursor role)
-                    (and (= :werwolf night-cursor) (= :werewolf (roles/team-of role))))]
-    (boolean (and (= :night phase) me (:alive? me) (not (:narrator? me))
-                  (not can-act?) (not called?)))))
+(rf/reg-sub ::night-progress? :<- [::night-plan] (fn [plan _] (night-progress? plan)))
+
+(defn asleep?
+  "Is this player simply asleep right now: night, alive, playing, and offered
+   nothing? Then the screen says so and keeps quiet, rather than showing a whole
+   board nobody may touch.
+
+   'Offered nothing' counts the chat. The wolf who has voted while the rest of
+   the pack has not has no move left, but he is awake and waiting for the
+   others, and the server keeps the pack's chat open for him and for nobody
+   who sleeps. It used to be read off the night cursor and the wolf team, which
+   was a rule living in the client, and the cursor is not sent to a player in
+   a narrated room any more."
+  [{:keys [phase me actions]} can-act?]
+  (boolean (and (= :night phase) me (:alive? me) (not (:narrator? me))
+                (not can-act?) (not (contains? actions :chat)))))
 
 (rf/reg-sub ::asleep? :<- [::view] :<- [::can-act?] (fn [[v can?] _] (asleep? v can?)))
 
 (defn next-up
-  "The role the night calls after the current one, if any."
+  "The role the night calls after the current one, if any. Nothing from a plan
+   without states: a player in a narrated room is not told what comes next."
   [plan]
   (:role (first (filter #(= :todo (:state %)) plan))))
 

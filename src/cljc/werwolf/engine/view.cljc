@@ -133,25 +133,46 @@
 
 ;; -------------------------------------------------------- public pieces ---
 
+(defn- night-progress?
+  "May `pid` watch the night move: which role is being called, which turns are
+   done? Everybody in a room without a Spielleiter, and in a room with one, he
+   alone.
+
+   It used to be public for everyone, on the grounds that a narrator at a real
+   table says \"Seherin, wach auf\" out loud. With bots at the table it gave
+   the game away: a bot answers a second and a half after its role is called,
+   a person takes longer, so whoever watched the strip could tell the human
+   seats by how long each role stayed lit. Without a Spielleiter the table
+   keeps it, or the night is a black box to everyone in it. A nil pid, a
+   socket without a seat, gets a player's view of a narrated room."
+  [state pid]
+  (let [narrator (e/narrator state)]
+    (or (nil? narrator) (= pid narrator))))
+
 (defn night-plan
-  "The roles this night calls, in calling order, each `:done`, `:current` or
-   `:todo` — so a sleeping table can see where the night is and what is left.
+  "The roles this night calls, in calling order. For whoever may watch the
+   night move (see `night-progress?`) each is `:done`, `:current` or `:todo`;
+   a player in a narrated room gets `{:role r}` and nothing more, so the list
+   is the same at every moment of the night.
 
    Built from PUBLIC facts only, never from the engine's own queue, which knows
    what the table does not: the deck as it was announced (`roles/composition`),
-   the cards the log turned over on death, the night's number, the room's rules,
-   and the role being called, which is public already (the narrator says it out
-   loud). The queue skips a role whose holders are all dead; that is public too,
+   the cards the log turned over on death, the night's number and the room's
+   rules. The queue skips a role whose holders are all dead; that is public too,
    since a death reveals the card. It does not know, and must not tell, whether a
-   role the Spielleiter dealt in setup is in the deck: such a role joins the list
-   when it is called, and one he took out is passed over like any finished turn.
+   role the Spielleiter dealt in setup is in the deck: such a role joins the
+   Spielleiter's own list when it is called, and one he took out is passed over
+   like any finished turn. It never joins a player's list, not even its holder's:
+   appearing when called would say when that was, which is the one thing the
+   list no longer tells them.
 
    The pack's turn is the pack's, so it comes while any of the wolf team is left,
-   the Weißer Werwolf included — as `phases/holders` has it."
-  [state]
+   the Weißer Werwolf included, as `phases/holders` has it."
+  [state pid]
   (when (= :night (:phase state))
     (let [n      (:night state 0)
-          cursor (:night-cursor state)
+          progress? (night-progress? state pid)
+          cursor (when progress? (:night-cursor state))
           dealt  (:dealt (roles/composition (count (e/participant-ids state)) (:deck state)))
           dead   (frequencies (keep #(when (= :player/died (:type %)) (:role %)) (:log state)))
           left?  #(> (get dealt % 0) (get dead % 0))
@@ -165,12 +186,14 @@
                           (or (not skips-first-night?) (not= 1 n) (:first-night-kill? state)))))
           order  (filterv #(or (= % cursor) (calls? %)) (roles/night-acting-ids))
           at     (if cursor (.indexOf order cursor) -1)]
-      (into [] (map-indexed (fn [i r] {:role r
-                                       :state (cond (neg? at) :todo
-                                                    (< i at)  :done
-                                                    (= i at)  :current
-                                                    :else     :todo)}))
-            order))))
+      (if progress?
+        (into [] (map-indexed (fn [i r] {:role r
+                                         :state (cond (neg? at) :todo
+                                                      (< i at)  :done
+                                                      (= i at)  :current
+                                                      :else     :todo)}))
+              order)
+        (mapv (fn [r] {:role r}) order)))))
 
 (defn- deck-view
   "What the table knows about the deck. Public, all of it, in every phase.
@@ -280,6 +303,12 @@
     (merge
      ;; ---- the deck: public, see `deck-view` ----
      (deck-view state)
+     ;; ---- which ROLE is being called, for whoever may watch the night move ----
+     ;; Which PLAYER holds it is never sent. A player in a narrated room gets
+     ;; no key at all rather than a nil one, so a key that is there is a fact
+     ;; and the client need not know the rule behind its absence.
+     (when (night-progress? state pid)
+       {:night-cursor (:night-cursor state)})
      {;; ---- public ----
      :room-id     (:room-id state)
      :phase       (:phase state)
@@ -325,11 +354,9 @@
      ;; minimum, as "2 / 5", read as a five-player cap.
      :max-players (:max-players state)
      :players     (into {} (map (fn [[id p]] [id (public-player p)])) (:players state))
-     ;; Which ROLE is currently being called is public — the human narrator says
-     ;; it out loud ("Werwölfe, wacht auf"). Which PLAYER holds it is not.
-     :night-cursor (:night-cursor state)
-     ;; Where the night is: public facts only, see `night-plan`.
-     :night-plan  (night-plan state)
+     ;; The roles the night calls, and for whoever may watch it move, where it
+     ;; is. Public facts only either way, see `night-plan`.
+     :night-plan  (night-plan state pid)
 
      ;; ---- role knowledge, decided solely by revealed-roles ----
      :known-roles roles-in

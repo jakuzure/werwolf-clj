@@ -1468,28 +1468,46 @@
 
 (defn- night-strip
   "The night as the narrator would run it: every role it calls tonight, in
-   order, the one being called lit up and the finished ones ticked. Only the
-   role used to be shown, so nobody could tell how far the night had come or
-   that the Hexe was still to wake. Built by the server from public facts
-   alone — see view/night-plan."
-  [narrator?]
-  (let [plan @(rf/subscribe [::sub/night-plan])]
+   order. Only the role used to be shown, so nobody could tell how far the
+   night had come or that the Hexe was still to wake.
+
+   Whoever may watch the night move sees the one being called lit up and the
+   finished ones ticked: the Spielleiter, and the whole table in a room without
+   one. A player in a narrated room gets the list alone. The progress was
+   public for everyone once, and with bots at the table it told everyone which
+   seats were human: a bot answers a second and a half after its role is called,
+   a person takes longer, and the strip showed how long each role stayed lit.
+   Who gets which is the server's decision, and a plan without states is the
+   list, see view/night-plan."
+  []
+  (let [plan      @(rf/subscribe [::sub/night-plan])
+        narrator? @(rf/subscribe [::sub/narrator?])
+        progress? @(rf/subscribe [::sub/night-progress?])]
     [:div {:class "space-y-1" :data-testid "night-strip"}
      ;; The Spielleiter reads it as his cue, everybody else as news.
-     [:div {:class "text-xs text-slate-400"} (t (if narrator? :stage/call-label :stage/called-label))]
+     [:div {:class "text-xs text-slate-400"}
+      (t (cond narrator? :stage/call-label
+               progress? :stage/called-label
+               :else     :stage/roster-label))]
      [:ol {:class "flex flex-wrap items-center gap-1.5"}
-      (for [{:keys [role state]} plan]
-        ^{:key (str role)}
-        [:li {:class (str "inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-sm "
-                          (case state
-                            :current "bg-indigo-900/80 border border-indigo-500 text-indigo-50 font-semibold"
-                            :done    "text-slate-500 line-through decoration-slate-600"
-                            "text-slate-300 border border-slate-700"))
-              :aria-current (when (= :current state) "step")
-              :data-state (name state)}
-         (when (= :done state) [:span {:aria-hidden true} "✓"])
-         [:span {:aria-hidden true} (i18n/icon-of role)]
-         (role-name role)])]]))
+      (if progress?
+        (for [{:keys [role state]} plan]
+          ^{:key (str role)}
+          [:li {:class (str "inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-sm "
+                            (case state
+                              :current "bg-indigo-900/80 border border-indigo-500 text-indigo-50 font-semibold"
+                              :done    "text-slate-500 line-through decoration-slate-600"
+                              "text-slate-300 border border-slate-700"))
+                :aria-current (when (= :current state) "step")
+                :data-state (name state)}
+           (when (= :done state) [:span {:aria-hidden true} "✓"])
+           [:span {:aria-hidden true} (i18n/icon-of role)]
+           (role-name role)])
+        (for [{:keys [role]} plan]
+          ^{:key (str role)}
+          [:li {:class "inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-sm text-slate-300 border border-slate-700"}
+           [:span {:aria-hidden true} (i18n/icon-of role)]
+           (role-name role)]))]]))
 
 (defn phase-stage
   "Where are we, what is happening, and what just happened — one panel, first on
@@ -1499,8 +1517,8 @@
    and learned nothing from it, and nothing on screen said it would be followed by
    a vote; the Spielleiter narrates that out loud, but only to people who were
    listening. So the stage says it in a sentence, shows the whole cycle with this
-   step lit, and names the role being called at night — public, since the narrator
-   says it aloud anyway, while who holds it is not.
+   step lit, and lists the roles the night calls. Who holds one is never on it;
+   which one is being called only where the server says so, see `night-strip`.
 
    The turn banner lives at its foot rather than in a box of its own, because
    'what is happening' and 'is it me' are read in the same glance.
@@ -1510,7 +1528,7 @@
   []
   (let [phase @(rf/subscribe [::sub/phase])
         view @(rf/subscribe [::sub/view])
-        cursor @(rf/subscribe [::sub/night-cursor])
+        plan @(rf/subscribe [::sub/night-plan])
         narrator? @(rf/subscribe [::sub/narrator?])
         ambience @(rf/subscribe [::sub/ambience])]
     [:section {:class (str "rounded-2xl border-2 p-4 space-y-3 transition-colors duration-700 "
@@ -1549,8 +1567,8 @@
 
      [host-absent-banner]
 
-     (when (and (= :night phase) cursor)
-       [night-strip narrator?])
+     (when (and (= :night phase) (seq plan))
+       [night-strip])
 
      [:div {:class "overflow-x-auto -mx-1 px-1"} [round-strip]]
 

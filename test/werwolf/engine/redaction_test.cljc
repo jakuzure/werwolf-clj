@@ -124,7 +124,9 @@
         "map with :target/:role — the shape a GM override's :detail takes, and
          that detail is published to the log")
     (is (empty? (view/foreign-roles-in-view {:me {:id 0 :role :werwolf}} 0))
-        "the viewer's own role is not a leak")))
+        "the viewer's own role is not a leak")
+    (is (empty? (view/foreign-roles-in-view {:night-plan [{:role :werwolf} {:role :hexe :state :todo}]} 0))
+        "a role with no seat beside it, the shape of the night's roster, is not one either")))
 
 ;; ------------------------------------------------------- the GM's overrides ---
 
@@ -171,6 +173,40 @@
       ;; check-invariants already asserts redaction after every event, so a
       ;; clean run here is a clean run for redaction across ~5000 states.
       (is (every? :ok? games)))))
+
+(deftest nobody-but-the-spielleiter-ever-sees-the-night-move
+  (testing "which role is being called was public, as a narrator says it out
+            loud. With bots at the table it named the humans: a bot answers a
+            second and a half after its role is called, a person takes longer,
+            and whoever watched the strip saw how long each role stayed lit.
+            So over whole narrated games, at every state the log passes
+            through (the unsettled ones between two turns included, where a
+            cursor would show first), no seat but the Spielleiter's carries
+            the cursor or a turn's state"
+    (doseq [[n seed opts] [[9 2718 {}] [7 1618 {:random-deck? true}]]]
+      (let [r (h/play-game n seed (assoc opts :narrated? true))
+            _ (is (:ok? r) (pr-str (select-keys r [:reason :seed :players :violations])))
+            states (rest (reductions e/apply-event nil (:log r)))
+            nights (atom 0)]
+        (doseq [s states
+                :let [narrator (e/narrator s)]
+                pid (cons nil (keys (:players s)))
+                :when (not= pid narrator)]
+          (let [v (view/view-for s pid)
+                at (str "seed " seed ", seat " pid " in " (:phase s) " " (:night s))]
+            (is (not (contains? v :night-cursor)) at)
+            (is (not-any? #(contains? % :state) (:night-plan v)) at)
+            (is (every? #(= [:role] (keys %)) (:night-plan v))
+                (str at ": the roster is {:role r} and nothing else"))))
+        (testing "while the Spielleiter's view does say where the night is, or
+                  the walk above proved nothing"
+          (doseq [s states
+                  :when (= :night (:phase s))
+                  :let [v (view/view-for s (e/narrator s))]]
+            (when (some #(= :current (:state %)) (:night-plan v))
+              (is (= (:night-cursor v) (:role (first (filter #(= :current (:state %)) (:night-plan v))))))
+              (swap! nights inc)))
+          (is (pos? @nights)))))))
 
 (deftest the-pack-knows-him-but-not-what-he-is
   (testing "the Weißer Werwolf hunts with the wolves and shares their chat, so
