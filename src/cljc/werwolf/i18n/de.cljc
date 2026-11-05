@@ -308,6 +308,8 @@
    :turn/yours   "Du bist dran"
    :turn/hint    "Wähle, was du tust"
    :turn/urgent  "Alle warten auf dich"
+   ;; Für einen Wolf, der schon gewählt hat: die Nacht wartet auf das Rudel.
+   :turn/pack-hint "Die Nacht geht weiter, sobald ihr euch auf ein Opfer geeinigt habt. Bis dahin kannst du umstimmen."
    :turn/calling (fn [role] (str "Der Spielleiter ruft: " role))
    ;; Der Spielleiter ist nie "dran" und wartet nie — er führt.
    :turn/narrating "Du leitest das Spiel"

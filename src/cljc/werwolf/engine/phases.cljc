@@ -206,11 +206,6 @@
   [state]
   (filterv #(= :werewolf (e/team-of-player state %)) (e/living-ids state)))
 
-(defn- wolves-all-voted? [state]
-  (let [wolves (pack state)
-        votes  (get-in state [:night-actions :werewolf-votes] {})]
-    (and (seq wolves) (every? #(contains? votes %) wolves))))
-
 ;; ------------------------------------------------------- the first day ---
 
 (defn trial-day?
@@ -334,15 +329,41 @@
       {:target nil :tie? false :no-majority? true}
       {:target target :tie? tie? :no-majority? false})))
 
-(defn wolf-tally
-  "Werewolves must converge on one victim. Unlike the village lynch, a tie here
-   cannot pass — the night must produce a decision — so ties break to the lowest
-   player id: deterministic and replay-safe."
-  [votes]
-  (let [counts (->> (vals votes) (remove nil?) frequencies)]
-    (when (seq counts)
-      (let [best (apply max (vals counts))]
-        (->> counts (filter #(= best (val %))) (map key) sort first)))))
+(defn- pack-choice
+  "The one victim the pack's ballots name, or nil while they name two or
+   more, or none at all.
+
+   The wolves agree on a victim or there is none: the Düsterwald rule, where
+   the pack points and gestures until it settles on one player and the
+   narrator never decides for them. The engine used to break a split to the
+   lowest seat, so that a night could not end without a decision, and in the
+   playtest that is exactly what the two human wolves found wrong: unable to
+   change a vote once cast, they ended most nights \"without consensus\" and
+   watched the tiebreak eat somebody neither of them had wanted.
+
+   Only the ballots that count: a wolf who has walked out, or a victim who
+   has, is nobody's say. Two living wolves who both name somebody who has
+   left have named nobody, and vote again."
+  [state]
+  (let [targets (distinct (keep val (living-ballots
+                                     state (get-in state [:night-actions :werewolf-votes] {}))))]
+    (when (= 1 (count targets)) (first targets))))
+
+(defn- pack-agreed?
+  "Has every living pack member voted, and all for the same victim? Then the
+   turn is over. Short of that it stays open, whether a wolf has yet to vote
+   or two of them disagree: the vote is offered again and again until they
+   come round, and only the clock or the Spielleiter can cut that short.
+
+   Voted is read from the ballots as cast, agreed from the ones that count:
+   a wolf whose victim has since walked out has voted, and his ballot says
+   nothing, so the packmates who name a living player are the agreement."
+  [state]
+  (let [wolves (pack state)
+        votes  (get-in state [:night-actions :werewolf-votes] {})]
+    (and (seq wolves)
+         (every? #(contains? votes %) wolves)
+         (some? (pack-choice state)))))
 
 ;; --------------------------------------------------------- auto-events ---
 
@@ -444,7 +465,14 @@
 
    For the Spielleiter's screen. At night this names the players behind the
    role being called, so it must never reach anybody else — view.cljc puts it
-   in his notes only."
+   in his notes only.
+
+   The pack is waited on as one. A wolf who has voted stays on the list while
+   the pack is split: his vote is still open, he may be the one to come
+   round, and cutting the turn short takes the pack's agreement away from
+   all of them, not a move from him alone. The day differs because there a
+   cast ballot is counted as it stands, and only the uncast ones hold the
+   table. Once the pack agrees the turn is over and the list moves on."
   [state]
   (into []
         (filter (fn [pid]
@@ -498,13 +526,12 @@
          ;; Role-specific resolution first, because these produce a decision
          ;; (a victim) and not merely the end of a turn.
          (case cursor
-           ;; Collective decision: once every living wolf has voted, resolve it.
+           ;; Collective decision: the pack's turn ends when the whole pack
+           ;; names one victim, and not before. See `pack-agreed?`.
            :werwolf
-           (when (wolves-all-voted? state)
-             (let [target (wolf-tally (living-ballots
-                                       state (get-in state [:night-actions :werewolf-votes])))]
-               (cond-> [{:type :night/role-completed :role :werwolf}]
-                 target (conj {:type :werewolf/chose :target target}))))
+           (when (pack-agreed? state)
+             [{:type :night/role-completed :role :werwolf}
+              {:type :werewolf/chose :target (pack-choice state)}])
 
            ;; Nothing to decide with no potions — skip her rather than deadlock.
            :hexe
@@ -700,20 +727,22 @@
       (contains? timed-phases phase)
       (into [{:type :phase/timed-out :phase phase}]
             (case phase
-              ;; End the current role's turn. The wolves are the exception: they
-              ;; are making a collective decision, so a pack that cannot agree
-              ;; in time still eats whoever led the vote. Deciding nothing would
-              ;; hand the village a free night for stalling.
+              ;; End the current role's turn. For the wolves that means what
+              ;; it means at the table when the narrator stops waiting: a pack
+              ;; that has agreed on one victim eats him, a pack still split
+              ;; eats nobody. The clock used to hand a split pack whoever led
+              ;; the vote, so that stalling could not buy the village a free
+              ;; night; the playtest showed the other side of that coin, two
+              ;; wolves who could not come round to each other being decided
+              ;; for. Silence is not dissent: a packmate who never voted does
+              ;; not stop the others' agreement, just as uncast ballots are
+              ;; abstentions by day.
               :night
               (let [cursor (:night-cursor state)]
                 (when cursor
                   (cond-> [{:type :night/role-completed :role cursor}]
-                    (= :werwolf cursor)
-                    (as-> evs
-                          (if-let [t (wolf-tally (living-ballots
-                                                  state (get-in state [:night-actions :werewolf-votes])))]
-                            (conj evs {:type :werewolf/chose :target t})
-                            evs)))))
+                    (and (= :werwolf cursor) (pack-choice state))
+                    (conj {:type :werewolf/chose :target (pack-choice state)}))))
 
               ;; The Jäger who never fires simply does not fire — the shot is
               ;; his to take, not the server's to guess. Same for a
@@ -1013,9 +1042,12 @@
           :weisser-werwolf #{:weisser-kill :weisser-pass}
           ;; Wolves may talk among themselves at night (private room at M7).
           ;; The whole pack votes, the white one included — see `night-actor?`.
-          :werwolf (if (contains? (get-in state [:night-actions :werewolf-votes] {}) pid)
-                     #{:chat}
-                     #{:werewolf-vote :chat})
+          ;; The vote stays on offer after it is cast, like the day's open
+          ;; ballot: the pack has to come round to one victim, and a wolf who
+          ;; could not move his vote after seeing the others' was the whole
+          ;; reason the playtest's nights ended split. `:werewolf/voted`
+          ;; overwrites, so changing it is casting it again.
+          :werwolf #{:werewolf-vote :chat}
           :hexe    (cond-> #{:hexe-pass}
                      (pos? (get-in player [:resources :heiltrank] 0)) (conj :hexe-heal)
                      (pos? (get-in player [:resources :gifttrank] 0)) (conj :hexe-poison))

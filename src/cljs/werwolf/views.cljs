@@ -406,7 +406,9 @@
   "Moves that cost somebody their life and cannot be taken back: they wait
    for a second tap after the pick. One mis-tap on a crowded board used to
    poison the wrong player. The day's vote is not here — it can be changed
-   until everybody has voted."
+   until everybody has voted. The pack's vote can be changed too, until the
+   wolves agree, and stays here all the same: the tap that completes the
+   agreement ends the turn on the spot, with no second chance for anybody."
   #{:hexe-poison :jaeger-shoot :weisser-kill :werewolf-vote})
 
 (defn- fire! [action picks]
@@ -647,6 +649,10 @@
                  ;; which roles are alive, which is why ::waiting-for skips night.
                  (= :setup phase) (t :setup/waiting)
                  (seq waiting) (str (t :badge/waiting-for) ": " (str/join ", " waiting))
+                 ;; A wolf whose ballot is in: the tally below says where
+                 ;; the pack stands, this says why the night has not moved
+                 ;; on and that his vote is still his to change.
+                 (and voted? (= :night phase)) (t :turn/pack-hint)
                  ;; A dead player is not being waited on and never will be, so do
                  ;; not imply their input is pending.
                  (false? (:alive? me)) (t :game/dead-hint))])]
@@ -1030,7 +1036,7 @@
        ;; longer what the table is waiting for.
        (when voted?
          [:div {:class "text-xs font-bold uppercase tracking-wide text-slate-300"}
-          (let [target (get-in view [:votes (get-in view [:me :id])])]
+          (let [target (sub/own-vote view)]
             (str "🗳 " (if target
                          (t :vote/yours (get-in view [:players target :name]))
                          (t :vote/yours-abstained))))])

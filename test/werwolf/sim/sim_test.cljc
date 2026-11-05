@@ -102,11 +102,16 @@
       ;; card: the host's call into the night is a move of its own, so every
       ;; game that condemns somebody and plays on moved. The 9 and 5 rows
       ;; condemn once, and that verdict ends the game, so they are untouched.
-      12 8675309 197 62  :weisser-werwolf
-      9  4242    151 47  :village
-      18 777     288 114 :village
+      ;; And for the pack that votes until it agrees: the harness now has the
+      ;; wolves fall in behind the first ballot instead of each drawing a
+      ;; victim of his own, which draws fewer random numbers, so every row
+      ;; with more than one wolf moved. The five-player row has a single wolf,
+      ;; whose first ballot is drawn as before, and is untouched.
+      12 8675309 232 77  :weisser-werwolf
+      9  4242    141 50  :village
+      18 777     268 105 :village
       5  31337   56  17  :village
-      14 90210   262 102 :village)))
+      14 90210   209 82  :village)))
 
 (deftest state-matches-its-schema-at-every-step
   (testing "the closed GameState schema holds through a whole game, so state
