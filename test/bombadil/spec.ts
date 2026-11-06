@@ -40,6 +40,7 @@ const TEXT = {
   yourTurn: ["Du bist dran", "Your turn"],
   narrating: ["Du leitest das Spiel", "You are running the game"],
   start: ["Spiel starten", "Start the game"],
+  beginNight: ["Erste Nacht beginnen", "Begin the first night"],
   connLost: [
     "verbinde…",
     "getrennt — versuche erneut zu verbinden…",
@@ -103,6 +104,20 @@ const screen = extract((state) => {
     inGame: nowCard !== null,
     headline: nowCard?.querySelector(".font-bold")?.textContent?.trim() ?? null,
     hasTask: nowCard?.querySelector('[data-testid="my-task"]') !== null,
+    // The Spielleiter's cues, BOMBADIL_NARRATED=true. His game waits for him
+    // at every hold: the first night, each role's call, the morning, the
+    // closed ballot, the nightfall. The step button is the same element as
+    // his override, and the list of players still owed is what tells the two
+    // apart: with nobody owed, pressing it is the cue; with somebody owed, it
+    // is cutting a turn short, which the random walk does on its own. A deal
+    // he has to fix before the first night is a way forward too.
+    canBeginNight: Array.from(d.querySelectorAll("button")).some((b) =>
+      TEXT.beginNight.includes(b.textContent?.trim() ?? ""),
+    ),
+    cue:
+      d.querySelector('[data-testid="narrator-skip"]') !== null &&
+      d.querySelector('[data-testid="owing"]') === null,
+    dealProblem: d.querySelector('[data-testid="deal-problem"]') !== null,
     // Phase and round from the bar: the phase by its icon, which is one per
     // phase, and the round by its digits. Not by name — a stall that the
     // language switch kept renaming would never count as one.
@@ -173,6 +188,13 @@ const toward = actions(() => {
   if (s.landing) return [openTable("Bombadil")];
   if (s.lobby && s.canAddBot && s.seats < SEATS) return [press("add-bot", [])];
   if (s.lobby && s.canStart) return [press(null, TEXT.start)];
+  // The Spielleiter's cues (BOMBADIL_NARRATED=true): a random walk is a poor
+  // narrator, and his game waits on him at every hold. Offered next to the
+  // chaos like the rest, so the holds also get their share of reloads and
+  // language switches before he moves on.
+  const narrating = TEXT.narrating.includes(s.headline ?? "");
+  if (s.inGame && narrating && s.canBeginNight) return [press(null, TEXT.beginNight)];
+  if (s.inGame && narrating && s.cue) return [press("narrator-skip", [])];
   return [];
 });
 
@@ -221,6 +243,35 @@ export const gameKeepsMoving = always(() => {
       t.paused ||
       (t.secs ?? 0) > (secs ?? 0) ||
       TEXT.narrating.includes(t.headline ?? "")
+    );
+  }).within(STALL_SECS, "seconds");
+});
+
+// A Spielleiter is never left without a next step. His game waits for his
+// cue at every hold, so a hold is honest only while the cue is on the screen:
+// the step button, the first night, the deal he has to fix, or the end of the
+// game. While a turn is in progress the cue is his override, and once the
+// table's bots have moved it is the next call: either way something is on
+// offer, and a screen that says he narrates and offers him nothing for
+// STALL_SECS is a game that has stopped on him. Armed only where the card
+// says he narrates; `gameKeepsMoving` above lets him go for the same reason
+// it arms for everybody else.
+export const narratorHasAWayForward = always(() => {
+  const s = screen.current;
+  const narrating = TEXT.narrating.includes(s.headline ?? "");
+  if (!s.inGame || !narrating || s.cue || s.canBeginNight || s.dealProblem) {
+    return true;
+  }
+  const { stage } = s;
+  return eventually(() => {
+    const t = screen.current;
+    return (
+      t.stage !== stage ||
+      !t.inGame ||
+      t.cue ||
+      t.canBeginNight ||
+      t.dealProblem ||
+      !TEXT.narrating.includes(t.headline ?? "")
     );
   }).within(STALL_SECS, "seconds");
 });

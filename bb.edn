@@ -158,6 +158,10 @@
                bb test:bombadil --time-limit 5m
                                              in a visible window: given any
                                              flag, the task passes only yours
+               BOMBADIL_NARRATED=true bb test:bombadil
+                                             the browser is the Spielleiter of
+                                             a game without a clock, and the
+                                             walk presses his cues
 
              Exits 2 on a violation. The run is in test-results/bombadil, and
              `test/bombadil/node_modules/.bin/bombadil browser inspect
@@ -168,10 +172,13 @@
 
              Against the RELEASE build, like test:browser and for the same
              reason. The server runs on :3998 (BOMBADIL_PORT) with a fresh temp
-             database, rooms that start without a Spielleiter, and clocks of
-             15 to 30 s, so games end inside a run and a stuck one shows. Its
-             log is test-results/bombadil-server.log. The browser is the local
-             Chrome or Chromium (BOMBADIL_CHROME to choose), muted.
+             database and clocks of 15 to 30 s, so games end inside a run and
+             a stuck one shows. Rooms start without a Spielleiter unless
+             BOMBADIL_NARRATED says otherwise: a narrated game has no clock and
+             waits for his cue at every step, which is the path the default
+             run never walks. Its log is test-results/bombadil-server.log. The
+             browser is the local Chrome or Chromium (BOMBADIL_CHROME to
+             choose), muted.
 
              Not part of test:all: it runs for minutes and walks somewhere else
              every time. A run writes a screenshot per step, about 30 MB a
@@ -203,11 +210,13 @@
            server (p/process {:extra-env {"PORT"              port
                                           "DB_PATH"           db
                                           "TOKEN_SECRET"      "bombadil-suite-secret-long-enough-to-pass"
-                                          ;; The creator plays a seat and the clock
-                                          ;; runs. A Spielleiter's game waits on him,
-                                          ;; and a random walk is a poor narrator.
-                                          ;; The walk still finds the switch.
-                                          "NARRATED"          "false"
+                                          ;; By default the creator plays a seat and
+                                          ;; the clock runs; the walk still finds the
+                                          ;; switch. Narrated, the creator is the
+                                          ;; Spielleiter of a game without a clock,
+                                          ;; and the spec presses his cues for him,
+                                          ;; since a random walk is a poor narrator.
+                                          "NARRATED"          (or (System/getenv "BOMBADIL_NARRATED") "false")
                                           "DISCUSSION_SECS"   "30"
                                           "NIGHT_SECS"        "20"
                                           "ELECTION_SECS"     "20"
