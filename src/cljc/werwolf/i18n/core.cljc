@@ -59,6 +59,15 @@
 
 (defn icon-of [role] (get role-icon role "❓"))
 
+(defn rule-key
+  "The text key for a rule variant, and with a suffix its hint: the state
+   spells the rule `:mayor?`, the texts `:rule/mayor` and `:rule/mayor-hint`."
+  ([rule] (rule-key rule ""))
+  ([rule suffix]
+   (keyword "rule" (str (str/replace (name rule) #"\?$" "") suffix))))
+
+(defn rule-name [locale rule] (t locale (rule-key rule)))
+
 ;; ------------------------------------------------------------------- tones ---
 
 (def ^:private tone-by-type
@@ -96,6 +105,7 @@
    ;; Loud: what is in the deck is the first thing a table reasons from.
    :deck/set          :gm
    :deck/auto         :gm
+   :rules/set         :gm
    ;; Bookkeeping. Real, auditable, and not what anyone opens the Chronik for.
    :phase/timed-out  :muted
    :player/ready     :muted
@@ -244,6 +254,7 @@
       :room/unlocked       (t locale :log/room-unlocked)
       :deck/set            (t locale :log/deck-set (deck-summary locale (:deck entry)))
       :deck/auto           (t locale :log/deck-auto)
+      :rules/set           (t locale :log/rule-set (rule-name locale (:rule entry)) (:on? entry))
       :night/began         (t locale :log/night-began)
       ;; Published without the ids on purpose: THAT there are lovers is public,
       ;; WHO they are is not. See apply-event :amor/linked.

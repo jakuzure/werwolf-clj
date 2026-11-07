@@ -48,7 +48,7 @@
     :gm/toggle-narrated :gm/toggle-timer :gm/transfer-host :gm/kick
     ;; Seating a bot, so one person can test a whole game alone.
     :gm/add-bot
-    :gm/set-deck :gm/auto-deck
+    :gm/set-deck :gm/auto-deck :gm/set-rule
     :gm/force-kill :gm/revive :gm/skip-role :gm/set-phase :gm/reassign-role
     :gm/pause :gm/resume :gm/add-time})
 
@@ -142,7 +142,11 @@
    ;; over, like :secs — no count past the largest table and no more entries
    ;; than there are roles to name — and checked against the registry by the
    ;; handler, which is the only place that knows what a role may be.
-   [:deck   {:optional true} [:map-of {:max 16} :keyword [:int {:min 0 :max 18}]]]])
+   [:deck   {:optional true} [:map-of {:max 16} :keyword [:int {:min 0 :max 18}]]]
+   ;; A rule variant for :gm/set-rule and the value it should take. Which
+   ;; rules exist is the engine's to check; the wire only bounds the shape.
+   [:rule   {:optional true} :keyword]
+   [:on?    {:optional true} :boolean]])
 
 (def ClientMessage
   [:multi {:dispatch :type}

@@ -551,6 +551,19 @@
     (err :not-allowed {:action :gm/auto-deck})
     [{:type :deck/auto}]))
 
+(defmethod handle :gm/set-rule
+  ;; A rule and the value it should have, not a toggle: two quick taps on a
+  ;; toggle that crossed on the wire would leave the rule where it started and
+  ;; log two decisions. Lobby only, like the deck.
+  [state {:keys [player rule on?]}]
+  (cond
+    (not (allowed? state player :gm/set-rule)) (err :not-allowed {:action :gm/set-rule})
+    (not (contains? phases/rule-keys rule))    (err :invalid-rule {:rule rule})
+    (not (boolean? on?))                       (err :invalid-rule {:rule rule})
+    ;; The same value again is a no-op, not a second line in the Chronik.
+    (= on? (if (= :mayor? rule) (phases/mayor? state) (boolean (get state rule)))) []
+    :else [{:type :rules/set :rule rule :on? on?}]))
+
 (defmethod handle :gm/transfer-host
   ;; Hand the host's seat — and in a narrated room, the Spielleitung with it —
   ;; to somebody else. Lobby only: see `phases/host-actions`. The same event
