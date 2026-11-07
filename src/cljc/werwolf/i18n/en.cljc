@@ -378,7 +378,7 @@
 
    ;; ------------------------------------------------------------ badges ---
    :dawn/title "Day breaks"
-   :dawn/ok "Continue"
+   :dawn/ok "Close"
    :verdict/title "The verdict"
    :record/title (fn [n] (str "This table, after " n " games"))
    :record/won "won"

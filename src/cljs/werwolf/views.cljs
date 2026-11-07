@@ -2324,7 +2324,7 @@
 (defn- dawn-card
   "The morning, told once and large: who did not survive the night and what
    they were, or that the night was quiet. A line under the stage was easy to
-   read past while everybody started talking. Gone with \"Weiter\", and for
+   read past while everybody started talking. Gone with \"Schließen\", and for
    good that day; the stage's \"Zuletzt\" line keeps saying it."
   []
   (when-let [entries @(rf/subscribe [::sub/dawn-news])]

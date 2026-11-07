@@ -392,7 +392,7 @@
 
    ;; ------------------------------------------------------------ badges ---
    :dawn/title "Der Morgen graut"
-   :dawn/ok "Weiter"
+   :dawn/ok "Schließen"
    :verdict/title "Das Urteil"
    :record/title (fn [n] (str "Diese Runde, nach " n " Spielen"))
    :record/won "gewonnen"
