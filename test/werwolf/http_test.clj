@@ -3,7 +3,9 @@
    every file 1970-01-01, ring sent that as Last-Modified, and browsers cached
    the bundle for years, so players kept the previous version after a deploy."
   (:require [clojure.test :refer [deftest is testing]]
-            [werwolf.http :as http]))
+            [next.jdbc :as jdbc]
+            [werwolf.http :as http]
+            [werwolf.store :as store]))
 
 (def ^:private app (http/handler {}))
 
@@ -91,3 +93,18 @@
       (is (= fp (http/bundle-fingerprint)) "stable while nothing changes")
       (is (not= fp (subs (get-in (doto (GET "/") slurp-body) [:headers "ETag"]) 1 17))
           "not merely the page's own tag: the page rarely changes, the script does"))))
+
+(deftest health-reads-the-event-log
+  (let [f  (doto (java.io.File/createTempFile "werwolf-health" ".db") .delete)
+        ds (store/open {:dbtype "sqlite" :dbname (.getAbsolutePath f)})]
+    (try
+      (is (= 200 (:status ((http/handler {:rooms {:ds ds}})
+                           {:request-method :get :uri "/health"}))))
+      (testing "a log that cannot be opened takes the server out"
+        (let [gone (jdbc/get-datasource {:dbtype "sqlite"
+                                         :dbname "/nonexistent/werwolf/werwolf.db"})]
+          (is (= 503 (:status ((http/handler {:rooms {:ds gone}})
+                               {:request-method :get :uri "/health"}))))))
+      (finally
+        (doseq [suffix ["" "-wal" "-shm"]]
+          (.delete (java.io.File. (str (.getAbsolutePath f) suffix))))))))

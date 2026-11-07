@@ -78,6 +78,16 @@
     (migrate! ds)
     ds))
 
+(defn reachable?
+  "Can the event log be read, within `timeout-s` seconds? A read of the rooms
+   table rather than a bare SELECT 1, which SQLite answers without opening
+   the file."
+  [ds timeout-s]
+  (try
+    (jdbc/execute-one! ds ["SELECT 1 FROM rooms LIMIT 1"] {:timeout timeout-s})
+    true
+    (catch Exception _ false)))
+
 ;; -------------------------------------------------------------- writes ---
 
 (defn append-events!

@@ -13,12 +13,22 @@
             [werwolf.build-info :refer [package-version running-commit]]
             [werwolf.metrics :as metrics]
             [werwolf.protocol :as protocol]
+            [werwolf.store :as store]
             [werwolf.ws :as ws]))
 
-(defn health [_req]
-  {:status 200
-   :headers {"content-type" "text/plain"}
-   :body "ok"})
+(defn health
+  "Whether this server can serve a game, for Caddy's active health check.
+
+   It used to say \"ok\" whatever the state, so a server whose event log
+   could not be read still passed, and every commit would fail behind it. It
+   reads the log now, with a short timeout; a 503 takes the upstream out
+   until the log can be read again."
+  [{:keys [rooms]}]
+  (fn [_req]
+    (if (store/reachable? (:ds rooms) 2)
+      {:status 200 :headers {"content-type" "text/plain"} :body "ok"}
+      (do (log/warn "health check: the event log cannot be read")
+          {:status 503 :headers {"content-type" "text/plain"} :body "event log unreachable"}))))
 
 (defn build
   "Which build this server is, for the start page's footer. Asked of the
@@ -272,7 +282,7 @@
 
 (defn router [deps]
   (ring/router
-   [["/health" {:get health}]
+   [["/health" {:get (health deps)}]
     ["/api/build" {:get build}]
     ["/api/ws" {:get (ws-handler deps)}]
     ["/" {:get (wrap-revalidate index)}]]))
