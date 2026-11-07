@@ -278,6 +278,15 @@ Note the image has no `sqlite3` binary — it is a JRE image. Either install it 
 the Dockerfile when you first need this, or stop the app container and copy the
 volume, which is fine at this scale.
 
+On NixOS the module does this daily by default: copies go to
+`/var/lib/werwolf-backups` and are kept for 14 days (`services.werwolf.backup`
+sets `enable`, `calendar` and `keepDays`). They stay on the same disk; point
+an offsite backup at that directory if the disk itself should not be a single
+point of failure.
+
+Finished games are deleted from the log after `RETENTION_DAYS` (90 by
+default, 0 keeps them for good).
+
 ## GDPR
 
 Nearly free here, and worth keeping that way: nicknames only, no recording, no

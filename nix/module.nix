@@ -119,6 +119,29 @@ in
       '';
     };
 
+    backup = {
+      enable = mkOption {
+        type = types.bool;
+        default = true;
+        description = ''
+          Copy the event log to /var/lib/werwolf-backups once a day, with
+          sqlite3's online backup, which is safe while the server writes.
+          The copies stay on this host; point an offsite backup at the
+          directory to survive losing the disk.
+        '';
+      };
+      calendar = mkOption {
+        type = types.str;
+        default = "daily";
+        description = "systemd OnCalendar for the backup.";
+      };
+      keepDays = mkOption {
+        type = types.ints.positive;
+        default = 14;
+        description = "Copies older than this many days are deleted.";
+      };
+    };
+
     caddy.enable = mkOption {
       type = types.bool;
       default = true;
@@ -283,6 +306,41 @@ in
         };
       };
     }
+
+    (mkIf cfg.backup.enable {
+      systemd.services.werwolf-backup = {
+        description = "Back up the werwolf event log";
+        # The server's own user, so the copy can read its WAL; systemd shares
+        # a dynamic user between units that run under the same name.
+        serviceConfig = {
+          Type = "oneshot";
+          DynamicUser = true;
+          User = "werwolf";
+          StateDirectory = [ "werwolf" "werwolf-backups" ];
+          StateDirectoryMode = "0700";
+          UMask = "0077";
+          NoNewPrivileges = true;
+          PrivateTmp = true;
+          PrivateNetwork = true;
+          ProtectSystem = "strict";
+          ProtectHome = true;
+        };
+        script = ''
+          dir=/var/lib/werwolf-backups
+          ${pkgs.sqlite}/bin/sqlite3 /var/lib/werwolf/werwolf.db \
+            ".backup '$dir/werwolf-$(date +%F).db'"
+          find "$dir" -name 'werwolf-*.db' -mtime +${toString cfg.backup.keepDays} -delete
+        '';
+      };
+      systemd.timers.werwolf-backup = {
+        wantedBy = [ "timers.target" ];
+        timerConfig = {
+          OnCalendar = cfg.backup.calendar;
+          Persistent = true;
+          RandomizedDelaySec = "30m";
+        };
+      };
+    })
 
     (mkIf voice.enable {
       services.livekit = {
