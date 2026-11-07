@@ -87,7 +87,7 @@ const DE = {
   // A new room is NARRATED by default: its creator is the Spielleiter, dealt no
   // card, and the game passes through a setup step he ends himself.
   beginNight: /^Erste Nacht beginnen/,
-  playAlong: 'Ich spiele mit',
+  playAlong: 'Selbst mitspielen',
   narrator: 'Spielleiter',
   // The Spielleiter's own pace in an untimed room, and the one panel that
   // exists only once a game is over.
@@ -177,7 +177,7 @@ async function seatTable(browser, names) {
  */
 async function playAlong(hostPage) {
   await hostPage.getByTestId('toggle-narrated').click();
-  await expect(hostPage.getByRole('button', { name: 'Ich leite das Spiel' })).toBeVisible();
+  await expect(hostPage.getByRole('button', { name: 'Nur leiten' })).toBeVisible();
 }
 
 /**
