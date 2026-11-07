@@ -191,17 +191,14 @@ jobs:
           key: m2-${{ hashFiles('deps.edn', 'bb.edn') }}
           restore-keys: m2-
 
-      # From the flake's own nixpkgs (--inputs-from .), so the linter's
-      # version moves with flake.lock rather than with whatever the runner's
-      # registry resolves today.
       - name: Lint
-        run: nix shell --inputs-from . nixpkgs#babashka nixpkgs#clj-kondo -c bb lint
+        run: nix develop -c bb lint
 
       - name: JVM suite
-        run: nix shell nixpkgs#babashka nixpkgs#clojure nixpkgs#jdk21_headless -c bb test
+        run: nix develop -c bb test
 
       - name: Preview controller suite
-        run: nix shell nixpkgs#babashka -c bb previews:test
+        run: nix develop -c bb previews:test
 
   # A job of its own so it runs beside the JVM suite rather than after it. It
   # plays a quarter of the simulation's random games (see harness/volume):
@@ -237,7 +234,7 @@ jobs:
           restore-keys: npm-
 
       - name: ClojureScript suite
-        run: nix shell nixpkgs#babashka nixpkgs#clojure nixpkgs#jdk21_headless nixpkgs#nodejs_22 -c bb test:cljs
+        run: nix develop -c bb test:cljs
 
   browser:
     if: github.event_name == 'pull_request' && github.actor != 'github-actions[bot]'
@@ -286,7 +283,7 @@ jobs:
         # The same tools the test job takes from nixpkgs, for every step. The
         # browser itself is Playwright's own download, run against the runner's
         # libraries, which is why it is not in this list.
-        shell: nix shell nixpkgs#babashka nixpkgs#clojure nixpkgs#jdk21_headless nixpkgs#nodejs_22 -c bash -eo pipefail {0}
+        shell: nix develop -c bash -eo pipefail {0}
     steps:
       # First, and in plain bash rather than the nix shell, so a broken service
       # fails the job in seconds with one clear line instead of minutes later as
@@ -355,7 +352,7 @@ jobs:
     runs-on: ubuntu-26.04
     defaults:
       run:
-        shell: nix shell nixpkgs#babashka nixpkgs#clojure nixpkgs#jdk21_headless nixpkgs#nodejs_22 -c bash -eo pipefail {0}
+        shell: nix develop -c bash -eo pipefail {0}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
