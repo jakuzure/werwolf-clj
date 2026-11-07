@@ -4,6 +4,7 @@
   #
   #   nix build             # the server: result/bin/werwolf-clj
   #   nix flake check       # the module evaluates
+  #   nix develop           # the toolchain CI tests with
   #
   # The Docker/Compose path in deploy/ is untouched and still how the Mac runs it.
   description = "Werwölfe von Finsterbach: the social deduction game Werewolf, in the browser";
@@ -49,6 +50,24 @@
           werwolf = self.packages.${system}.werwolf;
         };
       });
+
+      # What CI runs the suites with, from this flake's nixpkgs rather than
+      # the runner's registry, and on the JDK the package is built and run
+      # with. Not merely a jdk25 next to `clojure` on the PATH: nixpkgs's
+      # clojure wrapper puts its own JDK first, so the suites ran on 21.
+      devShells = forAll (system: pkgs:
+        let jdk = pkgs.jdk25_headless; # the same JDK as nix/package.nix
+        in {
+          default = pkgs.mkShellNoCC {
+            packages = [
+              (pkgs.clojure.override { inherit jdk; })
+              jdk
+              pkgs.babashka
+              pkgs.nodejs_22
+              pkgs.clj-kondo
+            ];
+          };
+        });
 
       checks.x86_64-linux.previews = import ./nix/previews-test.nix {
         pkgs = pkgsFor "x86_64-linux";
