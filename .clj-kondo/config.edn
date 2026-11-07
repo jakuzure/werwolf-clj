@@ -1,0 +1,8 @@
+{:hooks {:macroexpand {werwolf.bots-test/with-ctx            werwolf.lint/with-binding
+                       werwolf.e2e-test/with-server          werwolf.lint/with-binding
+                       werwolf.kick-protocol-test/with-deps  werwolf.lint/with-binding
+                       werwolf.lifecycle-test/with-db        werwolf.lint/with-binding
+                       werwolf.protocol-test/with-deps       werwolf.lint/with-binding
+                       werwolf.recap-room-test/with-ctx      werwolf.lint/with-binding
+                       werwolf.room-test/with-ctx            werwolf.lint/with-binding
+                       werwolf.timer-test/with-ctx           werwolf.lint/with-binding}}}
