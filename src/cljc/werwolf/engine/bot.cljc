@@ -16,9 +16,12 @@
    on one victim. The rest it reasons from what the whole table saw, see
    `suspicion`: a seat that voted to condemn somebody whose card then turned
    out to be a villager's looks guilty, a seat that voted against a wolf looks
-   honest. By day a bot without a suspect of its own joins the leading
-   accusation, so the day reaches a verdict; an accusation with two votes
-   behind it sways a bot with a suspect too. At night the same suspicion
+   honest. By day every bot votes its own suspect, the seed deciding where
+   suspicion says nothing, and changes its vote only when that accusation
+   has become hopeless: two votes behind another, or out of reach of a
+   majority with the ballots still to come. Then it moves to a bigger one,
+   so the day still reaches a verdict, but the table no longer runs after
+   whoever voted first (see `hopeless?`). At night the same suspicion
    says whom the Seherin looks at, whom the Hexe poisons and whom the wolves
    eat first: the villager the table would trust. Nobody bluffs, talks, or
    plans. The one thing the policy must never do is stall: whenever the engine
@@ -120,11 +123,16 @@
 (defn- excluded? [action]
   (or (contains? never-issued action) (= "gm" (namespace action))))
 
+(declare moves)
+
 (defn offers
   "The actions a bot would consider right now: what the engine offers, minus
    what a bot never does, minus a ballot already cast. The open ballot stays
    offered to everyone so a human may change their mind; a bot that voted again
-   on every tick would be a vote that never settles.
+   on every tick would be a vote that never settles. So a bot that has voted
+   holds the ballot only while it has somewhere to move (`moves`), and every
+   move goes to an accusation with strictly more weight than the one it
+   leaves, so the moving ends.
 
    The pack's vote is the same, once the engine keeps it open until the pack
    agrees (the Düsterwald rule): a wolf whose vote is the pack's lead is
@@ -145,7 +153,8 @@
                             (not (some #{lead} (get-in view [:targets :werewolf-vote])))))]
     (into #{}
           (remove (fn [a] (or (excluded? a)
-                              (and voted? (contains? #{:vote :vote-abstain} a))
+                              (and voted? (= :vote-abstain a))
+                              (and voted? (= :vote a) (empty? (moves view)))
                               (and settled? (= :werewolf-vote a)))))
           (:actions view))))
 
@@ -251,16 +260,131 @@
   (let [score (suspicion view)]
     (pick seed (fn [id] (- (get score id 0))) cands)))
 
-(defn- leader
-  "The seat with the most votes cast today, lowest seat on a tie; nil when
-   nobody has voted for anybody. Abstentions are nil targets and do not count."
-  [view]
-  (let [tally (frequencies (filter some? (vals (:votes view))))]
-    (when (seq tally)
-      (ffirst (sort-by (fn [[id n]] [(- n) id]) tally)))))
+;; ----------------------------------------------------------------- ballot ---
 
-(defn- votes-on [view id]
-  (count (filter #(= id %) (vals (:votes view)))))
+(defn- ballot
+  "Today's ballot as the verdict will count it, with this seat's own ballot
+   taken out: `:on`, the weight on each accused, `:open`, the weight of the
+   living who have not voted, and `:mine`, what this seat's vote weighs. The
+   Bürgermeister's counts twice, a dead voter's or a vote for the dead not at
+   all, as in phases/verdict. Taking its own ballot out is what lets a seat
+   ask the same question before its first vote and after it: where would my
+   vote count?"
+  [view]
+  (let [me     (me-id view)
+        mayor  (:mayor view)
+        living (into #{} (keep (fn [[id p]] (when (:alive? p) id))) (:players view))
+        weight (fn [id] (if (= id mayor) 2 1))
+        votes  (dissoc (:votes view) me)]
+    {:on   (reduce (fn [on [voter t]]
+                     (if (and (living voter) (living t)) (update on t (fnil + 0) (weight voter)) on))
+                   {}
+                   votes)
+     :open (reduce + 0 (map weight (remove #(or (= me %) (contains? votes %)) living)))
+     :mine (weight me)}))
+
+(defn- hopeless?
+  "Would this seat's vote on `t` be wasted? When another accusation is two
+   votes ahead of it, this vote counted; when it cannot reach `:votes-needed`
+   even if every ballot still to come went to it; or when it is level with
+   or behind another and only every ballot still to come would carry it.
+   That last one is the tie at the end of the day: three against three with
+   one seat left to vote, the absent host as often as not. Without it a
+   fifth of the simulation's nine-seat days ended undecided, where people
+   would have had one side give way.
+
+   Two votes, not one: one is two seats agreeing by chance, and following
+   that would rebuild the herd one voter later. The herd is what the
+   staggered bots still were: on a day with nothing to go on, whoever
+   voted first, a human wolf too, had every bot without a find behind
+   that seat by the end of the window."
+  [view {:keys [on open mine]} t]
+  (let [here  (+ mine (get on t 0))
+        ahead (reduce max 0 (vals (dissoc on t)))]
+    (or (<= 2 (- ahead here))
+        (< (+ here open) (:votes-needed view))
+        (and (<= here ahead) (<= (+ here open) (:votes-needed view))))))
+
+(defn- candidates
+  "The seats this one would vote to condemn: `allowed`, and for the village
+   never one it knows to be no wolf, the Seherin's finds, a card it was
+   shown. A wolf keeps them: a villager it knows is one it wants gone."
+  [view]
+  (let [known (if (wolf? view) {} (:known-roles view))]
+    (remove (fn [id] (and (contains? known id) (not (wolf-card? (get known id)))))
+            (allowed view :vote))))
+
+(defn moves
+  "Where this seat's vote could go instead of where it is: the candidates with
+   strictly more weight on them than its current target, other votes counted,
+   that are not hopeless themselves. Empty while the current target is not
+   hopeless, or is a wolf the seat knows of, or there is nowhere better.
+
+   Strictly more is what ends the moving: every move shifts the same weight
+   onto a bigger pile, so the sum of the piles' squares only ever grows, and
+   a table of bots stops switching after a few moves however they are
+   ordered. Public, because `offers` asks it and the tests do."
+  [view]
+  (let [me   (me-id view)
+        mine (get (:votes view) me ::none)
+        b    (ballot view)]
+    (if (or (= ::none mine)
+            (contains? (known-wolves view) mine)
+            (not (hopeless? view b mine)))
+      []
+      (let [here (get-in b [:on mine] 0)]
+        (vec (filter (fn [id] (and (not= id mine)
+                                   (< here (get-in b [:on id] 0))
+                                   (not (hopeless? view b id))))
+                     (candidates view)))))))
+
+(defn- biggest
+  "The heaviest pile among `cands`, then this seat's own suspicion, then the
+   seed."
+  [view seed cands]
+  (let [on    (:on (ballot view))
+        score (suspicion view)]
+    (pick seed (fn [id] [(get on id 0) (get score id 0)]) cands)))
+
+(def ^:private follow-percent
+  "How often a seat with no reason to prefer anybody prefers the accusation
+   already on the board. Always was the herd. Never cost the village its best
+   weapon, the Seherin taking the floor first with her find: over 120 seeds
+   it won 65 games in 120 at nine seats instead of 82, and 74 instead of 99
+   at twelve. Half the time keeps it within about ten games of where it was,
+   still the favourite, while the first ballot spreads over more seats."
+  50)
+
+(defn- day-vote
+  "Whom this seat votes by day. A wolf it knows of, first. Otherwise, before
+   its first vote, its own suspect, and among equals the seed, or half the
+   time the accusation already made (`follow-percent`), so a table with
+   nothing to go on spreads its votes the way people do. That suspect is
+   passed over only when it is already hopeless, for the biggest pile it
+   could still help. After its first vote, the biggest of its `moves`."
+  [view seed]
+  (let [me    (me-id view)
+        cands (vec (candidates view))
+        cands (if (seq cands) cands (allowed view :vote))
+        known (first (filter (set cands) (sort (known-wolves view))))
+        score (suspicion view)]
+    (cond
+      known known
+
+      (contains? (:votes view) me)
+      (biggest view seed (moves view))
+
+      :else
+      (let [b         (ballot view)
+            [s1 roll] (rng/rand-int seed 100)
+            follow?   (< roll follow-percent)
+            own       (pick s1 (fn [id] [(get score id 0) (if follow? (get-in b [:on id] 0) 0)]) cands)]
+        (if (and own (hopeless? view b own))
+          (or (biggest view seed (filter (fn [id] (and (pos? (get-in b [:on id] 0))
+                                                       (not (hopeless? view b id))))
+                                         cands))
+              own)
+          own)))))
 
 ;; -------------------------------------------------------------- the order ---
 
@@ -316,11 +440,10 @@
    The day's vote is the one place chance is not enough: a table voting at
    random almost never reaches the majority a condemnation needs, and the
    simulation's answer, everybody votes the lowest seat, would condemn the
-   human host on day one. So: a wolf the seat knows of, else the leading
-   accusation once two votes stand behind it, else the seat's own suspect
-   (`suspect`, which with no facts to go on joins a lone accusation rather
-   than open a second one). Known wolves are also what a wolf never names,
-   which is the same list read the other way round.
+   human host on day one. Following the leading accusation reached the
+   verdict but made the table a herd. So the votes spread first and gather
+   later: see `day-vote` and `moves`. Known wolves are also what a wolf
+   never names, which is the same list read the other way round.
 
    Where `allowed` leaves nothing, a wolf whose lover is the last villager,
    the bot names a legal target anyway: a stalled table is worse than a
@@ -392,14 +515,13 @@
         (when (seq opts) (draw opts)))
 
       ;; ---- day ----
+      ;; A seat changing its vote names one of its `moves` or nothing, never
+      ;; a random seat: a move to anything but a bigger pile could undo
+      ;; another bot's and keep the ballot from settling.
       (offs :vote)
-      (let [ok    (set (allowed view :vote))
-            known (first (filter ok (sort (known-wolves view))))
-            lead  (leader view)
-            t     (or known
-                      (when (and (ok lead) (<= 2 (votes-on view lead))) lead)
-                      (top :vote))]
-        (cmd :vote :target t))
+      (if (contains? (:votes view) me)
+        (when-let [t (day-vote view seed)] (cmd :vote :target t))
+        (cmd :vote :target (or (day-vote view seed) (target :vote))))
 
       ;; Anybody, itself included: so do people.
       (offs :elect) (cmd :elect :target (draw (get-in view [:targets :elect])))
