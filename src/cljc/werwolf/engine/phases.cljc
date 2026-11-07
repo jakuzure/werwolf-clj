@@ -770,6 +770,15 @@
    :reaction    :reaction-secs
    :day-resolve :verdict-secs})
 
+(def duration-steps
+  "The lengths the Spielleiter may choose in the lobby, in seconds, for the two
+   clocks that set a table's pace. Steps rather than a free number: they are
+   a row of taps on a phone, and nobody has to type \"300\" to mean five
+   minutes. The shipped defaults, 300 and 45, are among them, so a fresh room
+   shows its own value as one of the choices."
+  {:discussion [120 180 300 480 600]
+   :night      [30 45 60 90]})
+
 (defn timeout-events
   "What it MEANS for the clock to run out here. Pure, so the rule is testable
    on both platforms and the server only has to decide *when*.
@@ -1017,7 +1026,7 @@
       ;; game, and an absent player is something every phase already survives.
       (= :lobby phase)
       (cond-> #{:gm/toggle-narrated :gm/toggle-timer :gm/transfer-host
-                :gm/kick :gm/set-deck :gm/set-rule}
+                :gm/kick :gm/set-deck :gm/set-rule :gm/set-duration}
         (contains? state :deck) (conj :gm/auto-deck)
         ;; And seating a bot, only while there is a seat to put it in — a
         ;; button that cannot seat anybody is a button somebody will press to
@@ -1240,8 +1249,8 @@
     ;; The deck travels as a map of its own, not as a seat or a word: the whole
     ;; deck in every command, validated against the registry by the handler.
     :gm/set-deck :gm/auto-deck
-    ;; A rule and its value, never a seat.
-    :gm/set-rule})
+    ;; A rule and its value, never a seat. A phase and a length, likewise.
+    :gm/set-rule :gm/set-duration})
 
 (declare legal-targets legal-choices)
 

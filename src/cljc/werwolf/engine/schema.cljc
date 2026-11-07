@@ -105,6 +105,10 @@
    ;; Whether the room has a clock at all. Absent means it does — again, the old
    ;; behaviour. A narrated room opens with it off.
    [:timer? {:optional true} :boolean]
+   ;; How long the day's talk and each role's turn at night last, in seconds.
+   ;; Stamped in at creation from config and changed in the lobby. Absent in
+   ;; older logs, where the server's config still decides.
+   [:durations {:optional true} [:map-of [:enum :discussion :night] :int]]
    ;; A salted PBKDF2 hash of the room's password, absent when it has none.
    ;; Opaque to the engine — see :room/password-set — and SECRET: `view-for`
    ;; publishes only whether it exists, as :locked?.

@@ -79,10 +79,11 @@
                  {:type :gm/set-deck :deck {}}
                  {:type :gm/auto-deck}
                  {:type :gm/add-bot}
-                 {:type :gm/set-rule :rule :mayor? :on? false}]]
+                 {:type :gm/set-rule :rule :mayor? :on? false}
+                 {:type :gm/set-duration :phase :night :secs 60}]]
       (is (proto/valid-client-message? (as-wire cmd)) (pr-str cmd)))
     (doseq [a [:begin-night :gm/toggle-narrated :gm/toggle-timer
-               :gm/set-deck :gm/auto-deck :gm/add-bot :gm/set-rule]]
+               :gm/set-deck :gm/auto-deck :gm/add-bot :gm/set-rule :gm/set-duration]]
       (is (contains? phases/no-target-actions a)
           (str a " names nobody, so it must be offerable without a target")))))
 

@@ -564,6 +564,17 @@
     (= on? (if (= :mayor? rule) (phases/mayor? state) (boolean (get state rule)))) []
     :else [{:type :rules/set :rule rule :on? on?}]))
 
+(defmethod handle :gm/set-duration
+  ;; One of the steps `phases/duration-steps` offers, and nothing else: the
+  ;; lobby shows those as buttons, and a length between them is a client that
+  ;; is not ours. Lobby only, like the rules.
+  [state {:keys [player phase secs]}]
+  (cond
+    (not (allowed? state player :gm/set-duration)) (err :not-allowed {:action :gm/set-duration})
+    (not (some #{secs} (get phases/duration-steps phase))) (err :invalid-duration {:phase phase})
+    (= secs (get-in state [:durations phase]))     []
+    :else [{:type :clock/duration-set :phase phase :secs secs}]))
+
 (defmethod handle :gm/transfer-host
   ;; Hand the host's seat — and in a narrated room, the Spielleitung with it —
   ;; to somebody else. Lobby only: see `phases/host-actions`. The same event

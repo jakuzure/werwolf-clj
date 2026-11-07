@@ -1827,7 +1827,9 @@
                  [:span {:class "text-slate-400"} (str label " · ")]
                  [:span {:class "font-semibold text-slate-100"} value]]
                 switch]
-               (when hint [:p {:class "text-xs text-slate-400"} hint])])]
+               ;; A sentence, or a row of choices under the label.
+               (cond (string? hint) [:p {:class "text-xs text-slate-400"} hint]
+                     hint hint)])]
     [:div {:class "rounded-xl border border-slate-700 bg-slate-900/60 px-3 py-1 divide-y divide-slate-800 text-sm"
            :data-testid "table-settings"}
      ;; Said to the Spielleiter in so many words — including the one who just
@@ -1850,6 +1852,27 @@
         [btn (t (if timer? :lobby/timer-switch-off :lobby/timer-switch-on))
          #(rf/dispatch [::ev/act :gm/toggle-timer])
          {:tone :quiet :testid "toggle-timer"}])]
+     ;; The two clocks that set the pace, while there is a clock: without one
+     ;; the Spielleiter paces the table and a length would mean nothing. One
+     ;; tap per step rather than a number to type on a phone.
+     (when timer?
+       (let [durations @(rf/subscribe [::sub/durations])
+             steps     @(rf/subscribe [::sub/duration-steps])
+             set?      (contains? actions :gm/set-duration)]
+         (for [phase [:discussion :night]
+               :let [secs (get durations phase)]
+               :when secs]
+           ^{:key (str phase)}
+           [row (t (keyword "duration" (name phase)))
+            (i18n/duration-text (lc) secs)
+            nil
+            (when set?
+              [:div {:class "flex flex-wrap gap-1.5"}
+               (for [n (get steps phase)]
+                 ^{:key n}
+                 [btn (i18n/duration-text (lc) n)
+                  #(rf/dispatch [::ev/act-with :gm/set-duration {:phase phase :secs n}])
+                  {:tone (if (= n secs) :primary :quiet)}])])])))
      ;; The rule variants. Everybody reads the value, since a table should know
      ;; before the deal whether the wolves eat on the first night; the hint is
      ;; for the one who decides, or the lobby grows four sentences longer for

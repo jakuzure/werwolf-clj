@@ -153,6 +153,9 @@
 (rf/reg-sub ::narrated? :<- [::view] (fn [v _] (boolean (:narrated? v))))
 ;; The rule variants, each a boolean the server spelled out. Read in the lobby.
 (rf/reg-sub ::rules :<- [::view] (fn [v _] (:rules v {})))
+;; How long the talk and each night turn last, and the lengths on offer.
+(rf/reg-sub ::durations :<- [::view] (fn [v _] (:durations v {})))
+(rf/reg-sub ::duration-steps :<- [::view] (fn [v _] (:duration-steps v {})))
 (rf/reg-sub ::narrator? :<- [::me-view] (fn [me _] (boolean (:narrator? me))))
 (rf/reg-sub ::timer?    :<- [::view] (fn [v _] (not (false? (:timer? v)))))
 (rf/reg-sub ::host      :<- [::view] (fn [v _] (:host v)))
