@@ -1044,6 +1044,19 @@
                     room-id))))))
          (store/unfinished-room-ids (:ds ctx)))))
 
+(defn deserted?
+  "Has every person walked out of this room, leaving bots or nobody?
+
+   Leaving gives the seat up: the page forgets its token on the way out, so
+   nobody comes back to a seat they left. A room in that state used to wait
+   out the idle limit like a table whose phones had locked. The bot test
+   tables of 2026-11-07 were left within seconds of the deal and then stood
+   in the metrics as games running for half an hour, came back on the next
+   boot, and would have kept doing so for a day."
+  [state]
+  (not-any? (fn [p] (not (or (:bot? p) (:left? p))))
+            (vals (:players state))))
+
 (defn sweep-idle!
   "Drop rooms nobody is connected to and nothing has happened in.
 
@@ -1054,7 +1067,10 @@
 
    Two conditions, both required. Idle alone is not enough: a table can sit in
    silence for a while and still be sitting there. What makes a room abandoned is
-   that NO socket is attached to it."
+   that NO socket is attached to it.
+
+   A `deserted?` room goes at once, idle or not, and an unfinished one is
+   retired: nobody is coming back to it."
   ([ctx now-ms] (sweep-idle! ctx now-ms (:game ctx)))
   ([ctx now-ms {:keys [room-idle-ms game-idle-ms] :as game-cfg}]
    (let [lobby-limit (or room-idle-ms default-lobby-idle-ms)
@@ -1067,10 +1083,12 @@
                                       lobby-limit
                                       game-limit)
                          last-active (:last-activity r 0)
-                         idle       (- now-ms last-active)]
-                     (when (and (not connected?) (> idle limit))
+                         idle       (- now-ms last-active)
+                         deserted   (and (:state r) (deserted? (:state r)))]
+                     (when (and (not connected?) (or deserted (> idle limit)))
                        (if (and phase (not= :game-over phase)
-                                (abandoned? game-cfg now-ms phase last-active))
+                                (or deserted
+                                    (abandoned? game-cfg now-ms phase last-active)))
                          (do (log/info "retiring abandoned room" room-id
                                        (idle-text now-ms last-active phase))
                              (retire! ctx room-id))
