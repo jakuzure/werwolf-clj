@@ -317,6 +317,35 @@
         (is (= [room-id] (room/sweep-idle! ctx (+ (System/currentTimeMillis)
                                                   (:game-idle-ms game-cfg) 1))))))))
 
+(deftest a-table-every-person-left-is-closed-at-once
+  ;; The bot test tables of 2026-11-07: dealt, left within seconds, and then
+  ;; counted as games running until the idle limit, and loaded on every boot.
+  (with-ctx [ctx]
+    (let [{:keys [room-id]} (bot-table ctx 5)]
+      (at! ctx t0)
+      (begin! ctx room-id)
+      (is (:ok? (room/submit! ctx room-id 0 {:type :leave})))
+      (is (= [room-id] (room/sweep-idle! ctx (System/currentTimeMillis)))
+          "no idle limit to wait out")
+      (is (not (contains? @(:rooms ctx) room-id)))
+      (is (not-any? #{room-id} (store/unfinished-room-ids (:ds ctx)))
+          "closed in the log, so no boot brings it back"))))
+
+(deftest a-lobby-left-to-the-bots-goes-too
+  (with-ctx [ctx]
+    (let [{:keys [room-id]} (bot-table ctx 3)]
+      (is (:ok? (room/submit! ctx room-id 0 {:type :leave})))
+      (is (= [room-id] (room/sweep-idle! ctx (System/currentTimeMillis)))))))
+
+(deftest a-table-with-a-person-still-seated-waits
+  (with-ctx [ctx]
+    (let [{:keys [room-id sink]} (bot-table ctx 5)]
+      (at! ctx t0)
+      (begin! ctx room-id)
+      (room/detach! ctx sink)
+      (is (= [] (room/sweep-idle! ctx (System/currentTimeMillis)))
+          "gone quiet is not gone: the phone may only have locked"))))
+
 (deftest the-heir-is-never-a-bot
   (with-ctx [ctx]
     (let [{:keys [room-id]} (room/create! ctx {:name "P0" :narrated? false :seed 7})]
