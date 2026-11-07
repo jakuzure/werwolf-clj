@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.12.0](https://github.com/jakuzure/werwolf-clj/compare/v0.11.0...v0.12.0) (2026-11-07)
+
+
+### Features
+
+* **bots:** stagger the bots and let them reason from what the table saw ([7309e91](https://github.com/jakuzure/werwolf-clj/commit/7309e9110b867dede2226744c9923c9a2676fd15))
+* **client:** offer a reload when the served bundle has changed ([aca71d3](https://github.com/jakuzure/werwolf-clj/commit/aca71d364680a97f80b5d645a4d324943e083db8))
+* **engine:** let the Spielleiter call each step of a game without a clock ([281ac2b](https://github.com/jakuzure/werwolf-clj/commit/281ac2b341bcdac29217b617a1fd40dbda816b39))
+* **engine:** let the wolves change their vote until the pack agrees ([03efe04](https://github.com/jakuzure/werwolf-clj/commit/03efe0427100e954bab31e0686d955afb64b71d7))
+* **engine:** show the night's progress to the Spielleiter alone ([8ff1444](https://github.com/jakuzure/werwolf-clj/commit/8ff1444650e02a2cde88d0a5abf4e4fe02c8c862))
+
+
+### Bug Fixes
+
+* **client:** call the way out of a finished game leaving the room ([35442db](https://github.com/jakuzure/werwolf-clj/commit/35442dba64d29f6feabc4ed3218de7b15ac93e75))
+* **engine:** refuse a deal with more of a role than the box holds ([acec6ba](https://github.com/jakuzure/werwolf-clj/commit/acec6ba10f97c2f3d9ea6be6a66ffb86a1e0567f))
+* **server:** wait for http-kit to report :stopped before halt returns ([86a888c](https://github.com/jakuzure/werwolf-clj/commit/86a888c6b94c517307ad36ad22074bafa587e29f))
+
 ## [0.11.0](https://github.com/jakuzure/werwolf-clj/compare/v0.10.1...v0.11.0) (2026-10-30)
 
 
