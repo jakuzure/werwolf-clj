@@ -249,6 +249,32 @@
             (tick-until ctx (+ human 1000) (+ human spread-ms 1000) #(all-bots-voted? ctx room-id))
             (is (all-bots-voted? ctx room-id) "all by the end of the spread: the bots' own commits in between pushed nobody out")))))))
 
+(deftest a-bot-whose-vote-became-hopeless-moves-after-the-delay
+  ;; Its day slot is behind it, so armed at that slot it would move in the
+  ;; tick after the commit, and every bot on the same lost pile with it:
+  ;; one pile emptying into another all at once, the stampede again.
+  (with-ctx [ctx]
+    (let [{:keys [room-id]} (bot-table ctx 5 {:narrated? false})]
+      (at! ctx t0)
+      (room/submit! ctx room-id 0 {:type :start-game})
+      (to-open-ballot! ctx room-id)
+      (let [since        (:phase-since (room-map ctx room-id))
+            [x y & more] (living-bots ctx room-id)
+            crowd        (take 3 more)
+            cast         (+ since 1000)]
+        (is (= 3 (count crowd)) "five bots live through the first night")
+        (at! ctx cast)
+        (is (:ok? (room/submit! ctx room-id x {:type :vote :target y})))
+        (doseq [b crowd] (is (:ok? (room/submit! ctx room-id b {:type :vote :target 0}))))
+        (let [at (get-in (room-map ctx room-id) [:bots x :at])]
+          (is (some? at) "three against one: x holds the ballot again")
+          (is (<= (+ cast (:bot-delay-ms game-cfg)) at (+ cast spread-ms))
+              "the delay and its share of the spread after the commit"))
+        (tick-until ctx (+ cast 1000) (+ cast spread-ms 1000)
+                    #(= 0 (get-in (state ctx room-id) [:votes x])))
+        (is (= 0 (get-in (state ctx room-id) [:votes x])) "x moved to the three")
+        (is (nil? (get-in (room-map ctx room-id) [:bots x])) "and is settled there")))))
+
 (deftest the-shipped-pacing-keeps-a-ballot-short
   ;; The tests above pin a floor and a patience of their own, so this one says
   ;; what ships: a human who waits to see where the bots lean sits out the

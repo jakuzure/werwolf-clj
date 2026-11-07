@@ -73,14 +73,20 @@
    answer, each seat its share of the spread after the other, still never
    all at once. Five bots are a majority, and a majority that votes two
    seconds into the day condemns somebody before the human has read the
-   screen."
-  [game-cfg phase-since state offs day-share night-share now-ms]
+   screen.
+
+   A seat that has voted and is offered the ballot again is changing its
+   mind (bot/moves): the delay and its share of the spread after the commit
+   that made its accusation hopeless, as at night. Its day slot is behind
+   it, and every switch landing in the tick after that commit was the
+   stampede once more, one pile emptying into another all at once."
+  [game-cfg phase-since state offs day-share night-share now-ms revote?]
   (let [delay    (or (:bot-delay-ms game-cfg) default-delay-ms)
         spread   (or (:bot-spread-ms game-cfg) default-spread-ms)
         floor    (* 1000 (or (:bot-floor-secs game-cfg) default-floor-secs))
         patience (* 1000 (or (:bot-patience-secs game-cfg) default-patience-secs))
         since    (or phase-since now-ms)]
-    (if (some day-actions offs)
+    (if (and (some day-actions offs) (not revote?))
       (let [slot (+ since floor (long (* day-share (max 0 (- patience floor)))))]
         (if (humans-done? state)
           (min slot (+ (max (+ now-ms delay) (+ since floor))
@@ -147,7 +153,9 @@
                                         :at (let [at (due-at game-cfg phase-since state offs
                                                              (get shares pid 0)
                                                              (bot/share (:seed state) turn pid)
-                                                             now-ms)]
+                                                             now-ms
+                                                             (and (contains? offs :vote)
+                                                                  (contains? (:votes state {}) pid)))]
                                               (cond
                                                 (and same? (not day?))   (:at prev)
                                                 (and same? same-phase?)  (min (:at prev) at)
