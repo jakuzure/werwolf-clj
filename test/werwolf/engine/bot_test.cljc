@@ -153,18 +153,25 @@
         (is (empty? (filter #(= :hexe-poison (:type %)) cmds)))
         (is (every? #(#{:hexe-heal :hexe-pass} (:type %)) cmds))))))
 
-(deftest the-day-vote-follows-knowledge-then-the-crowd-then-chance
+(deftest the-day-vote-follows-knowledge-then-its-own-suspect
   (let [day (tu/day-with cast)]
     (testing "the Seherin votes the wolf she found"
       (let [s (tu/knowing day 1 {2 :werwolf})]
         (is (= {:type :vote :player 1 :target 2} (bot/decide (view/view-for s 1) 7)))))
-    (testing "a villager follows the leading target"
-      (let [s (-> day (exec! {:type :vote :player 1 :target 4}) (exec! {:type :vote :player 2 :target 4}))]
-        (is (= {:type :vote :player 0 :target 4} (bot/decide (view/view-for s 0) 7)))))
-    (testing "with nothing to go on, a lone accusation is joined rather than a second one opened"
-      (let [s (exec! day {:type :vote :player 1 :target 4})]
+    (testing "a villager whose own suspect could no longer win joins the accusation that can"
+      (let [s (-> day
+                  (exec! {:type :vote :player 1 :target 4})
+                  (exec! {:type :vote :player 2 :target 4})
+                  (exec! {:type :vote :player 3 :target 4}))]
         (doseq [seed (range 10)]
           (is (= {:type :vote :player 0 :target 4} (bot/decide (view/view-for s 0) seed))))))
+    (testing "with nothing to go on, a lone accusation is joined about half the time, not always"
+      ;; Always was the herd: every bot behind whoever voted first.
+      (let [s       (exec! day {:type :vote :player 1 :target 4})
+            targets (map #(:target (bot/decide (view/view-for s 0) %)) (range 60))
+            joined  (count (filter #{4} targets))]
+        (is (< 20 joined 55) (pr-str (frequencies targets)))
+        (is (< 2 (count (set targets))) "the rest spread over the table")))
     (testing "a wolf never follows the crowd onto a wolf"
       (let [s (-> day (exec! {:type :vote :player 1 :target 6}) (exec! {:type :vote :player 3 :target 6}))]
         (is (not= 6 (:target (bot/decide (view/view-for s 2) 7))))
@@ -192,10 +199,12 @@
 (defn- table
   "A hand-built view of a table of `n` seats for seat `me`. Everything is as
    given and otherwise empty; `dead` seats are not alive, `bots` carry the
-   public flag."
-  [n me & {:keys [role lover dead bots log known votes actions targets night-info night]
+   public flag. `:votes-needed` is the strict majority of the living, as
+   the engine sends it, unless given."
+  [n me & {:keys [role lover dead bots log known votes actions targets night-info night votes-needed]
            :or   {dead #{} bots #{} log [] known {} votes {} actions #{} targets {}}}]
   {:me         {:id me :role role :lover lover}
+   :votes-needed (or votes-needed (inc (quot (- n (count dead)) 2)))
    :players    (into {} (map (fn [i] [i {:id i :alive? (not (contains? dead i)) :bot? (contains? bots i)}])) (range n))
    :known-roles known
    :log        log
@@ -259,12 +268,38 @@
       (doseq [seed (range 10)]
         (is (#{1 2 4} (:target (bot/decide (at-day []) seed))) "one of the three who condemned a villager")
         (is (#{1 2 4} (:target (bot/decide (at-day [[5 1]]) seed))))))
-    (testing "the suspects being equal, the one already accused"
-      (doseq [seed (range 10)]
-        (is (= 2 (:target (bot/decide (at-day [[5 2]]) seed))))))
-    (testing "two votes behind an accusation, and the bot joins it"
+    (testing "the suspects being equal, the one already accused more often than not"
+      (let [targets (map #(:target (bot/decide (at-day [[5 2]]) %)) (range 60))]
+        (is (every? #{1 2 4} targets))
+        (is (< 30 (count (filter #{2} targets)) 60) (pr-str (frequencies targets)))))
+    (testing "an accusation its own suspect could no longer catch, and the bot joins it"
       (doseq [seed (range 10)]
         (is (= 5 (:target (bot/decide (at-day [[1 5] [2 5]]) seed))))))))
+
+(deftest a-hopeless-vote-moves-to-a-bigger-accusation-and-only-there
+  ;; Seven seats, four votes condemn. Seat 0 a villager, its vote on 6.
+  (let [at (fn [votes & {:as more}]
+             (apply table 7 0 :role :dorfbewohner :votes votes
+                    :actions #{:vote :vote-abstain :chat} :targets {:vote [1 2 3 4 5 6]}
+                    (mapcat identity more)))]
+    (testing "three against its one: it moves to the three"
+      (let [v (at {0 6 1 4 2 4 3 4})]
+        (is (= [4] (bot/moves v)))
+        (is (contains? (bot/offers v) :vote))
+        (is (= {:type :vote :player 0 :target 4} (bot/decide v 1)))))
+    (testing "one against its one is no reason to move, and the ballot is not offered again"
+      (let [v (at {0 6 1 4})]
+        (is (empty? (bot/moves v)))
+        (is (not (contains? (bot/offers v) :vote)))
+        (is (nil? (bot/decide v 1)))))
+    (testing "never onto a seat it knows is no wolf, never off a wolf it knows"
+      (is (empty? (bot/moves (at {0 6 1 4 2 4 3 4} :known {0 :dorfbewohner 4 :dorfbewohner}))))
+      (is (empty? (bot/moves (at {0 6 1 4 2 4 3 4} :known {0 :dorfbewohner 6 :werwolf})))))
+    (testing "three against three with one seat left: one side gives way"
+      (let [v (at {0 5 1 5 2 5 3 4 5 4 6 4})]
+        (is (= [4] (bot/moves v)))))
+    (testing "only to a bigger pile, so the moving ends: two against two stays put"
+      (is (empty? (bot/moves (at {0 6 1 6 2 4 3 4} :votes-needed 7)))))))
 
 (deftest at-night-the-same-suspicion-picks-the-target
   (let [history (cast-all 2 [[1 3] [2 3] [4 3] [5 4] [3 5] [0 5]] :verdict 3)
