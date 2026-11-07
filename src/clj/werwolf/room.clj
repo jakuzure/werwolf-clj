@@ -407,6 +407,11 @@
                        :first-night-kill? first-kill?
                        :first-day-trial? first-trial?
                        :narrated?   narrated?*
+                       ;; The deployment's lengths, as this room's starting
+                       ;; point; the Spielleiter may pick others in the lobby.
+                       :durations   (into {} (remove (comp nil? val))
+                                          {:discussion (:discussion-secs cfg)
+                                           :night      (:night-secs cfg)})
                        ;; The clock follows the mode, as it does when the host
                        ;; flips it later — see :game/narrated-set.
                        :timer?      (not narrated?*)}

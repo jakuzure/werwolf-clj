@@ -129,6 +129,29 @@
     (testing "a missing duration slows the game down; it does not crash it"
       (is (nil? (timer/clock-events {} t0 {:phase :election}))))))
 
+(deftest a-room-times-itself-by-its-own-lengths
+  (testing "the Spielleiter's choice beats config"
+    (is (= [{:type :phase/deadline :at (+ t0 120000)}]
+           (timer/clock-events game-cfg t0 {:phase :discussion :durations {:discussion 120}})))
+    (is (= [{:type :phase/deadline :at (+ t0 90000)}]
+           (timer/clock-events game-cfg t0 {:phase :night :durations {:night 90}}))))
+  (testing "a room restored from a log without lengths falls back to config"
+    (is (= [{:type :phase/deadline :at (+ t0 300000)}]
+           (timer/clock-events game-cfg t0 {:phase :discussion}))))
+  (testing "the clocks nobody can choose stay config's"
+    (is (= [{:type :phase/deadline :at (+ t0 60000)}]
+           (timer/clock-events game-cfg t0 {:phase :election :durations {:discussion 120}})))))
+
+(deftest a-new-room-starts-from-the-deployments-lengths
+  (let [path (tmp-path)]
+    (try
+      (let [ctx (room/registry {:ds (store/open {:dbtype "sqlite" :dbname path})
+                                :send! (fn [_ _])
+                                :game {:discussion-secs 240 :night-secs 30}})
+            {:keys [room-id]} (room/create! ctx {:name "P0"})]
+        (is (= {:discussion 240 :night 30} (:durations (room/state-of ctx room-id)))))
+      (finally (cleanup! path)))))
+
 ;; -------------------------------------------------------------------- firing ---
 
 (deftest nothing-fires-before-the-deadline

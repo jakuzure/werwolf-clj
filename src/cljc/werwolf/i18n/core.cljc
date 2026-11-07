@@ -68,6 +68,14 @@
 
 (defn rule-name [locale rule] (t locale (rule-key rule)))
 
+(defn duration-text
+  "A clock's length the way a table says it: whole minutes as minutes, the
+   rest in seconds."
+  [locale secs]
+  (if (and (>= secs 60) (zero? (mod secs 60)))
+    (t locale :duration/minutes (quot secs 60))
+    (t locale :duration/seconds secs)))
+
 ;; ------------------------------------------------------------------- tones ---
 
 (def ^:private tone-by-type
@@ -106,6 +114,7 @@
    :deck/set          :gm
    :deck/auto         :gm
    :rules/set         :gm
+   :clock/duration-set :gm
    ;; Bookkeeping. Real, auditable, and not what anyone opens the Chronik for.
    :phase/timed-out  :muted
    :player/ready     :muted
@@ -255,6 +264,9 @@
       :deck/set            (t locale :log/deck-set (deck-summary locale (:deck entry)))
       :deck/auto           (t locale :log/deck-auto)
       :rules/set           (t locale :log/rule-set (rule-name locale (:rule entry)) (:on? entry))
+      :clock/duration-set  (t locale :log/duration-set
+                              (t locale (keyword "duration" (name (:phase entry))))
+                              (duration-text locale (:secs entry)))
       :night/began         (t locale :log/night-began)
       ;; Published without the ids on purpose: THAT there are lovers is public,
       ;; WHO they are is not. See apply-event :amor/linked.

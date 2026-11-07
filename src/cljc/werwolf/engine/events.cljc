@@ -170,7 +170,7 @@
 
 (defmethod apply-event :game/created
   [_ {:keys [room-id host seed min-players max-players first-night-kill?
-             first-day-trial? narrated? timer?]}]
+             first-day-trial? narrated? timer? durations]}]
   (cond-> {:room-id        room-id
            :phase          :lobby
            :night          0
@@ -199,7 +199,10 @@
     ;; very state it always did, and "absent" is how every reader spells "the
     ;; host plays, and the clock runs".
     (some? narrated?) (assoc :narrated? (boolean narrated?))
-    (some? timer?)    (assoc :timer? (boolean timer?))))
+    (some? timer?)    (assoc :timer? (boolean timer?))
+    ;; Stamped like the rule variants, so a replay times the game it was and a
+    ;; config change cannot reach into a room already open.
+    (seq durations)   (assoc :durations durations)))
 
 (defmethod apply-event :player/joined
   ;; A bot is a seat the server plays: it has no socket, so it is never
@@ -435,6 +438,14 @@
   (-> state
       (assoc rule (boolean on?))
       (publish {:type :rules/set :rule rule :on? (boolean on?)})))
+
+(defmethod apply-event :clock/duration-set
+  ;; How long one of the table's clocks runs, chosen in the lobby. Public, like
+  ;; the rules: a table should know before the deal how long it may talk.
+  [state {:keys [phase secs]}]
+  (-> state
+      (assoc-in [:durations phase] secs)
+      (publish {:type :clock/duration-set :phase phase :secs secs})))
 
 (defmethod apply-event :game/started
   [state {:keys [assignments centre seed]}]
@@ -816,7 +827,7 @@
                                       :type :game/created))]
     (-> fresh
         (merge (select-keys state [:narrated? :timer? :password-hash :deck :host-absent?
-                                   :reveal-to-dead? :mayor?]))
+                                   :reveal-to-dead? :mayor? :durations]))
         (assoc :players
                (into {}
                      (comp

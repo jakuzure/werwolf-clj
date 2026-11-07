@@ -104,3 +104,39 @@
     (is (= {:first-night-kill? false :first-day-trial? false
             :reveal-to-dead? true :mayor? false}
            (:rules (view/view-for s 0))))))
+
+(deftest the-spielleiter-sets-the-clocks-in-the-lobby
+  (let [s (e/apply-event (tu/narrated-lobby 5)
+                         {:type :clock/duration-set :phase :discussion :secs 300})
+        s (exec! s {:type :gm/set-duration :player 0 :phase :discussion :secs 180})]
+    (is (= 180 (get-in s [:durations :discussion])))
+    (is (= {:type :clock/duration-set :phase :discussion :secs 180} (peek (:log s))))
+    (is (= 180 (get-in (view/view-for s 3) [:durations :discussion]))
+        "everybody reads how long the table may talk")
+    (is (schema/valid-state? s) (pr-str (schema/explain-state s)))
+    (testing "the same length again is no second decision"
+      (is (= s (exec! s {:type :gm/set-duration :player 0 :phase :discussion :secs 180}))))
+    (testing "only the steps the lobby offers, and only for the two clocks"
+      (doseq [cmd [{:phase :discussion :secs 200}
+                   {:phase :night :secs 300}
+                   {:phase :election :secs 60}]]
+        (is (= :invalid-duration
+               (:error (second (try-exec s (merge {:type :gm/set-duration :player 0} cmd)))))
+            (pr-str cmd))))
+    (testing "only the host, and only in the lobby"
+      (is (= :not-allowed (:error (second (try-exec s {:type :gm/set-duration :player 1
+                                                       :phase :night :secs 60})))))
+      (let [s (exec! s {:type :start-game :player 0})]
+        (is (= :not-allowed (:error (second (try-exec s {:type :gm/set-duration :player 0
+                                                         :phase :night :secs 60})))))
+        (is (nil? (:duration-steps (view/view-for s 0)))
+            "the choices are the lobby's and go no further")))
+    (testing "and the next round keeps them"
+      (is (= 180 (get-in (e/apply-event s {:type :game/reset}) [:durations :discussion]))))))
+
+(deftest a-room-opened-with-lengths-replays-them
+  (let [s (e/apply-event nil {:type :game/created :room-id "R" :host 0 :seed 1
+                              :durations {:discussion 300 :night 45}})]
+    (is (= {:discussion 300 :night 45} (:durations s)))
+    (testing "and a log from before them has none"
+      (is (not (contains? (engine/new-game {:room-id "R" :host 0 :seed 1}) :durations))))))

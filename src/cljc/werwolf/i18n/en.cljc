@@ -104,6 +104,10 @@
    :rule/off "off"
    :rule/switch-on "Turn on"
    :rule/switch-off "Turn off"
+   :duration/discussion "Discussion"
+   :duration/night "Night, per role"
+   :duration/minutes (fn [n] (str n " min"))
+   :duration/seconds (fn [n] (str n " s"))
    :lobby/invite-text (fn [code] (str "Play Werewolf with us — room " code))
    :lobby/link-copied "Link copied"
    :lobby/share-link "Share link"
@@ -212,6 +216,7 @@
    :action/gm-set-deck     "Choose roles"
    :action/gm-auto-deck    "Automatic roles"
    :action/gm-set-rule     "Change a rule"
+   :action/gm-set-duration "Set a time"
    :action/gm-force-kill   "Kill"
    :action/gm-revive       "Revive"
    :action/gm-skip-role    "Skip role"
@@ -443,6 +448,7 @@
    :log/deck-set      (fn [d] (str "The narrator chooses the roles: " d))
    :log/deck-auto     "The roles follow the number of players again"
    :log/rule-set      (fn [r on?] (str "The narrator turns " (if on? "on" "off") ": " r))
+   :log/duration-set  (fn [what v] (str "The narrator sets a time: " what ", " v))
    :log/amor-linked   "Amor has chosen two lovers"
    :log/night-began   "Night falls"
    :log/night-quiet   "Nobody died during the night"
@@ -595,6 +601,7 @@
    :error/unknown-role     "There is no such role"
    :error/invalid-deck     "That is not a choice of roles"
    :error/invalid-rule     "There is no such rule"
+   :error/invalid-duration "That time is not on offer"
    :error/invalid-count    "That is not a number of cards"
    :error/too-many-of-role "There are not that many cards of this role"
    :error/deck-too-large   "No table holds that many cards"

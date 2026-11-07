@@ -108,6 +108,10 @@
    :rule/off "aus"
    :rule/switch-on "Einschalten"
    :rule/switch-off "Ausschalten"
+   :duration/discussion "Diskussion"
+   :duration/night "Nacht, je Rolle"
+   :duration/minutes (fn [n] (str n " min"))
+   :duration/seconds (fn [n] (str n " s"))
    :lobby/invite-text (fn [code] (str "Spiel mit uns Werwolf — Raum " code))
    :lobby/link-copied "Link kopiert"
    :lobby/share-link "Link teilen"
@@ -218,6 +222,7 @@
    :action/gm-set-deck     "Rollen wählen"
    :action/gm-auto-deck    "Rollen automatisch"
    :action/gm-set-rule     "Regel ändern"
+   :action/gm-set-duration "Zeit einstellen"
    :action/gm-force-kill   "Töten"
    :action/gm-revive       "Wiederbeleben"
    :action/gm-skip-role    "Rolle überspringen"
@@ -460,6 +465,7 @@
    :log/deck-set      (fn [d] (str "Der Spielleiter wählt die Rollen: " d))
    :log/deck-auto     "Die Rollen richten sich wieder nach der Zahl der Mitspieler"
    :log/rule-set      (fn [r on?] (str "Der Spielleiter schaltet " (if on? "ein" "aus") ": " r))
+   :log/duration-set  (fn [what v] (str "Der Spielleiter stellt die Zeit ein: " what ", " v))
    :log/amor-linked   "Amor hat zwei Verliebte bestimmt"
    :log/night-began   "Die Nacht bricht an"
    :log/night-quiet   "In dieser Nacht ist niemand gestorben"
@@ -614,6 +620,7 @@
    :error/unknown-role     "Diese Rolle gibt es nicht"
    :error/invalid-deck     "Ungültige Rollenauswahl"
    :error/invalid-rule     "Diese Regel gibt es nicht"
+   :error/invalid-duration "Diese Zeit steht nicht zur Wahl"
    :error/invalid-count    "Ungültige Anzahl"
    :error/too-many-of-role "So viele Karten dieser Rolle gibt es nicht"
    :error/deck-too-large   "So viele Karten passen an keinen Tisch"

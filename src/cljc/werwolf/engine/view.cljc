@@ -345,6 +345,12 @@
      ;; Whether today ends in a vote, and what a condemnation takes. Rules, so
      ;; the engine says them and the client does not count for itself.
      :trial?      (phases/trial-day? state)
+     ;; How long the talk and each night turn last, for the lobby. Absent in a
+     ;; room opened before it could be chosen.
+     :durations   (:durations state)
+     ;; And the lengths on offer, from the engine that checks them, so the
+     ;; lobby's buttons are the server's list. Nowhere else needs them.
+     :duration-steps (when (= :lobby (:phase state)) phases/duration-steps)
      ;; Whether today holds the Bürgermeister's election, for the day's strip.
      :election-day? (phases/election-day? state)
      ;; The rule variants the table plays by, each spelled out as a boolean.

@@ -37,8 +37,14 @@
 
 ;; ---------------------------------------------------------------- policy ---
 
-(defn- secs-for [game-cfg phase]
-  (get game-cfg (engine/timed-phases phase)))
+(defn- secs-for
+  "The room's own length for this phase where the Spielleiter chose one (or
+   creation stamped it in), else config. Config stays the fallback because a
+   room restored from a log written before the lobby could set it has none."
+  [game-cfg state]
+  (let [phase (:phase state)]
+    (or (get-in state [:durations phase])
+        (get game-cfg (engine/timed-phases phase)))))
 
 (defn clock-events
   "Events that make the deadline agree with the phase. Idempotent: given a state
@@ -48,7 +54,7 @@
    A timed phase with no configured duration gets no deadline rather than a
    crash — dropping a key from config should slow the game down, not break it."
   [game-cfg now-ms state]
-  (let [secs     (secs-for game-cfg (:phase state))
+  (let [secs     (secs-for game-cfg state)
         deadline (:deadline state)]
     (cond
       ;; A GM pause has to win here. Pausing clears the deadline, and without

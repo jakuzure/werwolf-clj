@@ -48,7 +48,7 @@
     :gm/toggle-narrated :gm/toggle-timer :gm/transfer-host :gm/kick
     ;; Seating a bot, so one person can test a whole game alone.
     :gm/add-bot
-    :gm/set-deck :gm/auto-deck :gm/set-rule
+    :gm/set-deck :gm/auto-deck :gm/set-rule :gm/set-duration
     :gm/force-kill :gm/revive :gm/skip-role :gm/set-phase :gm/reassign-role
     :gm/pause :gm/resume :gm/add-time})
 
@@ -135,8 +135,8 @@
    [:locale {:optional true} Locale]
    [:role   {:optional true} :keyword]
    [:phase  {:optional true} :keyword]
-   ;; Seconds for :gm/add-time. Bounded here and clamped again in the handler:
-   ;; the schema stops nonsense, the handler stops a slip.
+   ;; Seconds for :gm/add-time and :gm/set-duration. Bounded here and checked
+   ;; again in each handler: the schema stops nonsense, the handler stops a slip.
    [:secs   {:optional true} [:int {:min 5 :max 600}]]
    ;; The Spielleiter's deck for :gm/set-deck: role -> count. Bounded twice
    ;; over, like :secs — no count past the largest table and no more entries
