@@ -78,10 +78,11 @@
                  {:type :gm/set-deck :deck {:werwolf 2 :seherin 1 :dieb 0}}
                  {:type :gm/set-deck :deck {}}
                  {:type :gm/auto-deck}
-                 {:type :gm/add-bot}]]
+                 {:type :gm/add-bot}
+                 {:type :gm/set-rule :rule :mayor? :on? false}]]
       (is (proto/valid-client-message? (as-wire cmd)) (pr-str cmd)))
     (doseq [a [:begin-night :gm/toggle-narrated :gm/toggle-timer
-               :gm/set-deck :gm/auto-deck :gm/add-bot]]
+               :gm/set-deck :gm/auto-deck :gm/add-bot :gm/set-rule]]
       (is (contains? phases/no-target-actions a)
           (str a " names nobody, so it must be offerable without a target")))))
 

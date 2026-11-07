@@ -220,6 +220,25 @@
   [state]
   (or (:first-day-trial? state) (> (:night state 0) 1)))
 
+(def rule-keys
+  "The rule variants the Spielleiter may switch in the lobby. Each is a boolean
+   at the root of the state, where its readers already look for it."
+  #{:first-night-kill? :first-day-trial? :reveal-to-dead? :mayor?})
+
+(defn mayor?
+  "Is a Bürgermeister elected on the first day? Yes unless the room says no.
+   A small table can do without: the election costs a minute and a ballot
+   before the first real talk, and with five or six players a double vote
+   decides nearly every day on its own."
+  [state]
+  (not (false? (:mayor? state))))
+
+(defn election-day?
+  "Does today hold the Bürgermeister's election? Sent to the client so the
+   day's strip need not know the rule."
+  [state]
+  (and (= 1 (:night state 0)) (mayor? state)))
+
 (declare next-phase)
 
 (defn- nightfall [state]
@@ -657,7 +676,7 @@
         ;; and half the first read on the room. `:election-held?` rather than
         ;; "is it day 1" alone, so a GM who rewinds the phase cannot re-run it.
         :day-reveal
-        (if (and (= 1 (:night state)) (not (:election-held? state)))
+        (if (and (election-day? state) (not (:election-held? state)))
           [{:type :phase/changed :phase :election :deadline nil}]
           [{:type :day/began}])
 
@@ -998,7 +1017,7 @@
       ;; game, and an absent player is something every phase already survives.
       (= :lobby phase)
       (cond-> #{:gm/toggle-narrated :gm/toggle-timer :gm/transfer-host
-                :gm/kick :gm/set-deck}
+                :gm/kick :gm/set-deck :gm/set-rule}
         (contains? state :deck) (conj :gm/auto-deck)
         ;; And seating a bot, only while there is a seat to put it in — a
         ;; button that cannot seat anybody is a button somebody will press to
@@ -1220,7 +1239,9 @@
     :play-again
     ;; The deck travels as a map of its own, not as a seat or a word: the whole
     ;; deck in every command, validated against the registry by the handler.
-    :gm/set-deck :gm/auto-deck})
+    :gm/set-deck :gm/auto-deck
+    ;; A rule and its value, never a seat.
+    :gm/set-rule})
 
 (declare legal-targets legal-choices)
 

@@ -94,6 +94,20 @@
    :lobby/timer-short-off "aus"
    :lobby/password-short-on "gesetzt"
    :lobby/password-short-off "keins"
+   ;; Die Regelvarianten im Warteraum. Der Hinweis sagt, was sich ändert,
+   ;; nicht wie es intern heißt.
+   :rule/first-night-kill "Werwölfe in der ersten Nacht"
+   :rule/first-night-kill-hint "Aus: Die erste Nacht bleibt ruhig, die Werwölfe lernen sich nur kennen."
+   :rule/first-day-trial "Anklage am ersten Tag"
+   :rule/first-day-trial-hint "Aus: Am ersten Tag wird nur geredet, niemand wird verurteilt."
+   :rule/reveal-to-dead "Tote sehen alle Rollen"
+   :rule/reveal-to-dead-hint "Nur sinnvoll, wenn Tote den Lebenden nichts mehr verraten, auch nicht am Tisch oder im Sprachchat."
+   :rule/mayor "Bürgermeisterwahl"
+   :rule/mayor-hint "Am ersten Tag wählt das Dorf einen Bürgermeister, dessen Stimme doppelt zählt."
+   :rule/on "an"
+   :rule/off "aus"
+   :rule/switch-on "Einschalten"
+   :rule/switch-off "Ausschalten"
    :lobby/invite-text (fn [code] (str "Spiel mit uns Werwolf — Raum " code))
    :lobby/link-copied "Link kopiert"
    :lobby/share-link "Link teilen"
@@ -203,6 +217,7 @@
    :action/gm-transfer-host "Spielleiter-Rolle übergeben"
    :action/gm-set-deck     "Rollen wählen"
    :action/gm-auto-deck    "Rollen automatisch"
+   :action/gm-set-rule     "Regel ändern"
    :action/gm-force-kill   "Töten"
    :action/gm-revive       "Wiederbeleben"
    :action/gm-skip-role    "Rolle überspringen"
@@ -444,6 +459,7 @@
    :log/room-unlocked "Die Runde braucht kein Passwort mehr"
    :log/deck-set      (fn [d] (str "Der Spielleiter wählt die Rollen: " d))
    :log/deck-auto     "Die Rollen richten sich wieder nach der Zahl der Mitspieler"
+   :log/rule-set      (fn [r on?] (str "Der Spielleiter schaltet " (if on? "ein" "aus") ": " r))
    :log/amor-linked   "Amor hat zwei Verliebte bestimmt"
    :log/night-began   "Die Nacht bricht an"
    :log/night-quiet   "In dieser Nacht ist niemand gestorben"
@@ -597,6 +613,7 @@
    :error/no-such-player   "Diesen Mitspieler gibt es nicht"
    :error/unknown-role     "Diese Rolle gibt es nicht"
    :error/invalid-deck     "Ungültige Rollenauswahl"
+   :error/invalid-rule     "Diese Regel gibt es nicht"
    :error/invalid-count    "Ungültige Anzahl"
    :error/too-many-of-role "So viele Karten dieser Rolle gibt es nicht"
    :error/deck-too-large   "So viele Karten passen an keinen Tisch"

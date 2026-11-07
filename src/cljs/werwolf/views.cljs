@@ -1850,6 +1850,24 @@
         [btn (t (if timer? :lobby/timer-switch-off :lobby/timer-switch-on))
          #(rf/dispatch [::ev/act :gm/toggle-timer])
          {:tone :quiet :testid "toggle-timer"}])]
+     ;; The rule variants. Everybody reads the value, since a table should know
+     ;; before the deal whether the wolves eat on the first night; the hint is
+     ;; for the one who decides, or the lobby grows four sentences longer for
+     ;; everyone. The values come from the server spelled out, so nothing here
+     ;; knows a default.
+     (let [rules     @(rf/subscribe [::sub/rules])
+           switch?   (contains? actions :gm/set-rule)]
+       (for [r [:mayor? :first-night-kill? :first-day-trial? :reveal-to-dead?]
+             :let [on? (get rules r)]
+             :when (some? on?)]
+         ^{:key (str r)}
+         [row (t (i18n/rule-key r))
+          (t (if on? :rule/on :rule/off))
+          (when switch?
+            [btn (t (if on? :rule/switch-off :rule/switch-on))
+             #(rf/dispatch [::ev/act-with :gm/set-rule {:rule r :on? (not on?)}])
+             {:tone :quiet :testid (str "rule-" (name (i18n/rule-key r)))}])
+          (when switch? (t (i18n/rule-key r "-hint")))]))
      ;; Seats the server plays, so one person can test a whole game alone.
      ;; The button is drawn from `:actions` like the switches above: the
      ;; server offers it to the host while the table has room, and to nobody

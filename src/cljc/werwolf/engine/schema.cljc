@@ -95,6 +95,9 @@
    [:first-night-kill? {:optional true} :boolean]
    ;; Rule variant: false (default) means no accusation on day 1.
    [:first-day-trial? {:optional true} :boolean]
+   ;; Rule variant: false means no Bürgermeister is elected on the first day.
+   ;; Absent means the election is held, which is how every older log replays.
+   [:mayor? {:optional true} :boolean]
    ;; The host is the Spielleiter and does not play: no card, no vote, never a
    ;; target. Absent means the host plays, which is how every log written before
    ;; this existed replays. See events/narrator.

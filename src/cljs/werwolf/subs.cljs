@@ -151,6 +151,8 @@
 ;; it is the host of a narrated room — and the client only reads it.
 (rf/reg-sub ::narrator  :<- [::view] (fn [v _] (:narrator v)))
 (rf/reg-sub ::narrated? :<- [::view] (fn [v _] (boolean (:narrated? v))))
+;; The rule variants, each a boolean the server spelled out. Read in the lobby.
+(rf/reg-sub ::rules :<- [::view] (fn [v _] (:rules v {})))
 (rf/reg-sub ::narrator? :<- [::me-view] (fn [me _] (boolean (:narrator? me))))
 (rf/reg-sub ::timer?    :<- [::view] (fn [v _] (not (false? (:timer? v)))))
 (rf/reg-sub ::host      :<- [::view] (fn [v _] (:host v)))
@@ -522,16 +524,16 @@
 (defn round-steps
   "One day-night cycle as a strip of steps, each :done, :current or :todo.
 
-   The election appears on the first day only, because that is the only day it
-   can happen. A :reaction is an interrupt rather than a step of its own, so it
+   The election appears where the view says today holds one (`:election-day?`):
+   the first day, unless the table switched the Bürgermeister off. A :reaction is an interrupt rather than a step of its own, so it
    lights up the step it broke into: the dawn if it came out of the night, the
    verdict if it came out of the day. The view does not say which, but the log
    does — whichever of night-ended or day-began came last."
-  [{:keys [phase night log trial?]}]
+  [{:keys [phase log trial? election-day?]}]
   (when (contains? #{:night :day-reveal :election :discussion :day-resolve :reaction}
                    phase)
     (let [steps (cond-> [:night :day-reveal]
-                  (= 1 night) (conj :election)
+                  election-day? (conj :election)
                   true (conj :discussion)
                   ;; No trial on the first day: the talk is its last step.
                   trial? (conj :day-resolve))

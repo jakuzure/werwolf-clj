@@ -427,6 +427,15 @@
       (dissoc :deck)
       (publish {:type :deck/auto})))
 
+(defmethod apply-event :rules/set
+  ;; One of the table's rule variants, switched in the lobby. Public, like the
+  ;; deck: which rules a game is played by is agreed before anyone looks at a
+  ;; card, and a player who joins late reads it in the Chronik.
+  [state {:keys [rule on?]}]
+  (-> state
+      (assoc rule (boolean on?))
+      (publish {:type :rules/set :rule rule :on? (boolean on?)})))
+
 (defmethod apply-event :game/started
   [state {:keys [assignments centre seed]}]
   (-> (reduce (fn [s [pid role-id]]
@@ -806,7 +815,8 @@
                                                           :first-day-trial?])
                                       :type :game/created))]
     (-> fresh
-        (merge (select-keys state [:narrated? :timer? :password-hash :deck :host-absent?]))
+        (merge (select-keys state [:narrated? :timer? :password-hash :deck :host-absent?
+                                   :reveal-to-dead? :mayor?]))
         (assoc :players
                (into {}
                      (comp

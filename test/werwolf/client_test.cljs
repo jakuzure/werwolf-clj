@@ -570,17 +570,20 @@
 
 (deftest the-round-strip-lights-the-current-step
   (let [states #(into {} (map (juxt :step :state)) (sub/round-steps %))]
-    (testing "the election is on the first day only"
-      (is (contains? (states {:phase :discussion :night 1}) :election))
-      (is (not (contains? (states {:phase :discussion :night 2}) :election))))
+    (testing "the election is where the server says today holds one"
+      (is (contains? (states {:phase :discussion :night 1 :election-day? true}) :election))
+      (is (not (contains? (states {:phase :discussion :night 2}) :election)))
+      (is (not (contains? (states {:phase :discussion :night 1 :election-day? false}) :election))
+          "a table without a Bürgermeister has none on its first day either"))
     (testing "the first day has no trial, so its talk is the last step"
       (is (= [:night :day-reveal :election :discussion]
-             (map :step (sub/round-steps {:phase :discussion :night 1}))))
+             (map :step (sub/round-steps {:phase :discussion :night 1 :election-day? true}))))
       (is (= :current (:discussion (states {:phase :reaction :night 1
                                             :log [{:type :night/ended} {:type :day/began}]})))))
     (testing "a day with a ballot ends in the verdict, the classic first one too"
       (is (= [:night :day-reveal :election :discussion :day-resolve]
-             (map :step (sub/round-steps {:phase :discussion :night 1 :trial? true})))))
+             (map :step (sub/round-steps {:phase :discussion :night 1 :trial? true
+                                          :election-day? true})))))
     (testing "steps before the current one are done, after it to come"
       (is (= {:night :done :day-reveal :done :discussion :current :day-resolve :todo}
              (states {:phase :discussion :night 3 :trial? true}))))

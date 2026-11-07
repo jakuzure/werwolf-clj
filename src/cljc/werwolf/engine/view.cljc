@@ -345,6 +345,14 @@
      ;; Whether today ends in a vote, and what a condemnation takes. Rules, so
      ;; the engine says them and the client does not count for itself.
      :trial?      (phases/trial-day? state)
+     ;; Whether today holds the Bürgermeister's election, for the day's strip.
+     :election-day? (phases/election-day? state)
+     ;; The rule variants the table plays by, each spelled out as a boolean.
+     ;; Public: the lobby shows them to everybody before the deal.
+     :rules       {:first-night-kill? (boolean (:first-night-kill? state))
+                   :first-day-trial?  (boolean (:first-day-trial? state))
+                   :reveal-to-dead?   (boolean (:reveal-to-dead? state))
+                   :mayor?            (phases/mayor? state)}
      :votes-needed (phases/votes-needed state)
      ;; Public, and necessarily so: the whole point of the office is that the
      ;; table knows whose vote counts twice. Election ballots in progress are
