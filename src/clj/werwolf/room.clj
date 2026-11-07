@@ -100,7 +100,9 @@
    ;; without the transport having to remember.
    :index        (atom {})
    ;; sink -> epoch-ms of its recent wrong passwords. See `throttled?`.
-   :attempts     (atom {})})
+   :attempts     (atom {})
+   ;; When `purge-finished!` last ran, so the clock can call it every tick.
+   :purged-at    (atom nil)})
 
 (defn- rooms [ctx] @(:rooms ctx))
 (defn- room-of [ctx room-id] (get (rooms ctx) room-id))
@@ -1072,6 +1074,36 @@
                              (forget-room! ctx room-id)))
                        room-id))))
            (rooms ctx)))))
+
+(def ^:const purge-period-ms
+  "How often `purge-finished!` looks for old games. Retention is counted in
+   days, so an hour late is no matter, and a query every second would be."
+  (* 60 60 1000))
+
+(defn purge-finished!
+  "Delete finished games nobody has written to for `:retention-days`, and
+   return how many. At most once per `purge-period-ms`; nil when it did not
+   look. A retention of 0 or none keeps everything.
+
+   The game log was kept for good once, for recaps, but a recap is only ever
+   read inside the room at the end of its game. Nothing deleted the logs
+   after that, so the database only grew.
+
+   Rooms still in memory are spared whatever their age. A rematch goes on in
+   the same room under the same id, appending to the same log, and a room
+   whose log vanished under it would commit its next event at a sequence
+   number with nothing before it."
+  [ctx now-ms]
+  (let [days (:retention-days (:game ctx))
+        at   (:purged-at ctx)]
+    (when (and days (pos? days) at
+               (let [last @at] (or (nil? last) (>= (- now-ms last) purge-period-ms))))
+      (reset! at now-ms)
+      (let [n (store/purge-finished-before! (:ds ctx) (- now-ms (* days 24 60 60 1000))
+                                            (set (keys (rooms ctx))))]
+        (when (pos? n)
+          (log/info "deleted" n "finished game(s) older than" days "days"))
+        n))))
 
 (defn forget-room!
   "Drop a room from memory. The log stays on disk — a finished game is still

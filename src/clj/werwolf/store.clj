@@ -160,13 +160,17 @@
     (jdbc/execute-one! tx ["DELETE FROM rooms WHERE room_id = ?" room-id])))
 
 (defn purge-finished-before!
-  "Housekeeping: drop finished games older than `cutoff-ms`."
-  [ds cutoff-ms]
-  (jdbc/with-transaction [tx ds]
-    (let [ids (->> (jdbc/execute! tx ["SELECT room_id FROM rooms WHERE finished = 1 AND updated_at < ?"
-                                      cutoff-ms] opts)
-                   (mapv :room_id))]
-      (doseq [id ids]
-        (jdbc/execute-one! tx ["DELETE FROM events WHERE room_id = ?" id])
-        (jdbc/execute-one! tx ["DELETE FROM rooms WHERE room_id = ?" id]))
-      (count ids))))
+  "Housekeeping: drop finished games last written before `cutoff-ms`, except
+   the room ids in `spare`."
+  ([ds cutoff-ms] (purge-finished-before! ds cutoff-ms #{}))
+  ([ds cutoff-ms spare]
+   (jdbc/with-transaction [tx ds]
+     (let [ids (->> (jdbc/execute! tx ["SELECT room_id FROM rooms WHERE finished = 1 AND updated_at < ?"
+                                       cutoff-ms] opts)
+                    (map :room_id)
+                    (remove (set spare))
+                    vec)]
+       (doseq [id ids]
+         (jdbc/execute-one! tx ["DELETE FROM events WHERE room_id = ?" id])
+         (jdbc/execute-one! tx ["DELETE FROM rooms WHERE room_id = ?" id]))
+       (count ids)))))

@@ -99,6 +99,9 @@
            ;; the log, kept for a recap, never loaded again. (An idle lobby goes
            ;; at :room-idle-ms; nothing has been dealt there to lose.)
            :abandon-after-hours #long #or [#env ABANDON_AFTER_HOURS 24]
+           ;; Finished games stay on disk for this many days, then they are
+           ;; deleted. 0 keeps them for good.
+           :retention-days  #long #or [#env RETENTION_DAYS 90]
            ;; How long the host's seat may stand empty before the room stops
            ;; waiting for him: the Chronik says he is gone, his seat is offered
            ;; where that is safe, and a narrated game hands its pace to the

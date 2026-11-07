@@ -4,6 +4,7 @@
   (:require [clojure.java.io :as io]
             [clojure.test :refer [deftest is testing]]
             [werwolf.engine.core :as engine]
+            [werwolf.room :as room]
             [werwolf.sim.harness :as h]
             [werwolf.store :as store]))
 
@@ -120,4 +121,32 @@
       (is (= 1 (store/purge-finished-before! ds 5000)))
       (is (not (store/room-exists? ds "OLD")))
       (is (store/room-exists? ds "NEW"))
+      (finally (cleanup! path)))))
+
+(deftest the-clock-purges-old-games-hourly-and-spares-open-rooms
+  (let [{:keys [ds path]} (tmp-ds)
+        day (* 24 60 60 1000)
+        now (* 100 day)
+        ctx (room/registry {:ds ds :send! (fn [_ _]) :game {:retention-days 30}})]
+    (try
+      (doseq [id ["OLD" "OPEN" "RECENT"]]
+        (store/append-events! ds id 0 genesis 1))
+      (store/upsert-room! ds "OLD" :game-over true (- now (* 31 day)))
+      (store/upsert-room! ds "OPEN" :game-over true (- now (* 31 day)))
+      (store/upsert-room! ds "RECENT" :game-over true (- now (* 29 day)))
+      ;; Still in memory: a rematch would go on appending to its log.
+      (swap! (:rooms ctx) assoc "OPEN" {:room-id "OPEN"})
+      (is (= 1 (room/purge-finished! ctx now)))
+      (is (not (store/room-exists? ds "OLD")))
+      (is (store/room-exists? ds "OPEN"))
+      (is (store/room-exists? ds "RECENT"))
+      (testing "it looks once an hour, not on every tick"
+        (swap! (:rooms ctx) dissoc "OPEN")
+        (is (nil? (room/purge-finished! ctx (+ now 1000))))
+        (is (= 1 (room/purge-finished! ctx (+ now room/purge-period-ms))))
+        (is (not (store/room-exists? ds "OPEN"))))
+      (testing "a retention of 0 keeps everything"
+        (let [keep-all (room/registry {:ds ds :send! (fn [_ _]) :game {:retention-days 0}})]
+          (is (nil? (room/purge-finished! keep-all (* 1000 day))))
+          (is (store/room-exists? ds "RECENT"))))
       (finally (cleanup! path)))))

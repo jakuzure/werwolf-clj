@@ -208,6 +208,9 @@
   (try
     (room/sweep-idle! ctx now-ms)
     (catch Throwable t (log/error t "idle sweep failed")))
+  (try
+    (room/purge-finished! ctx now-ms)
+    (catch Throwable t (log/error t "purging finished games failed")))
   (into []
         (filter (fn [room-id]
                   (try
