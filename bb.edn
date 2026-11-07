@@ -83,6 +83,11 @@
             "docker compose -f deploy/livekit.dev.yml up -d --force-recreate"))}
 
   ;; ---------- quality ----------
+  lint
+  {:doc  "Lint with clj-kondo; fails on errors, prints warnings. Without
+          clj-kondo on the PATH: nix shell --inputs-from . nixpkgs#clj-kondo -c bb lint"
+   :task (shell "clj-kondo --fail-level error --lint src test dev previews bb.edn")}
+
   test
   {:doc  "Run the Clojure test suite (engine + sim harness).
           SIM_VOLUME=4 bb test plays four times the random games, for a
