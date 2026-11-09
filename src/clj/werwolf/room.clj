@@ -77,8 +77,10 @@
 
    `on-events` is called as (f events) with every batch as it is committed —
    not on replay — which is how the metrics count games without room.clj
-   knowing they exist."
-  [{:keys [ds send! max-chat max-rooms after-commit on-events game]}]
+   knowing they exist.
+
+   `observe` is called as (f op nanos) after each step `timed` measures."
+  [{:keys [ds send! max-chat max-rooms after-commit on-events observe game]}]
   {:ds           ds
    :send!        send!
    :max-chat     (or max-chat 200)
@@ -90,6 +92,7 @@
    :max-rooms    max-rooms
    :after-commit after-commit
    :on-events    on-events
+   :observe      observe
    ;; Table-size limits from config. They live here rather than being read at
    ;; the point of use because they are baked into :game/created — a room keeps
    ;; the limits it was opened with, so changing config cannot retroactively
@@ -176,6 +179,20 @@
        (sort-by :room-id)
        vec))
 
+(defmacro timed
+  "Run `body` and report how long it took to the registry's `:observe`, as
+   `(observe op nanos)`. Injected like `:on-events`: werwolf.metrics reads the
+   rooms for its gauges, so the rooms cannot require it back.
+
+   For leaves only. `commit!` as a whole would count a second commit that
+   `:after-commit` sets off inside it twice."
+  [ctx op & body]
+  `(let [t0# (System/nanoTime)]
+     (try ~@body
+          (finally
+            (when-let [f# (:observe ~ctx)]
+              (f# ~op (- (System/nanoTime) t0#)))))))
+
 (defn- with-room
   "Run `f` against the room, holding that room's lock. Re-reads the room inside
    the lock so `f` never sees a stale snapshot.
@@ -239,10 +256,11 @@
    has no seat for as well; a bug reachable from both ends is worth closing at
    both, since either fix alone leaves the other half latent."
   [ctx r]
-  (let [seated (:players (:state r))]
-    (doseq [pid (keys (:sinks r))
-            :when (contains? seated pid)]
-      (send-view! ctx r pid))))
+  (timed ctx :broadcast
+    (let [seated (:players (:state r))]
+      (doseq [pid (keys (:sinks r))
+              :when (contains? seated pid)]
+        (send-view! ctx r pid)))))
 
 ;; ---------------------------------------------------------------- commit ---
 
@@ -261,13 +279,14 @@
    (let [room-id (:room-id r)
          from    (:seq r)
          now     (System/currentTimeMillis)]
-     (store/append-events! (:ds ctx) room-id from events now)
+     (timed ctx :persist
+       (store/append-events! (:ds ctx) room-id from events now)
+       ;; :last-activity goes to disk as well, so that a boot can tell how long a
+       ;; room has really been abandoned — see `abandoned?`.
+       (store/upsert-room! (:ds ctx) room-id (:phase state')
+                           (= :game-over (:phase state')) now
+                           (if activity? now (:last-activity r))))
      (when-let [f (:on-events ctx)] (f events))
-     ;; :last-activity goes to disk as well, so that a boot can tell how long a
-     ;; room has really been abandoned — see `abandoned?`.
-     (store/upsert-room! (:ds ctx) room-id (:phase state')
-                         (= :game-over (:phase state')) now
-                         (if activity? now (:last-activity r)))
      (let [r' (-> r
                   (assoc :state state')
                   (update :seq + (count events)))]
@@ -513,8 +532,9 @@
   (let [;; The engine's rule, not a copy: see events/next-seat for why a seat
         ;; number is never recycled.
         pid (engine/next-seat (:state r))
-        res (engine/execute (:state r) {:type :join :player pid
-                                        :name name :locale locale})]
+        res (timed ctx :engine
+              (engine/execute (:state r) {:type :join :player pid
+                                          :name name :locale locale}))]
     (if (engine/error? res)
       res
       (do (commit! ctx r (:events res) (:state res))
@@ -760,7 +780,7 @@
     (fn [r]
       (if-not (get-in (:state r) [:players pid])
         {:error :unknown-player}
-        (let [res (engine/execute (:state r) (assoc cmd :player pid))]
+        (let [res (timed ctx :engine (engine/execute (:state r) (assoc cmd :player pid)))]
           (if (engine/error? res)
             res
             (do (commit! ctx r (:events res) (:state res) activity?)

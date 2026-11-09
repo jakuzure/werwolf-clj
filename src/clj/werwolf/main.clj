@@ -62,7 +62,8 @@
                             ;; Installing the clock's hook here is what makes
                             ;; deadlines exist at all — see werwolf.timer.
                             :after-commit (timer/hook game)
-                            :on-events metrics/events!})
+                            :on-events metrics/events!
+                            :observe metrics/op!})
         restored (room/rehydrate! ctx)]
     (when (seq restored)
       (log/info "rehydrated" (count restored) "unfinished room(s):" restored)
