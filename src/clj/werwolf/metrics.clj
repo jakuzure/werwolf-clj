@@ -45,11 +45,26 @@
       (.labelNames (labels "type"))
       (.register registry)))
 
+(def ^:private fine-buckets
+  ;; Down to 0.1 ms: the default buckets start at 5 ms, where a message or one
+  ;; step of it mostly falls into the first bucket. The p95 is then only
+  ;; interpolated inside it, about 4.75 ms for every message type alike.
+  [0.0001 0.00025 0.0005 0.001 0.0025 0.005 0.01 0.025 0.05 0.1 0.25 0.5 1 2.5])
+
 (defonce ^:private message-seconds
   (-> (Histogram/builder)
       (.name "werwolf_message_seconds")
       (.help "Time to handle one client message, including the broadcast it caused.")
+      (.classicUpperBounds (double-array fine-buckets))
       (.labelNames (labels "type"))
+      (.register registry)))
+
+(defonce ^:private op-seconds
+  (-> (Histogram/builder)
+      (.name "werwolf_op_seconds")
+      (.help "Time spent in one step of handling a message: engine, SQLite, fan-out, a bot's decision.")
+      (.classicUpperBounds (double-array fine-buckets))
+      (.labelNames (labels "op"))
       (.register registry)))
 
 (defonce ^:private refusals
@@ -102,6 +117,24 @@
   (let [t (labels (message-type msg))]
     (.inc (.labelValues messages t))
     (.observe (.labelValues message-seconds t) (/ (double nanos) 1e9))))
+
+(def ops
+  "The steps `werwolf.room/timed` measures. Closed for the same reason as
+   `countable`: every label is a Histogram child kept for ever, so a label that
+   could come from anywhere else is a slow leak (security review, 2026-10-30).
+
+   * `:engine`: `engine/execute` for one command or join.
+   * `:persist`: the SQLite append and the room row, inside the room's lock.
+   * `:broadcast`: a `view-for` per seated player, transit-encoded and handed
+     to http-kit's queue. Encoding happens in `ws/send!`, so it counts here.
+   * `:bot`: one bot choosing its move, before it is submitted."
+  #{:engine :persist :broadcast :bot})
+
+(defn op!
+  "One step of `op` took `nanos`. An op outside `ops` is dropped."
+  [op nanos]
+  (when (contains? ops op)
+    (.observe (.labelValues op-seconds (labels op)) (/ (double nanos) 1e9))))
 
 (defn refused!
   "A message answered with an error."

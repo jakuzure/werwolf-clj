@@ -186,8 +186,9 @@
              :when (and state
                         (not (engine/nobody-here? state))
                         (get-in state [:players pid :bot?]))
-             :let [cmd (bot/decide (engine/view-for state pid)
-                                   (bot/seed-for (:seed state) seq pid))]
+             :let [cmd (room/timed ctx :bot
+                         (bot/decide (engine/view-for state pid)
+                                     (bot/seed-for (:seed state) seq pid)))]
              :when cmd
              :let [res (room/submit! ctx room-id pid cmd {:activity? false})]]
          (do

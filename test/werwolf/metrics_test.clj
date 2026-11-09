@@ -39,7 +39,8 @@
   (let [path (str (java.io.File/createTempFile "metrics" ".db"))
         ctx  (room/registry {:ds (store/open {:dbtype "sqlite" :dbname path})
                              :send! (fn [_ _])
-                             :on-events metrics/events!})
+                             :on-events metrics/events!
+                             :observe metrics/op!})
         port (free-port)
         m    (metrics/start! {:rooms ctx :port port :host "127.0.0.1"
                               :version "1.2.3" :commit "abcdef0"})]
@@ -50,6 +51,9 @@
         (metrics/events! [{:type :game/ended :winner :village}])
         (metrics/message! {:type :client/command :cmd {:type :vote}} 2000000)
         (metrics/refused! :invalid-target)
+        (metrics/op! :bot 300000)
+        (metrics/op! :lock-wait 300000)
+        (metrics/op! (keyword (apply str (repeat 1000 "x"))) 300000)
         (let [text (scrape port)]
           (testing "what the registry holds now, read at scrape time"
             (is (= 1.0 (value text "werwolf_rooms{phase=\"lobby\"}")))
@@ -58,7 +62,20 @@
             (is (= (inc before) (value text "werwolf_games_ended_total{winner=\"village\"}")))
             (is (pos? (value text "werwolf_messages_total{type=\"vote\"}"))
                 "a command is counted by what it commands")
+            (is (pos? (value text "werwolf_message_seconds_bucket{type=\"vote\",le=\"0.0025\"}"))
+                "2 ms lands below the default buckets' first 5 ms")
             (is (pos? (value text "werwolf_refusals_total{code=\"invalid_target\"}"))))
+          (testing "how long each step took, timed by the room it was handed to"
+            (is (pos? (value text "werwolf_op_seconds_count{op=\"persist\"}"))
+                "opening the room wrote it to SQLite")
+            (is (pos? (value text "werwolf_op_seconds_count{op=\"broadcast\"}"))
+                "attaching sent Anna her view")
+            (is (pos? (value text "werwolf_op_seconds_bucket{op=\"bot\",le=\"5.0E-4\"}"))
+                "0.3 ms lands in a sub-millisecond bucket"))
+          (testing "an op outside the closed set makes no series, for the same
+                    reason a message type off the wire makes no label"
+            (is (not (str/includes? text "lock_wait")))
+            (is (not (str/includes? text "xxxx"))))
           (testing "which build, and the JVM's own"
             (is (= 1.0 (value text "werwolf_build_info{commit=\"abcdef0\",version=\"1.2.3\"}")))
             (is (value text "jvm_memory_used_bytes{area=\"heap\"}")))))

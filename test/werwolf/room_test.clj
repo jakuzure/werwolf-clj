@@ -1164,3 +1164,24 @@
             (room/rehydrate! ctx3)
             (is (not (contains? (room/state-of ctx3 room-id) :password-hash))))))
       (finally (cleanup! path)))))
+
+;; ---------------------------------------------------------------- timing ---
+
+(deftest each-step-of-a-command-reports-how-long-it-took
+  (with-ctx [ctx0]
+    (let [seen (atom [])
+          ctx  (assoc ctx0 :observe (fn [op nanos] (swap! seen conj [op nanos])))
+          t    (table ctx 5)]
+      (reset! seen [])
+      (start! ctx t)
+      (testing "the engine, the SQLite write and the fan-out, once a commit"
+        (is (= #{:engine :persist :broadcast} (set (map first @seen))))
+        (is (every? (comp nat-int? second) @seen)))
+      (testing "a refused command reaches the engine and nothing after it"
+        (reset! seen [])
+        (start! ctx t)
+        (is (= [:engine] (map first @seen))))
+      (testing "a step that throws is still timed"
+        (reset! seen [])
+        (is (thrown? ArithmeticException (room/timed ctx :persist (/ 1 0))))
+        (is (= [:persist] (map first @seen)))))))
