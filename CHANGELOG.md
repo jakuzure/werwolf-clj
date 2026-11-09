@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.13.0](https://github.com/jakuzure/werwolf-clj/compare/v0.12.0...v0.13.0) (2026-11-09)
+
+
+### Features
+
+* **bots:** spread the day's votes and let a hopeless ballot move ([533008e](https://github.com/jakuzure/werwolf-clj/commit/533008ea45149f1c9419933bd58359140dea65f5))
+* let the Spielleiter choose the table's rules in the lobby ([bcb3079](https://github.com/jakuzure/werwolf-clj/commit/bcb30797da2ae5cab9d4c8f4b93807c41d8a9bba))
+* let the Spielleiter set how long the day and each night turn last ([c2bcead](https://github.com/jakuzure/werwolf-clj/commit/c2bcead60c3abeb28275672b56c9bc78b1270b37))
+* **metrics:** time the engine, SQLite, fan-out and bot steps ([ba82ce5](https://github.com/jakuzure/werwolf-clj/commit/ba82ce51b88c559a99962b44f329ae6b3678f46e))
+* **nix:** back up the event log daily ([beee4a1](https://github.com/jakuzure/werwolf-clj/commit/beee4a1786fa87ed0f18916ba438953d83231df3))
+* **server:** delete finished games after a retention period ([091bd73](https://github.com/jakuzure/werwolf-clj/commit/091bd73b01ca43e18797ba619146da76b9c5695d))
+
+
+### Bug Fixes
+
+* **server:** close a game once every person has left it ([43bb538](https://github.com/jakuzure/werwolf-clj/commit/43bb538282d44b800641b659f50135ad9de31fc1))
+* **server:** report the database in /health ([efae19a](https://github.com/jakuzure/werwolf-clj/commit/efae19aaa775d4519227d1a98e00668f9d452f3b))
+* **ui:** close the morning card rather than going on from it ([6f85a07](https://github.com/jakuzure/werwolf-clj/commit/6f85a0723742b19972df2779750afafd37e9059a))
+* **ui:** say what playing along means for the Spielleiter ([615c83f](https://github.com/jakuzure/werwolf-clj/commit/615c83ffa39095e299bc1698cd995efc6a965785))
+
 ## [0.12.0](https://github.com/jakuzure/werwolf-clj/compare/v0.11.0...v0.12.0) (2026-11-07)
 
 
