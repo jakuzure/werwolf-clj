@@ -987,19 +987,22 @@
     (is (false? (sub/night-progress? [{:role :amor} {:role :hexe}])))
     (is (false? (sub/night-progress? [])))))
 
-(deftest the-ballot-counts-as-the-verdict-does
+(deftest the-ballot-lays-out-the-servers-count
   (let [v {:phase :discussion :trial? true :votes-needed 3 :mayor 4
-           :players {1 {:name "Anna"} 2 {:name "Bert"} 3 {:name "Cem"} 4 {:name "Dana"}}
-           :votes {1 2, 3 2, 4 3, 2 nil}}]
+           :players {1 {:name "Anna"} 2 {:name "Bert"} 3 {:name "Cem"} 4 {:name "Dana"}
+                     5 {:name "Emil"}}
+           ;; 5 has walked out after voting for Bert: the server's count
+           ;; leaves him out, and the bar must not put him back.
+           :votes {1 2, 3 2, 4 3, 2 nil, 5 2}
+           :ballot {:on {2 2, 3 2} :abstained 1 :open 0}}]
     (is (= {:needed 3
             :rows [{:id 2 :name "Bert" :count 2 :mayor? false}
                    {:id 3 :name "Cem" :count 2 :mayor? true}]
             :abstained 1}
            (sub/ballot v))
-        "the Bürgermeister's vote counts twice, abstentions are counted apart")
-    (testing "only while the ballot is open"
-      (is (nil? (sub/ballot (assoc v :trial? false))))
-      (is (nil? (sub/ballot (assoc v :phase :night)))))))
+        "the weights as sent, heaviest first; the Bürgermeister's ballot marked")
+    (testing "only while the server sends a ballot"
+      (is (nil? (sub/ballot (dissoc v :ballot)))))))
 
 (deftest the-wolf-votes-read-by-victim-most-votes-first
   (let [v {:phase :night :me {:id 3}

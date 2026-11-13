@@ -341,6 +341,36 @@
           s (reduce #(exec! %1 {:type :vote-abstain :player %2}) s [1 4])]
       (is (true? (get-in s [:players 4 :alive?]))))))
 
+(deftest the-table-reads-the-count-the-verdict-makes
+  (testing "a departed voter, a ballot for somebody who has left and the
+            Bürgermeister's double vote: every view carries the verdict's sum"
+    (let [s (-> (tu/day-with {0 :dorfbewohner 1 :dorfbewohner 2 :seherin 3 :dorfbewohner
+                              4 :dorfbewohner 5 :werwolf 6 :werwolf})
+                (assoc :mayor 4))
+          s (exec! s {:type :vote :player 3 :target 1})
+          s (exec! s {:type :vote :player 1 :target 2})
+          s (exec! s {:type :leave :player 1})
+          s (exec! s {:type :vote :player 4 :target 2})
+          s (exec! s {:type :vote :player 5 :target 2})
+          s (exec! s {:type :vote-abstain :player 6})
+          ballot {:on {2 3} :abstained 2 :open 2}]
+      (is (= ballot (phases/day-ballot s))
+          "1's ballot left with him, 3's names nobody living, 4's counts twice,
+           and 0 and 2 have yet to vote")
+      (is (every? #(= ballot (:ballot (engine/view-for s %))) (range 7))
+          "public: the same sum in every view, the departed's included")
+      (is (true? (:no-majority? (phases/verdict s))) "3 of the 4 it takes")
+      (let [s (exec! s {:type :vote :player 0 :target 2})]
+        (is (= 4 (get-in (phases/day-ballot s) [:on 2])))
+        (is (= 2 (:target (phases/verdict s))) "the count reaches what it takes, and so does the verdict"))))
+  (testing "the Spielleiter is no vote still to come"
+    (let [s (-> (tu/narrated-game-with {1 :werwolf 2 :seherin 3 :hexe 4 :dorfbewohner 5 :dorfbewohner})
+                (assoc :phase :discussion :votes {} :night-cursor nil :night 2))]
+      (is (= {:on {} :abstained 0 :open 5} (phases/day-ballot s)))))
+  (testing "nothing outside the open ballot"
+    (is (nil? (phases/day-ballot (tu/game-with {0 :dorfbewohner 1 :werwolf 2 :seherin
+                                                3 :dorfbewohner 4 :dorfbewohner}))))))
+
 (deftest a-departed-wolf-does-not-choose-the-victim
   (testing "a wolf votes and walks out; the pack that is left decides alone"
     (let [s (tu/game-with {0 :dorfbewohner 1 :werwolf 2 :werwolf 3 :werwolf
@@ -350,6 +380,8 @@
           s (exec! s {:type :werewolf-vote :player 2 :target 4})
           _ (is (= :werwolf (:night-cursor s))
                 "his ballot for seat 0 is nobody's say, and seat 3 has not voted")
+          _ (is (= {2 4} (get-in (engine/view-for s 3) [:night-info :werewolf-votes]))
+                "and not on the list the pack reads either")
           s (exec! s {:type :werewolf-vote :player 3 :target 4})]
       (is (false? (get-in s [:players 4 :alive?]))
           "the two living wolves agreed, and that is the whole pack")

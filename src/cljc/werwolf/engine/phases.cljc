@@ -298,7 +298,11 @@
            {:target (first top) :tie? false}
            {:target nil :tie? true}))))))
 
-(defn- vote-weight [mayor voter] (if (= voter mayor) 2 1))
+(defn vote-weight
+  "What `voter`'s ballot weighs: two for the Bürgermeister, one for anybody
+   else. Public for the bots, which take their own vote off the count."
+  [mayor voter]
+  (if (= voter mayor) 2 1))
 
 (defn- living-ballots
   "The ballots that still count: cast by somebody alive, for somebody alive or
@@ -334,6 +338,42 @@
         total (reduce + 0 (map #(vote-weight mayor %) (e/living-ids state)))]
     (inc (quot total 2))))
 
+(defn count-ballot
+  "A ballot box as it stands, from the cast `votes`, the `living` ids and the
+   Bürgermeister: `:on`, the weight on each accused; `:open`, the weight of
+   the living who have not voted; `:abstained`, how many of the living have
+   voted for nobody, or for somebody no longer alive.
+
+   The one place the day's ballot is added up. The bar a player watches, the
+   pill on a card and the bots' sense of where a vote counts each had a sum of
+   their own, and they drifted: after the verdict learnt to ignore the dead,
+   the bar still counted a departed voter's ballot, the pill counted the
+   Bürgermeister once, and a bot in a narrated room counted the Spielleiter
+   as a vote still to come. They read this now, as the view publishes it.
+
+   Plain data in, so a hand-built view in a bot test can be counted the same
+   way as a state."
+  [votes living mayor]
+  (let [living (set living)]
+    (reduce (fn [acc [voter target]]
+              (cond
+                (not (living voter)) acc
+                (and (some? target) (living target))
+                (update-in acc [:on target] (fnil + 0) (vote-weight mayor voter))
+                :else (update acc :abstained inc)))
+            {:on {}
+             :abstained 0
+             :open (reduce + 0 (map #(vote-weight mayor %) (remove #(contains? votes %) living)))}
+            votes)))
+
+(defn day-ballot
+  "Today's ballot, counted as `verdict` counts it, while it is open; nil
+   otherwise. Published in every view, so the table reads the engine's sum
+   rather than making its own."
+  [state]
+  (when (and (= :discussion (:phase state)) (trial-day? state))
+    (count-ballot (:votes state {}) (e/living-ids state) (:mayor state))))
+
 (defn verdict
   "Who the village condemns: `tally`'s leader, if they reach `votes-needed`.
    {:target id-or-nil :tie? bool :no-majority? bool}."
@@ -341,12 +381,18 @@
   (let [votes (living-ballots state (:votes state {}))
         mayor (:mayor state)
         {:keys [target tie?]} (tally votes mayor)
-        got (reduce + 0 (keep (fn [[voter t]] (when (and t (= t target))
-                                                 (vote-weight mayor voter)))
-                               votes))]
+        got (get-in (count-ballot votes (e/living-ids state) mayor) [:on target] 0)]
     (if (and target (< got (votes-needed state)))
       {:target nil :tie? false :no-majority? true}
       {:target target :tie? tie? :no-majority? false})))
+
+(defn pack-ballots
+  "The pack's ballots that count tonight: a wolf who has walked out, or a
+   victim who has, is nobody's say. What `pack-choice` decides on, and what
+   the view shows the pack, so a ballot the engine ignores is not on the
+   list the wolves read either."
+  [state]
+  (living-ballots state (get-in state [:night-actions :werewolf-votes] {})))
 
 (defn- pack-choice
   "The one victim the pack's ballots name, or nil while they name two or
@@ -364,8 +410,7 @@
    has, is nobody's say. Two living wolves who both name somebody who has
    left have named nobody, and vote again."
   [state]
-  (let [targets (distinct (keep val (living-ballots
-                                     state (get-in state [:night-actions :werewolf-votes] {}))))]
+  (let [targets (distinct (keep val (pack-ballots state)))]
     (when (= 1 (count targets)) (first targets))))
 
 (defn- pack-agreed?

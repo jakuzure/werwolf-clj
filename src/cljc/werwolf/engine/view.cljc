@@ -261,7 +261,7 @@
       ;; `revealed-roles` like everyone else's. Who has walked out since is
       ;; not dying any more, so he is not on the list.
       (if (= :night (:phase state))
-        (cond-> {:werewolf-votes (get-in state [:night-actions :werewolf-votes] {})
+        (cond-> {:werewolf-votes (phases/pack-ballots state)
                  :pending-deaths (mapv #(select-keys % [:player :cause])
                                        (phases/pending-alive state))}
           (some? (get-in state [:night-actions :protected]))
@@ -272,7 +272,10 @@
         ;; Weißer Werwolf included: he votes with them, so he must see where
         ;; the votes stand. Asking for :werwolf alone left him voting blind.
         (and alive? (= :werewolf (e/team-of-player state pid)))
-        (assoc :werewolf-votes (get-in state [:night-actions :werewolf-votes] {}))
+        ;; The ballots that count, as `pack-choice` reads them: a departed
+        ;; wolf's vote, or one for a departed victim, stayed on the list after
+        ;; the engine had stopped counting it.
+        (assoc :werewolf-votes (phases/pack-ballots state))
 
         ;; The Hexe must see the pending victim to decide on the heal: the
         ;; deaths her heal is offered for, and only those — or she would be
@@ -360,6 +363,10 @@
                    :reveal-to-dead?   (boolean (:reveal-to-dead? state))
                    :mayor?            (phases/mayor? state)}
      :votes-needed (phases/votes-needed state)
+     ;; The open ballot as the verdict counts it: the bar, the card pills and
+     ;; the bots read this sum instead of adding up `:votes` themselves, which
+     ;; is how the bar came to count ballots the verdict no longer did.
+     :ballot      (phases/day-ballot state)
      ;; Public, and necessarily so: the whole point of the office is that the
      ;; table knows whose vote counts twice. Election ballots in progress are
      ;; NOT published — see :election-votes, which is deliberately absent.

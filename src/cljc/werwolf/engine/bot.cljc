@@ -265,23 +265,25 @@
 (defn- ballot
   "Today's ballot as the verdict will count it, with this seat's own ballot
    taken out: `:on`, the weight on each accused, `:open`, the weight of the
-   living who have not voted, and `:mine`, what this seat's vote weighs. The
-   Bürgermeister's counts twice, a dead voter's or a vote for the dead not at
-   all, as in phases/verdict. Taking its own ballot out is what lets a seat
-   ask the same question before its first vote and after it: where would my
-   vote count?"
+   living who have not voted, and `:mine`, what this seat's vote weighs.
+   Taking its own ballot out is what lets a seat ask the same question
+   before its first vote and after it: where would my vote count?
+
+   The sum is the one the view publishes, `phases/count-ballot`; only this
+   seat's own share comes off here. A sum of its own had drifted from the
+   verdict's once already: in a narrated room it counted the Spielleiter as
+   a vote still to come."
   [view]
-  (let [me     (me-id view)
-        mayor  (:mayor view)
-        living (into #{} (keep (fn [[id p]] (when (:alive? p) id))) (:players view))
-        weight (fn [id] (if (= id mayor) 2 1))
-        votes  (dissoc (:votes view) me)]
-    {:on   (reduce (fn [on [voter t]]
-                     (if (and (living voter) (living t)) (update on t (fnil + 0) (weight voter)) on))
-                   {}
-                   votes)
-     :open (reduce + 0 (map weight (remove #(or (= me %) (contains? votes %)) living)))
-     :mine (weight me)}))
+  (let [me   (me-id view)
+        mine (phases/vote-weight (:mayor view) me)
+        cast (get (:votes view) me ::none)
+        {:keys [on open] :or {on {} open 0}} (:ballot view)]
+    {:on   (if (contains? on cast)
+             (let [left (- (get on cast) mine)]
+               (if (pos? left) (assoc on cast left) (dissoc on cast)))
+             on)
+     :open (if (= ::none cast) (- open mine) open)
+     :mine mine}))
 
 (defn- hopeless?
   "Would this seat's vote on `t` be wasted? When another accusation is two

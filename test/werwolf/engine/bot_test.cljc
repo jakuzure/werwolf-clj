@@ -199,8 +199,8 @@
 (defn- table
   "A hand-built view of a table of `n` seats for seat `me`. Everything is as
    given and otherwise empty; `dead` seats are not alive, `bots` carry the
-   public flag. `:votes-needed` is the strict majority of the living, as
-   the engine sends it, unless given."
+   public flag. `:votes-needed` is the strict majority of the living, and
+   `:ballot` the count of `votes`, as the engine sends them."
   [n me & {:keys [role lover dead bots log known votes actions targets night-info night votes-needed]
            :or   {dead #{} bots #{} log [] known {} votes {} actions #{} targets {}}}]
   {:me         {:id me :role role :lover lover}
@@ -209,6 +209,7 @@
    :known-roles known
    :log        log
    :votes      votes
+   :ballot     (phases/count-ballot votes (remove (set dead) (range n)) nil)
    :actions    actions
    :targets    targets
    :night-info night-info
