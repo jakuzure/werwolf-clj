@@ -203,23 +203,6 @@
 
 (rf/reg-sub ::night-progress? :<- [::night-plan] (fn [plan _] (night-progress? plan)))
 
-(defn asleep?
-  "Is this player simply asleep right now: night, alive, playing, and offered
-   nothing? Then the screen says so and keeps quiet, rather than showing a whole
-   board nobody may touch.
-
-   'Offered nothing' counts the chat. The wolf who has voted while the rest of
-   the pack has not has no move left, but he is awake and waiting for the
-   others, and the server keeps the pack's chat open for him and for nobody
-   who sleeps. It used to be read off the night cursor and the wolf team, which
-   was a rule living in the client, and the cursor is not sent to a player in
-   a narrated room any more."
-  [{:keys [phase me actions]} can-act?]
-  (boolean (and (= :night phase) me (:alive? me) (not (:narrator? me))
-                (not can-act?) (not (contains? actions :chat)))))
-
-(rf/reg-sub ::asleep? :<- [::view] :<- [::can-act?] (fn [[v can?] _] (asleep? v can?)))
-
 (defn next-up
   "The role the night calls after the current one, if any. Nothing from a plan
    without states: a player in a narrated room is not told what comes next."
@@ -425,15 +408,47 @@
     :night (get-in night-info [:werewolf-votes (:id me)])
     nil))
 
+(defn turn
+  "Where this player stands in the game, the one answer to 'is it waiting on
+   ME?': the Jetzt card, the turn dock and the dot on a phone's tab, the tab's
+   title and the chime all read it. nil in the lobby and at the end, where
+   there is no turn to take.
+
+   * :narrating  the Spielleiter. Never dran and never waiting: his console
+                 always offers something, so counting his powers would call
+                 every moment his turn.
+   * :reaction   a reaction is owed. The whole table is stopped on him.
+   * :voted      a ballot cast that stays open to change, by day or in the
+                 pack. The buttons stay, but the table is not waiting on him.
+   * :yours      a move of his own to make.
+   * :asleep     night, alive, and offered nothing, not even the chat: the
+                 wolf who has voted is awake with his pack, and the server
+                 keeps the pack's chat open for him and for nobody who sleeps.
+   * :waiting    anything else: the dead, the table between turns.
+
+   There were three answers. The card kept its own in a cond nobody could
+   test, the dock and the tab dot read one without the Spielleiter's
+   exception and called a Spielleiter in setup dran under a title that said
+   he was not, and the title and the chime read a third."
+  [{:keys [phase me actions awaiting-reaction] :as view}]
+  (when (and me (not (#{:lobby :game-over} phase)))
+    (cond
+      (:narrator? me)              :narrating
+      awaiting-reaction            :reaction
+      (voted? view)                :voted
+      (seq (player-moves actions)) :yours
+      (and (= :night phase) (:alive? me) (not (contains? actions :chat))) :asleep
+      :else                        :waiting)))
+
+(rf/reg-sub ::turn :<- [::view] (fn [v _] (turn v)))
+
 (defn my-turn?
-  "Is the game waiting on this player? A move of their own to make, not a vote
-   already cast, outside the lobby and the end, and never the Spielleiter,
-   whose console always offers something."
-  [{:keys [phase actions me] :as view}]
-  (boolean (and me (not (:narrator? me))
-                (not (#{:lobby :game-over} phase))
-                (not (voted? view))
-                (seq (player-moves actions)))))
+  "Is the game waiting on this player: a reaction owed or a move to make?"
+  [view]
+  (contains? #{:reaction :yours} (turn view)))
+
+(rf/reg-sub ::my-turn? :<- [::turn] (fn [t _] (contains? #{:reaction :yours} t)))
+(rf/reg-sub ::asleep? :<- [::turn] (fn [t _] (= :asleep t)))
 
 (defn turn-started?
   "Did the step from view `old` to view `new` make it this player's turn? No
@@ -490,11 +505,6 @@
 
 (rf/reg-sub ::verdict-news :<- [::view] (fn [v _] (verdict-news v)))
 
-(rf/reg-sub
- ::can-act?
- :<- [::actions]
- :<- [::voted?]
- (fn [[actions voted?] _] (and (not voted?) (boolean (seq (player-moves actions))))))
 
 (defn host-absence
   "What to tell the table about a host who has gone missing, or nil while he is
