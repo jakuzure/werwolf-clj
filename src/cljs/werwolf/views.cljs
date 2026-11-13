@@ -580,8 +580,8 @@
    card apart, and the eye had to travel from the question to the answer.
 
    The most common complaint from the playtest was not knowing whose turn it was.
-   Everything needed was already on the client — `::can-act?`, `:night-cursor`,
-   `:awaiting-reaction` — and none of it was rendered: the phase header said
+   Everything needed was already on the client — the moves on offer,
+   `:night-cursor`, `:awaiting-reaction` — and none of it was rendered: the phase header said
    \"Nacht\" and left every player to guess whether that meant them.
 
    Three states, in order of who is being waited on:
@@ -596,24 +596,19 @@
    take, and a banner that is always present is a banner nobody reads."
   []
   (let [phase    @(rf/subscribe [::sub/phase])
-        can-act? @(rf/subscribe [::sub/can-act?])
-        reaction @(rf/subscribe [::sub/awaiting-reaction])
+        turn     @(rf/subscribe [::sub/turn])
+        narrator? (= :narrating turn)
         waiting  @(rf/subscribe [::sub/waiting-for])
         me       @(rf/subscribe [::sub/me-view])
-        narrator? @(rf/subscribe [::sub/narrator?])
-        asleep?  @(rf/subscribe [::sub/asleep?])
         plan     @(rf/subscribe [::sub/night-plan])
-        deal-problem (:deal-problem @(rf/subscribe [::sub/narrator-info]))
-        voted?   @(rf/subscribe [::sub/voted?])]
-    (when-not (#{:lobby :game-over} phase)
+        deal-problem (:deal-problem @(rf/subscribe [::sub/narrator-info]))]
+    (when turn
       (let [[tone headline detail]
-            (cond
-              ;; The Spielleiter is never "dran" and never waiting: his console
-              ;; always offers something, so `can-act?` would call every moment
-              ;; his turn. Tell him instead what the table is doing.
-              ;; Who he is waiting on is drawn below the headline, by
-              ;; `narrator-waits`, with the way past them.
-              narrator?
+            (case turn
+              ;; Tell the Spielleiter what the table is doing. Who he is
+              ;; waiting on is drawn below the headline, by `narrator-waits`,
+              ;; with the way past them.
+              :narrating
               ["border-violet-500 bg-violet-950/50 text-violet-100"
                (t :turn/narrating)
                (when (= :setup phase)
@@ -624,30 +619,25 @@
                     (str "⚠ " (t :setup/problem (i18n/deck-problem-text (lc) deal-problem nil nil)))]
                    (t :setup/hint)))]
 
-              reaction
+              :reaction
               ["border-rose-500 bg-rose-950/60 text-rose-100"
                (t :turn/yours) (t :turn/urgent)]
 
-              ;; Voted, and free to change it until everybody has: not what
-              ;; the table is waiting for any more, so not green.
-              (and can-act? voted?)
-              ["border-slate-600 bg-slate-900/70 text-slate-200"
-               (t :game/waiting)
-               (when (seq waiting) (str (t :badge/waiting-for) ": " (str/join ", " waiting)))]
-
-              can-act?
+              :yours
               ["border-emerald-500 bg-emerald-950/50 text-emerald-100 ring-4 ring-emerald-500/20"
                (t :turn/yours) (t :turn/hint)]
 
               ;; Asleep: what the night is doing and what comes next, which is
               ;; all a sleeping player can use.
-              asleep?
+              :asleep
               ["border-indigo-800 bg-indigo-950/40 text-indigo-100"
                (str "😴 " (t :turn/asleep))
                (when-let [r (sub/next-up plan)]
                  (t :turn/asleep-next (role-name r)))]
 
-              :else
+              ;; :voted and :waiting. Voted, and free to change it until
+              ;; everybody has: not what the table is waiting for any more,
+              ;; so not green.
               ["border-slate-700 bg-slate-900/60 text-slate-400"
                ;; After a verdict nobody is waiting on anybody: the table is
                ;; reading the card it turned over, and the night comes next.
@@ -661,7 +651,7 @@
                  ;; A wolf whose ballot is in: the tally below says where
                  ;; the pack stands, this says why the night has not moved
                  ;; on and that his vote is still his to change.
-                 (and voted? (= :night phase)) (t :turn/pack-hint)
+                 (and (= :voted turn) (= :night phase)) (t :turn/pack-hint)
                  ;; A dead player is not being waited on and never will be, so do
                  ;; not imply their input is pending.
                  (false? (:alive? me)) (t :game/dead-hint))])]
@@ -2411,7 +2401,7 @@
    by side."
   []
   (let [{:keys [tab unread go!]} (tab-state)
-        my-turn? @(rf/subscribe [::sub/can-act?])
+        my-turn? @(rf/subscribe [::sub/my-turn?])
         item (fn [k icon label badge]
                [:button {:class (str "relative flex flex-col items-center gap-0.5 py-2 text-[11px] "
                                      (if (= k tab) "text-indigo-300 font-semibold" "text-slate-400"))
@@ -2441,11 +2431,10 @@
    something else: whoever is reading the chat still learns it, and one tap
    takes them back to Jetzt."
   []
-  (let [my-turn? @(rf/subscribe [::sub/can-act?])
-        phase    @(rf/subscribe [::sub/phase])
+  (let [my-turn? @(rf/subscribe [::sub/my-turn?])
         secs     @(rf/subscribe [::sub/seconds-left])
         {:keys [tab go!]} (tab-state)]
-    (when (and my-turn? (not= :now tab) (not (#{:lobby :game-over} phase)))
+    (when (and my-turn? (not= :now tab))
       [:button {:class "fixed inset-x-0 bottom-14 z-40 lg:hidden flex items-center justify-between gap-3
                         px-4 py-3 bg-emerald-600 text-white font-bold text-left
                         border-t-2 border-emerald-300"
@@ -2508,7 +2497,7 @@
              (str "empty:hidden " order " " (when-not (contains? tabs tab) "max-lg:hidden")))]
   ;; Room at the foot for the tabs, and for the turn dock above them when it
   ;; shows, so neither covers the last thing on the page.
-  [:div {:class (if (and @(rf/subscribe [::sub/can-act?]) (not= :now tab)) "pb-36 lg:pb-0" "pb-20 lg:pb-0")}
+  [:div {:class (if (and @(rf/subscribe [::sub/my-turn?]) (not= :now tab)) "pb-36 lg:pb-0" "pb-20 lg:pb-0")}
    ;; The way out of a game under way lives in the bar, as far from the moves
    ;; as the screen allows, and two taps like the lobby's. Not at the end,
    ;; where the game-over panel has its own one-tap way out.
