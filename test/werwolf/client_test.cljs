@@ -949,7 +949,7 @@
         (is (true? (sub/voted? cast)))
         (is (false? (sub/my-turn? cast)) "waiting for the pack to come round")
         (is (= 3 (sub/own-vote cast)) "and told where his own vote stands")
-        (is (false? (sub/asleep? cast false)) "awake, with the pack"))
+        (is (= :voted (sub/turn cast)) "awake, with the pack"))
       (is (false? (sub/voted? (assoc-in view [:night-info :werewolf-votes] {2 4})))
           "a packmate's ballot is not his")
       (is (false? (sub/voted? (-> view
@@ -961,17 +961,35 @@
   ;; No cursor in the fixture on purpose: a player in a narrated room is not
   ;; sent one, and asleep must come out the same without it.
   (let [v {:phase :night :actions #{:leave :set-locale} :me {:id 1 :alive? true :role :seherin}}]
-    (is (true? (sub/asleep? v false)))
-    (is (false? (sub/asleep? v true)) "with a move to make you are awake")
-    (is (false? (sub/asleep? (assoc v :phase :discussion) false)))
-    (is (false? (sub/asleep? (assoc-in v [:me :alive?] false) false)) "the dead watch")
-    (is (false? (sub/asleep? (assoc-in v [:me :narrator?] true) false)))
+    (is (= :asleep (sub/turn v)))
+    (is (= :yours (sub/turn (assoc v :actions #{:seherin-inspect :chat}))) "with a move to make you are awake")
+    (is (= :waiting (sub/turn (assoc v :phase :discussion))))
+    (is (= :waiting (sub/turn (assoc-in v [:me :alive?] false))) "the dead watch")
+    (is (= :narrating (sub/turn (assoc-in v [:me :narrator?] true))))
     (testing "a wolf who has voted waits for the pack, awake: the server keeps
               the pack's chat open for him, and for nobody else asleep"
-      (is (false? (sub/asleep? (assoc v :actions #{:chat :leave :set-locale}
-                                      :me {:id 1 :alive? true :role :werwolf}) false)))
-      (is (false? (sub/asleep? (assoc v :actions #{:chat :leave :set-locale}
-                                      :me {:id 1 :alive? true :role :weisser-werwolf}) false))))))
+      (is (= :waiting (sub/turn (assoc v :actions #{:chat :leave :set-locale}
+                                       :me {:id 1 :alive? true :role :werwolf}))))
+      (is (= :waiting (sub/turn (assoc v :actions #{:chat :leave :set-locale}
+                                       :me {:id 1 :alive? true :role :weisser-werwolf})))))))
+
+(deftest one-turn-for-the-card-the-dock-the-title-and-the-chime
+  (testing "a reaction owed comes before everything a player may also do"
+    (is (= :reaction (sub/turn {:phase :reaction :me {:id 3 :alive? false}
+                                :awaiting-reaction {:type :reaction/jaeger-shot}
+                                :actions #{:jaeger-shoot :jaeger-pass :chat}})))
+    (is (true? (sub/my-turn? {:phase :reaction :me {:id 3 :alive? false}
+                              :awaiting-reaction {:type :reaction/jaeger-shot}
+                              :actions #{:jaeger-shoot :jaeger-pass :chat}}))))
+  (testing "the Spielleiter in setup is offered the night, and is not dran: the
+            dock and the tab dot called him so while the title said otherwise"
+    (let [sl {:phase :setup :me {:id 0 :alive? true :narrator? true}
+              :actions #{:begin-night :gm/toggle-narrated :chat}}]
+      (is (= :narrating (sub/turn sl)))
+      (is (false? (sub/my-turn? sl)))))
+  (testing "no turn at all in the lobby and at the end"
+    (is (nil? (sub/turn {:phase :lobby :me {:id 1} :actions #{:start-game}})))
+    (is (nil? (sub/turn {:phase :game-over :me {:id 1} :actions #{:play-again}})))))
 
 (deftest next-up-is-the-first-role-still-to-come
   (is (= :hexe (sub/next-up [{:role :seherin :state :done} {:role :werwolf :state :current}
