@@ -727,9 +727,6 @@
 
 ;; ------------------------------------------------------------- player cards ---
 
-(defn- vote-count [votes id]
-  (count (filter #(= id (val %)) votes)))
-
 (defn- card-controls
   "The seat's own buttons, for whoever holds the host's powers. Both are drawn
    from what the server offered for THIS seat, so a card nobody may act on has
@@ -842,7 +839,10 @@
         ;; alive.
         sl? (= id (:narrator view))
         role (get known id)
-        n-votes (vote-count votes id)
+        ;; The server's count, the bar's: the Bürgermeister's vote twice, a
+        ;; departed voter's not at all. Counting `:votes` here, one each,
+        ;; put a different number on the card than in the bar beneath it.
+        n-votes (get-in view [:ballot :on id] 0)
         ;; Safe to show because everyone shares one media room and nobody is
         ;; muted by the server — so who is talking reveals nothing. It would NOT
         ;; be safe under the plan's permission table, where the wolves' absence
