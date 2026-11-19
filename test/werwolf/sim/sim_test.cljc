@@ -197,6 +197,29 @@
         (doseq [r (take 5 results)]
           (is (nil? (h/replay-mismatch r)) (str opts " seed " (:seed r))))))))
 
+;; ------------------------------------------------------------- overrules ---
+
+(deftest games-where-players-walk-out-and-the-spielleiter-overrules
+  (testing "players leaving mid-game and the Spielleiter killing or reviving
+            somebody, at random among ordinary play. Every invariant after
+            every event, a replay of every finished game, and the wolves'
+            and the village's wins both reachable"
+    (doseq [opts [{:overrule? true} {:overrule? true :narrated? true}]]
+      (let [results (for [i (range (h/games 60))]
+                      (h/play-game (+ 5 (mod i 14)) (+ 3 (* i 7907)) opts))
+            checked (map (fn [r] (if-let [m (and (:ok? r) (h/replay-mismatch r))]
+                                   (assoc r :ok? false :reason :replay :violations [m])
+                                   r))
+                         results)
+            failures (vec (remove :ok? checked))
+            issued (frequencies (keep (comp #{:leave :gm/force-kill :gm/revive} :type)
+                                      (mapcat :history results)))]
+        (is (empty? failures) (str (pr-str opts) " failures: " (describe failures)))
+        (testing "and the overrules were actually played"
+          (is (pos? (get issued :leave 0)) (pr-str issued))
+          (is (pos? (get issued :gm/force-kill 0)) (pr-str issued))
+          (is (pos? (get issued :gm/revive 0)) (pr-str issued)))))))
+
 ;; ----------------------------------------------------- the chosen deck ---
 
 (deftest games-with-a-chosen-deck-complete
