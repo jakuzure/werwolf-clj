@@ -36,8 +36,9 @@
            :dbname   #or [#env DB_PATH "data/werwolf.db"]}
 
  ;; HS256 secret for reconnect tokens. MUST be overridden in production.
+ ;; :ttl-mins should outlast :abandon-after-hours, see werwolf.token.
  :tokens  {:secret   #or [#env TOKEN_SECRET "dev-only-insecure-secret-change-me"]
-           :ttl-mins #long #or [#env TOKEN_TTL_MINS 720]}
+           :ttl-mins #long #or [#env TOKEN_TTL_MINS 2880]}
 
  ;; Media provider: :noop for v1 (text chat only), :livekit at M7.
  :media   {:provider   #keyword #or [#env MEDIA_PROVIDER "noop"]

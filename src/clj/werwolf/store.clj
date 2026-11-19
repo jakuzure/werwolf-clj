@@ -162,6 +162,13 @@
                       opts)
        (mapv :room_id)))
 
+(defn unfinished?
+  "Is `room-id` a game on disk that has not ended? The rooms `unfinished-room-ids`
+   lists, one at a time."
+  [ds room-id]
+  (some? (jdbc/execute-one! ds ["SELECT 1 FROM rooms WHERE room_id = ? AND finished = 0" room-id]
+                            opts)))
+
 (defn purge-room!
   "Remove a room and its events outright. Used by tests and by expiry."
   [ds room-id]
