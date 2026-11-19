@@ -73,6 +73,9 @@
    seat that mattered: the newest player leaving handed their number — and their
    token — to the next arrival, and an emptied lobby started again at 0. The log
    is part of state, so this survives a restart without a counter of its own.
+   A rematch starts a fresh log, so it carries the count over as
+   `:seats-issued`; without it, the newest player walking out before
+   \"Nochmal\" handed their number to the next arrival again.
 
    In the engine rather than the room layer because the engine issues seats
    itself now (the host seating a bot), and two counters would be the
@@ -81,7 +84,8 @@
   (let [ids (concat (keys (:players state))
                     (keep #(when (= :player/joined (:type %)) (:player %))
                           (:log state)))]
-    (if (seq ids) (inc (apply max ids)) 0)))
+    (max (or (:seats-issued state) 0)
+         (if (seq ids) (inc (apply max ids)) 0))))
 
 (defn nobody-here?
   "Is every seat in the room disconnected?
@@ -828,6 +832,7 @@
     (-> fresh
         (merge (select-keys state [:narrated? :timer? :password-hash :deck :host-absent?
                                    :reveal-to-dead? :mayor? :durations]))
+        (assoc :seats-issued (next-seat state))
         (assoc :players
                (into {}
                      (comp
