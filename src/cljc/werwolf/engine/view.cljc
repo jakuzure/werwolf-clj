@@ -93,7 +93,13 @@
         me         (get-in state [:players pid])
         dead?      (and me (not (:alive? me)))
         all-roles  #(into {} (keep (fn [[id p]] (when (:role p) [id (:role p)])))
-                          (:players state))]
+                          (:players state))
+        ;; The public log reveals the role of anyone who has died.
+        revealed   (into {} (keep (fn [entry]
+                                    (when (and (= :player/died (:type entry))
+                                               (:role entry))
+                                      [(:player entry) (:role entry)]))
+                                  (:log state)))]
     (cond
       ;; The game is finished: full reveal for everyone.
       game-over? (all-roles)
@@ -105,8 +111,10 @@
       ;; The deal is not final until the night falls: the Spielleiter may still
       ;; move any card. So a player sees his OWN card and nothing it implies — a
       ;; wolf who met the pack during setup and was then made a villager would
-      ;; carry the pack's names into the game.
-      (= :setup (:phase state)) (if (:role me) {pid (:role me)} {})
+      ;; carry the pack's names into the game. A card turned over is the
+      ;; exception: walking out during setup is dying, and the log says what
+      ;; he was, as it does on any other day.
+      (= :setup (:phase state)) (merge revealed (when (:role me) {pid (:role me)}))
 
       ;; Opt-in ghost view only — see the namespace docstring for why this is
       ;; off by default.
@@ -122,13 +130,7 @@
             learned  (into {} (:knows me {}))
             ;; A lover knows who they are bound to, and thus their role.
             lover    (when-let [l (lover-of state pid)]
-                       {l (get-in state [:players l :role])})
-            ;; The public log reveals the role of anyone who has died.
-            revealed (into {} (keep (fn [entry]
-                                      (when (and (= :player/died (:type entry))
-                                                 (:role entry))
-                                        [(:player entry) (:role entry)]))
-                                    (:log state)))]
+                       {l (get-in state [:players l :role])})]
         (merge own mates learned lover revealed)))))
 
 ;; -------------------------------------------------------- public pieces ---
