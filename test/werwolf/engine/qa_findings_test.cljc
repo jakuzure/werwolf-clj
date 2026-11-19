@@ -107,3 +107,15 @@
                   (werwolf.engine.events/apply-all s [{:type :player/joined :player 5 :name "Neu" :locale :de}
                                                       {:type :player/left :player 5}
                                                       {:type :game/reset}]))))))))
+
+(deftest a-card-turned-over-in-setup-is-public
+  ;; Found by the simulation once it let players walk out: the log turned the
+  ;; card over, as on any day, while the setup rule still said a player sees
+  ;; his own card and nothing else.
+  (let [s (tu/narrated-setup-with {1 :dorfbewohner 2 :werwolf 3 :seherin 4 :hexe 5 :dorfbewohner})
+        s (exec! s {:type :leave :player 3})]
+    (is (= :setup (:phase s)))
+    (doseq [pid [1 2 4 5]]
+      (is (nil? (view/redaction-leaks? s pid)) (str "seat " pid))
+      (is (= :seherin (get (view/revealed-roles s pid) 3)) "the leaver's card, which the log names"))
+    (is (nil? (get (view/revealed-roles s 1) 2)) "and still no living card")))
