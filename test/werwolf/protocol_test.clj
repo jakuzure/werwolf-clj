@@ -8,6 +8,8 @@
             [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]
             [buddy.sign.jwt :as jwt]
+            [werwolf.config :as config]
+            [werwolf.engine.phases :as phases]
             [werwolf.i18n.core :as i18n]
             [werwolf.livekit :as livekit]
             [werwolf.media :as media]
@@ -468,6 +470,91 @@
                                              :now-ms (System/currentTimeMillis)})]
           (protocol/dispatch deps s {:type :client/resume :room-id room-id :token ghost})
           (is (= [:seat-gone] (codes s))))))))
+
+(defn- walked-away-game!
+  "A dealt game of five whose sockets have all closed. Returns the host's
+   room id and token."
+  [deps]
+  (let [host (seat! deps {:type :client/create :name "Anna"})
+        {:keys [room-id token]} (last-of host :server/welcome)
+        guests (mapv #(seat! deps {:type :client/join :room-id room-id :name (str "P" %)})
+                     (range 1 5))]
+    (protocol/dispatch deps host {:type :client/command :cmd {:type :start-game}})
+    (doseq [s (cons host guests)] (protocol/on-close deps s))
+    {:room-id room-id :token token}))
+
+(deftest a-game-swept-for-idling-comes-back-on-a-resume
+  (testing "the sweep drops a game nobody has been connected to for half an
+            hour; the table that paused for the night still has it"
+    (with-deps [deps]
+      (let [{:keys [room-id token]} (walked-away-game! deps)
+            rooms (:rooms deps)]
+        (is (= [room-id] (room/sweep-idle! rooms (+ (System/currentTimeMillis) (* 31 60 1000)))))
+        (is (nil? (room/state-of rooms room-id)) "forgotten")
+        (let [s (sock)]
+          (protocol/dispatch deps s {:type :client/resume :room-id room-id :token token})
+          (is (empty? (errors s)))
+          (is (= 0 (:player-id (last-of s :server/welcome))))
+          (is (= :night (:phase (:view (last-of s :room/view)))))
+          (is (true? (get-in (room/state-of rooms room-id) [:players 0 :connected?]))))
+        (testing "the next player resumes into the room the first one woke"
+          (let [s (sock)
+                t (token/issue tokens-cfg {:room-id room-id :player-id 1
+                                           :now-ms (System/currentTimeMillis)})]
+            (protocol/dispatch deps s {:type :client/resume :room-id room-id :token t})
+            (is (empty? (errors s)))
+            (is (true? (get-in (room/state-of rooms room-id) [:players 0 :connected?]))
+                "the first player's seat is still attached"))))))
+  (testing "but not once it has been abandoned: past that, it is over"
+    (with-deps [deps]
+      (let [{:keys [room-id token]} (walked-away-game! deps)
+            rooms (:rooms deps)]
+        (room/sweep-idle! rooms (+ (System/currentTimeMillis) (* 25 60 60 1000)))
+        (let [s (sock)]
+          (protocol/dispatch deps s {:type :client/resume :room-id room-id :token token})
+          (is (= [:seat-gone] (codes s)))
+          (is (nil? (room/state-of rooms room-id)) "and nothing was loaded"))))))
+
+(deftest a-woken-table-of-bots-plays-on
+  (testing "every evening so far was one person and bots. Waking the game is
+            not enough if nothing moves in it: the human's return is what
+            re-arms the clock and the bots, as after a boot"
+    (with-deps [deps]
+      ;; A fixed seed: whose turn the night is depends on the deal, and with a
+      ;; random one the night was now and then the host's own (CI on #174).
+      ;; Seed 1 makes him the Jäger and calls a bot first.
+      (let [rooms (:rooms deps)
+            {:keys [room-id]} (room/create! rooms {:name "Anna" :narrated? false :seed 1})
+            host (sock)
+            token (token/issue tokens-cfg {:room-id room-id :player-id 0
+                                           :now-ms (System/currentTimeMillis)})]
+        (room/attach! rooms room-id 0 host)
+        (dotimes [_ 4] (room/submit! rooms room-id 0 {:type :gm/add-bot}))
+        (room/submit! rooms room-id 0 {:type :start-game})
+        (is (= :night (:phase (room/state-of rooms room-id))))
+        (is (not= [0] (phases/owing (room/state-of rooms room-id))) "a bot is called, not the host")
+        (room/detach! rooms host)
+        (room/sweep-idle! rooms (+ (System/currentTimeMillis) (* 31 60 1000)))
+        (is (nil? (room/state-of rooms room-id)))
+        (let [s (sock)]
+          (protocol/dispatch deps s {:type :client/resume :room-id room-id :token token})
+          (is (empty? (errors s)))
+          (is (some? (:deadline (room/state-of rooms room-id))) "the clock runs again")
+          (is (seq (:bots (room/scheduling rooms room-id))) "and a bot's turn is armed")
+          (let [before (:seq (#'room/room-of rooms room-id))]
+            (timer/tick! rooms (+ (System/currentTimeMillis) 10000))
+            (is (> (:seq (#'room/room-of rooms room-id)) before)
+                "which it then takes")
+            (is (not-any? #(= :phase/timed-out (:type %))
+                          (store/load-events (:ds rooms) room-id))
+                "by its own move, not the clock running out")))))))
+
+(deftest a-token-outlasts-the-abandon-window
+  (testing "a token that ran out before the game did locked a table that paused
+            for the night out of a game the server was still keeping for it"
+    (let [cfg (config/load-config :test)]
+      (is (> (* 60 (get-in cfg [:tokens :ttl-mins]))
+             (* 60 60 (get-in cfg [:game :abandon-after-hours])))))))
 
 ;; -------------------------------------------------------------------- chat ---
 

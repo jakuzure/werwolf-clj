@@ -114,15 +114,17 @@
 
 (defmethod handle :client/resume
   [{:keys [rooms tokens] :as deps} sock {:keys [room-id token]}]
-  (let [claim (token/verify tokens token {:expect-room room-id
-                                          :now-ms (System/currentTimeMillis)})]
+  (let [now   (System/currentTimeMillis)
+        claim (token/verify tokens token {:expect-room room-id :now-ms now})]
     (cond
       (:error claim)
       (error! deps sock (:error claim) {})
 
       ;; The token is genuine but the game it names is gone — finished and
-      ;; swept, or from a previous life of this database.
-      (not (room/seated? rooms room-id (:player-id claim)))
+      ;; swept, abandoned, or from a previous life of this database. A game
+      ;; that was only swept for idling comes back here.
+      (not (and (room/wake! rooms room-id now)
+                (room/seated? rooms room-id (:player-id claim))))
       (error! deps sock :seat-gone {:room-id room-id})
 
       :else
