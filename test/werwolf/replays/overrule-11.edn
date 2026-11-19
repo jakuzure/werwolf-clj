@@ -1,0 +1,340 @@
+;; Written by (werwolf.replays/pin!). The log is replayed by
+;; werwolf.replays-test, and :pinned is what it must still say.
+{:log
+ [
+  {:type :game/created, :room-id "SIM", :host 0, :seed 505, :min-players 5}
+  {:type :player/joined, :player 0, :name "P0", :locale :de}
+  {:type :player/joined, :player 1, :name "P1", :locale :de}
+  {:type :player/joined, :player 2, :name "P2", :locale :de}
+  {:type :player/joined, :player 3, :name "P3", :locale :de}
+  {:type :player/joined, :player 4, :name "P4", :locale :de}
+  {:type :player/joined, :player 5, :name "P5", :locale :de}
+  {:type :player/joined, :player 6, :name "P6", :locale :de}
+  {:type :player/joined, :player 7, :name "P7", :locale :de}
+  {:type :player/joined, :player 8, :name "P8", :locale :de}
+  {:type :player/joined, :player 9, :name "P9", :locale :de}
+  {:type :player/joined, :player 10, :name "P10", :locale :de}
+  {:type :game/started, :assignments {0 :beschuetzer, 7 :seherin, 1 :werwolf, 4 :dorfbewohner, 6 :dorfbewohner, 3 :hexe, 2 :dieb, 9 :werwolf, 5 :werwolf, 10 :jaeger, 8 :amor}, :centre [:werwolf :dorfbewohner], :seed 2548147355}
+  {:type :night/began, :night 1}
+  {:type :night/role-turn, :role :dieb}
+  {:type :dieb/took, :player 2, :role :dorfbewohner}
+  {:type :night/role-completed, :role :dieb}
+  {:type :night/role-turn, :role :amor}
+  {:type :amor/linked, :a 1, :b 10}
+  {:type :night/role-completed, :role :amor}
+  {:type :night/role-turn, :role :seherin}
+  {:type :seherin/inspected, :player 7, :target 5}
+  {:type :night/role-completed, :role :seherin}
+  {:type :night/role-turn, :role :beschuetzer}
+  {:type :beschuetzer/protected, :player 0, :target 2}
+  {:type :night/role-completed, :role :beschuetzer}
+  {:type :night/ended}
+  {:type :night/quiet, :night 1}
+  {:type :phase/changed, :phase :day-reveal, :deadline nil}
+  {:type :phase/changed, :phase :election, :deadline nil}
+  {:type :election/cast, :voter 8, :target 3}
+  {:type :election/cast, :voter 6, :target 6}
+  {:type :election/cast, :voter 5, :target nil}
+  {:type :election/cast, :voter 7, :target nil}
+  {:type :election/cast, :voter 1, :target nil}
+  {:type :election/cast, :voter 2, :target 6}
+  {:type :election/cast, :voter 3, :target 0}
+  {:type :election/cast, :voter 4, :target 5}
+  {:type :election/cast, :voter 9, :target nil}
+  {:type :election/cast, :voter 10, :target 8}
+  {:type :election/cast, :voter 0, :target nil}
+  {:type :election/resolved, :mayor 6, :tie? false}
+  {:type :day/began}
+  {:type :player/ready, :player 10}
+  {:type :player/ready, :player 8}
+  {:type :day/no-trial}
+  {:type :night/began, :night 2}
+  {:type :night/role-turn, :role :seherin}
+  {:type :seherin/inspected, :player 7, :target 4}
+  {:type :night/role-completed, :role :seherin}
+  {:type :night/role-turn, :role :beschuetzer}
+  {:type :beschuetzer/protected, :player 0, :target 9}
+  {:type :night/role-completed, :role :beschuetzer}
+  {:type :night/role-turn, :role :werwolf}
+  {:type :werewolf/voted, :player 5, :target 7}
+  {:type :werewolf/voted, :player 1, :target 7}
+  {:type :werewolf/voted, :player 9, :target 7}
+  {:type :night/role-completed, :role :werwolf}
+  {:type :werewolf/chose, :target 7}
+  {:type :night/role-turn, :role :hexe}
+  {:type :hexe/healed, :player 3, :target 7}
+  {:type :player/left, :player 3}
+  {:type :player/died, :player 3, :cause :left}
+  {:type :night/ended}
+  {:type :night/quiet, :night 2}
+  {:type :phase/changed, :phase :day-reveal, :deadline nil}
+  {:type :day/began}
+  {:type :vote/cast, :voter 8, :target 0}
+  {:type :vote/cast, :voter 1, :target 0}
+  {:type :vote/cast, :voter 7, :target 0}
+  {:type :phase/changed, :phase :day-resolve, :deadline nil}
+  {:type :vote/resolved, :target nil, :tie? false, :no-majority? true}
+  {:type :night/began, :night 3}
+  {:type :night/role-turn, :role :seherin}
+  {:type :seherin/inspected, :player 7, :target 10}
+  {:type :night/role-completed, :role :seherin}
+  {:type :night/role-turn, :role :beschuetzer}
+  {:type :beschuetzer/protected, :player 0, :target 8}
+  {:type :night/role-completed, :role :beschuetzer}
+  {:type :night/role-turn, :role :werwolf}
+  {:type :werewolf/voted, :player 9, :target 8}
+  {:type :werewolf/voted, :player 1, :target 8}
+  {:type :werewolf/voted, :player 5, :target 8}
+  {:type :night/role-completed, :role :werwolf}
+  {:type :werewolf/chose, :target 8}
+  {:type :night/ended}
+  {:type :night/quiet, :night 3}
+  {:type :phase/changed, :phase :day-reveal, :deadline nil}
+  {:type :day/began}
+  {:type :vote/cast, :voter 9, :target 0}
+  {:type :phase/changed, :phase :day-resolve, :deadline nil}
+  {:type :vote/resolved, :target nil, :tie? false, :no-majority? true}
+  {:type :night/began, :night 4}
+  {:type :night/role-turn, :role :seherin}
+  {:type :seherin/inspected, :player 7, :target 0}
+  {:type :night/role-completed, :role :seherin}
+  {:type :night/role-turn, :role :beschuetzer}
+  {:type :beschuetzer/protected, :player 0, :target 7}
+  {:type :night/role-completed, :role :beschuetzer}
+  {:type :night/role-turn, :role :werwolf}
+  {:type :werewolf/voted, :player 5, :target 7}
+  {:type :werewolf/voted, :player 9, :target 7}
+  {:type :werewolf/voted, :player 1, :target 7}
+  {:type :night/role-completed, :role :werwolf}
+  {:type :werewolf/chose, :target 7}
+  {:type :night/ended}
+  {:type :night/quiet, :night 4}
+  {:type :phase/changed, :phase :day-reveal, :deadline nil}
+  {:type :day/began}
+  {:type :vote/cast, :voter 9, :target 0}
+  {:type :vote/cast, :voter 1, :target 0}
+  {:type :vote/cast, :voter 7, :target 0}
+  {:type :vote/cast, :voter 10, :target 0}
+  {:type :vote/cast, :voter 5, :target 0}
+  {:type :vote/cast, :voter 0, :target 1}
+  {:type :phase/changed, :phase :day-resolve, :deadline nil}
+  {:type :vote/resolved, :target nil, :tie? false, :no-majority? true}
+  {:type :night/began, :night 5}
+  {:type :night/role-turn, :role :seherin}
+  {:type :seherin/inspected, :player 7, :target 6}
+  {:type :night/role-completed, :role :seherin}
+  {:type :night/role-turn, :role :beschuetzer}
+  {:type :beschuetzer/protected, :player 0, :target 5}
+  {:type :night/role-completed, :role :beschuetzer}
+  {:type :night/role-turn, :role :werwolf}
+  {:type :werewolf/voted, :player 1, :target 4}
+  {:type :werewolf/voted, :player 5, :target 4}
+  {:type :werewolf/voted, :player 9, :target 4}
+  {:type :night/role-completed, :role :werwolf}
+  {:type :werewolf/chose, :target 4}
+  {:type :night/ended}
+  {:type :phase/changed, :phase :day-reveal, :deadline nil}
+  {:type :player/died, :player 4, :cause :werwolf}
+  {:type :deaths/consumed, :player 4}
+  {:type :day/began}
+  {:type :vote/cast, :voter 5, :target 0}
+  {:type :gm/forced, :actor 0, :action :revive, :detail {:target 4}}
+  {:type :player/revived, :player 4}
+  {:type :vote/cast, :voter 6, :target 0}
+  {:type :vote/cast, :voter 7, :target 0}
+  {:type :vote/cast, :voter 0, :target 1}
+  {:type :vote/cast, :voter 10, :target 0}
+  {:type :vote/cast, :voter 9, :target 0}
+  {:type :vote/cast, :voter 4, :target 0}
+  {:type :vote/cast, :voter 8, :target 0}
+  {:type :phase/changed, :phase :day-resolve, :deadline nil}
+  {:type :vote/resolved, :target 0, :tie? false}
+  {:type :player/died, :player 0, :cause :lynch}
+  {:type :deaths/consumed, :player 0}
+  {:type :night/began, :night 6}
+  {:type :night/role-turn, :role :seherin}
+  {:type :player/left, :player 2}
+  {:type :player/died, :player 2, :cause :left}
+  {:type :seherin/inspected, :player 7, :target 8}
+  {:type :night/role-completed, :role :seherin}
+  {:type :night/role-turn, :role :werwolf}
+  {:type :werewolf/voted, :player 5, :target 4}
+  {:type :werewolf/voted, :player 9, :target 4}
+  {:type :werewolf/voted, :player 1, :target 4}
+  {:type :night/role-completed, :role :werwolf}
+  {:type :werewolf/chose, :target 4}
+  {:type :night/ended}
+  {:type :phase/changed, :phase :day-reveal, :deadline nil}
+  {:type :player/died, :player 4, :cause :werwolf}
+  {:type :deaths/consumed, :player 4}
+  {:type :day/began}
+  {:type :phase/changed, :phase :day-resolve, :deadline nil}
+  {:type :vote/resolved, :target nil, :tie? false}
+  {:type :night/began, :night 7}
+  {:type :night/role-turn, :role :seherin}
+  {:type :seherin/inspected, :player 7, :target 9}
+  {:type :night/role-completed, :role :seherin}
+  {:type :night/role-turn, :role :werwolf}
+  {:type :werewolf/voted, :player 9, :target 10}
+  {:type :werewolf/voted, :player 1, :target 10}
+  {:type :werewolf/voted, :player 5, :target 10}
+  {:type :night/role-completed, :role :werwolf}
+  {:type :werewolf/chose, :target 10}
+  {:type :night/ended}
+  {:type :phase/changed, :phase :day-reveal, :deadline nil}
+  {:type :player/died, :player 10, :cause :werwolf}
+  {:type :deaths/consumed, :player 10}
+  {:type :reaction/popped}
+  {:type :player/died, :player 1, :cause :liebe}
+  {:type :phase/changed, :phase :reaction, :resume :day-reveal, :deadline nil}
+  {:type :reaction/popped}
+  {:type :jaeger/held-fire, :player 10}
+  {:type :phase/changed, :phase :day-reveal, :deadline nil}
+  {:type :day/began}
+  {:type :phase/changed, :phase :day-resolve, :deadline nil}
+  {:type :vote/resolved, :target nil, :tie? false}
+  {:type :night/began, :night 8}
+  {:type :night/role-turn, :role :seherin}
+  {:type :night/role-completed, :role :seherin}
+  {:type :night/role-turn, :role :werwolf}
+  {:type :werewolf/voted, :player 9, :target 8}
+  {:type :player/left, :player 8}
+  {:type :player/died, :player 8, :cause :left}
+  {:type :werewolf/voted, :player 5, :target 6}
+  {:type :night/role-completed, :role :werwolf}
+  {:type :werewolf/chose, :target 6}
+  {:type :night/ended}
+  {:type :phase/changed, :phase :day-reveal, :deadline nil}
+  {:type :player/died, :player 6, :cause :werwolf}
+  {:type :deaths/consumed, :player 6}
+  {:type :phase/changed, :phase :reaction, :resume :day-reveal, :deadline nil}
+  {:type :reaction/popped}
+  {:type :mayor/vacated, :by 6}
+  {:type :phase/changed, :phase :day-reveal, :deadline nil}
+  {:type :day/began}
+  {:type :vote/cast, :voter 7, :target 5}
+  {:type :phase/changed, :phase :day-resolve, :deadline nil}
+  {:type :vote/resolved, :target nil, :tie? false, :no-majority? true}
+  {:type :night/began, :night 9}
+  {:type :night/role-turn, :role :seherin}
+  {:type :night/role-completed, :role :seherin}
+  {:type :night/role-turn, :role :werwolf}
+  {:type :werewolf/voted, :player 5, :target 7}
+  {:type :werewolf/voted, :player 9, :target 7}
+  {:type :night/role-completed, :role :werwolf}
+  {:type :werewolf/chose, :target 7}
+  {:type :night/ended}
+  {:type :phase/changed, :phase :day-reveal, :deadline nil}
+  {:type :player/died, :player 7, :cause :werwolf}
+  {:type :deaths/consumed, :player 7}
+  {:type :game/ended, :winner :werewolf}
+ ]
+ :pinned
+{:winner :werewolf,
+ :phase :game-over,
+ :seats-issued nil,
+ :seats
+ {0 [:beschuetzer false],
+  1 [:werwolf false],
+  2 [:dorfbewohner false],
+  3 [:hexe false],
+  4 [:dorfbewohner false],
+  5 [:werwolf true],
+  6 [:dorfbewohner false],
+  7 [:seherin false],
+  8 [:amor false],
+  9 [:werwolf true],
+  10 [:jaeger false]},
+ :public
+ [{:type :player/joined, :player 0}
+  {:type :player/joined, :player 1}
+  {:type :player/joined, :player 2}
+  {:type :player/joined, :player 3}
+  {:type :player/joined, :player 4}
+  {:type :player/joined, :player 5}
+  {:type :player/joined, :player 6}
+  {:type :player/joined, :player 7}
+  {:type :player/joined, :player 8}
+  {:type :player/joined, :player 9}
+  {:type :player/joined, :player 10}
+  {:type :game/started, :players 11}
+  {:type :night/began, :night 1}
+  {:type :amor/linked}
+  {:type :night/ended, :night 1}
+  {:type :night/quiet, :night 1}
+  {:type :election/resolved, :mayor 6, :tie? false}
+  {:type :day/began, :day 1}
+  {:type :player/ready, :player 10}
+  {:type :player/ready, :player 8}
+  {:type :day/no-trial, :day 1}
+  {:type :night/began, :night 2}
+  {:type :player/left, :player 3}
+  {:type :player/died, :player 3, :cause :left, :role :hexe}
+  {:type :night/ended, :night 2}
+  {:type :night/quiet, :night 2}
+  {:type :day/began, :day 2}
+  {:type :vote/cast, :voter 8, :target 0}
+  {:type :vote/cast, :voter 1, :target 0}
+  {:type :vote/cast, :voter 7, :target 0}
+  {:type :vote/resolved, :target nil, :tie? false, :no-majority? true}
+  {:type :night/began, :night 3}
+  {:type :night/ended, :night 3}
+  {:type :night/quiet, :night 3}
+  {:type :day/began, :day 3}
+  {:type :vote/cast, :voter 9, :target 0}
+  {:type :vote/resolved, :target nil, :tie? false, :no-majority? true}
+  {:type :night/began, :night 4}
+  {:type :night/ended, :night 4}
+  {:type :night/quiet, :night 4}
+  {:type :day/began, :day 4}
+  {:type :vote/cast, :voter 9, :target 0}
+  {:type :vote/cast, :voter 1, :target 0}
+  {:type :vote/cast, :voter 7, :target 0}
+  {:type :vote/cast, :voter 10, :target 0}
+  {:type :vote/cast, :voter 5, :target 0}
+  {:type :vote/cast, :voter 0, :target 1}
+  {:type :vote/resolved, :target nil, :tie? false, :no-majority? true}
+  {:type :night/began, :night 5}
+  {:type :night/ended, :night 5}
+  {:type :player/died, :player 4, :cause :werwolf, :role :dorfbewohner}
+  {:type :day/began, :day 5}
+  {:type :vote/cast, :voter 5, :target 0}
+  {:type :gm/forced, :actor 0, :action :revive, :detail {:target 4}}
+  {:type :player/revived, :player 4}
+  {:type :vote/cast, :voter 6, :target 0}
+  {:type :vote/cast, :voter 7, :target 0}
+  {:type :vote/cast, :voter 0, :target 1}
+  {:type :vote/cast, :voter 10, :target 0}
+  {:type :vote/cast, :voter 9, :target 0}
+  {:type :vote/cast, :voter 4, :target 0}
+  {:type :vote/cast, :voter 8, :target 0}
+  {:type :vote/resolved, :target 0, :tie? false}
+  {:type :player/died, :player 0, :cause :lynch, :role :beschuetzer}
+  {:type :night/began, :night 6}
+  {:type :player/left, :player 2}
+  {:type :player/died, :player 2, :cause :left, :role :dorfbewohner}
+  {:type :night/ended, :night 6}
+  {:type :player/died, :player 4, :cause :werwolf, :role :dorfbewohner}
+  {:type :day/began, :day 6}
+  {:type :vote/resolved, :target nil, :tie? false}
+  {:type :night/began, :night 7}
+  {:type :night/ended, :night 7}
+  {:type :player/died, :player 10, :cause :werwolf, :role :jaeger}
+  {:type :player/died, :player 1, :cause :liebe, :role :werwolf}
+  {:type :jaeger/held-fire, :player 10}
+  {:type :day/began, :day 7}
+  {:type :vote/resolved, :target nil, :tie? false}
+  {:type :night/began, :night 8}
+  {:type :player/left, :player 8}
+  {:type :player/died, :player 8, :cause :left, :role :amor}
+  {:type :night/ended, :night 8}
+  {:type :player/died, :player 6, :cause :werwolf, :role :dorfbewohner}
+  {:type :mayor/vacated, :by 6}
+  {:type :day/began, :day 8}
+  {:type :vote/cast, :voter 7, :target 5}
+  {:type :vote/resolved, :target nil, :tie? false, :no-majority? true}
+  {:type :night/began, :night 9}
+  {:type :night/ended, :night 9}
+  {:type :player/died, :player 7, :cause :werwolf, :role :seherin}
+  {:type :game/ended, :winner :werewolf}]}
+}
