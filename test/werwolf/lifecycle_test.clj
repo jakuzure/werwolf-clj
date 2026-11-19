@@ -181,6 +181,22 @@
             (is (empty? (room/rehydrate! (ctx-on path) (+ boot (* 25 hour)))))
             (is (retired? (:ds ctx2) room-id))))))))
 
+(deftest a-game-that-fails-to-load-does-not-stop-the-boot
+  (with-db [path]
+    (let [ctx (ctx-on path)
+          broken (game! ctx)
+          fine (game! ctx)]
+      (jdbc/execute-one! (:ds ctx) ["UPDATE events SET payload = '{:type :no/such-event' WHERE room_id = ? AND seq = 1"
+                                    broken])
+      (let [ctx2 (ctx-on path)]
+        (is (= [fine] (room/rehydrate! ctx2)) "the other table comes back")
+        (is (nil? (room/state-of ctx2 broken)) "the broken one is not half loaded")
+        (is (contains? (set (store/unfinished-room-ids (:ds ctx2))) broken)
+            "and stays on disk, untouched, for somebody to look at")
+        (testing "a resume does not load it either"
+          (is (false? (room/wake! ctx2 broken (System/currentTimeMillis))))
+          (is (nil? (room/state-of ctx2 broken))))))))
+
 ;; ------------------------------------------------------------------ sweep ---
 
 (deftest the-sweep-retires-a-game-past-the-threshold

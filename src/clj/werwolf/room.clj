@@ -1057,6 +1057,19 @@
             (fn [r] (apply-server-events! ctx r (vec drops))))
           room-id)))))
 
+(defn- safely-restore!
+  "`restore!`, but a game that fails to load is left on disk and out of memory
+   instead of thrown. The boot calls this for every unfinished game, inside the
+   system's start: one log the engine can no longer replay would otherwise keep
+   the server from starting at all, every other table included."
+  [ctx room-id now-ms woken-ms]
+  (try
+    (restore! ctx room-id now-ms woken-ms)
+    (catch Exception e
+      (log/error e "could not load room" room-id "- left on disk, not loaded")
+      (forget-room! ctx room-id)
+      nil)))
+
 (defn rehydrate!
   "Load unfinished games from the log on boot. Returns the room ids restored.
 
@@ -1071,7 +1084,7 @@
   ([ctx] (rehydrate! ctx (System/currentTimeMillis)))
   ([ctx now-ms]
    (into []
-         (keep #(restore! ctx % now-ms nil))
+         (keep #(safely-restore! ctx % now-ms nil))
          (store/unfinished-room-ids (:ds ctx)))))
 
 (defn wake!
@@ -1090,7 +1103,7 @@
       (locking (:rooms ctx)
         (or (some? (room-of ctx room-id))
             (and (store/unfinished? (:ds ctx) room-id)
-                 (some? (restore! ctx room-id now-ms now-ms)))))))
+                 (some? (safely-restore! ctx room-id now-ms now-ms)))))))
 
 (defn deserted?
   "Has every person walked out of this room, leaving bots or nobody?
