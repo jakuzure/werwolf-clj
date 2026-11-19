@@ -44,6 +44,20 @@
    rather than play it."
   #{:chat :leave :set-locale})
 
+(def ^:private overrules
+  "What `:overrule? true` lets the random games do after all: a player walking
+   out, and the Spielleiter killing or reviving somebody. The hardest engine
+   fixes of autumn 2026 were all here (departed ballots condemning the
+   Seherin, the dawn queue after a GM kill, a lover walking out, a room every
+   person had left), where no random game ever went."
+  #{:leave :gm/force-kill :gm/revive})
+
+(def ^:private overrule-odds
+  "One step in this many is an overrule, when there is one to make. Often
+   enough that most games see several; rarely enough that a table of twelve
+   is not empty after a dozen steps, with `:leave` offered to every seat."
+  25)
+
 (defn- excluded?
   "Every GM override is excluded, by NAMESPACE rather than by name.
 
@@ -214,6 +228,17 @@
         (let [[s1 t] (rng/rand-nth seed targets)]
           [s1 {:type action :player pid :target t}])))))
 
+(defn- overrule-candidates
+  "The `overrules` on offer now. Never the host's own `:leave`: with no clock
+   in a headless run, a game whose host walked out has nobody left to end
+   the day, which says nothing about the engine."
+  [state]
+  (for [pid    (sort (keys (:players state)))
+        action (sort (phases/legal-actions state pid))
+        :when  (overrules action)
+        :when  (not (and (= :leave action) (= pid (:host state))))]
+    [pid action]))
+
 (defn- candidates
   "All [player action] pairs currently available, excluding the ones the
    simulation refuses to use."
@@ -234,13 +259,35 @@
                             (get-in state [:night-actions :werewolf-votes pid]))))]
     [pid action]))
 
+(declare pick)
+
 (defn step
   "Advance the game by one player action.
    Returns [seed' state' cmd events] where cmd is nil if nothing legal was
-   available (a deadlock, unless the game is over)."
-  [state seed]
-  (let [opts (vec (candidates state))]
-    (if (empty? opts)
+   available (a deadlock, unless the game is over).
+
+   With `:overrule? true`, one step in `overrule-odds` is an overrule. Without
+   it the seed is drawn from exactly as before, so the pinned fingerprints of
+   the ordinary games do not move."
+  ([state seed] (step state seed {}))
+  ([state seed {:keys [overrule?]}]
+   (let [[seed overrule] (if overrule?
+                           ;; The kind of overrule first, then who: offered to
+                           ;; every seat, :leave would otherwise crowd out the
+                           ;; Spielleiter's two, which only he holds.
+                           (let [[s1 roll] (rng/rand-int seed overrule-odds)
+                                 by-kind (group-by second (overrule-candidates state))]
+                             (if (and (zero? roll) (seq by-kind))
+                               (let [[s2 kind] (rng/rand-nth s1 (vec (sort (keys by-kind))))]
+                                 [s2 (by-kind kind)])
+                               [s1 nil]))
+                           [seed nil])]
+     (pick state seed (or overrule (vec (candidates state)))))))
+
+(defn- pick
+  "Play one of the [player action] pairs in `opts`, drawn from `seed`."
+  [state seed opts]
+  (if (empty? opts)
       [seed state nil []]
       (let [[s1 [pid action]] (rng/rand-nth seed opts)
             [s2 cmd] (build-command state s1 pid action)]
@@ -251,7 +298,7 @@
           (let [result (engine/execute state cmd)]
             (if (engine/error? result)
               [s2 state (assoc cmd :rejected (:error result)) []]
-              [s2 (:state result) cmd (:events result)])))))))
+              [s2 (:state result) cmd (:events result)]))))))
 
 ;; ------------------------------------------------------------ invariants ---
 
@@ -337,6 +384,30 @@
       (and (:lovers state) (not= 2 (count (set (:lovers state)))))
       (conj {:violation :malformed-lovers :detail (:lovers state)})
 
+      ;; No winner but the village while a death is still owed: queued for
+      ;; dawn, or still to come from a Jäger's shot or a lover's grief. The
+      ;; Jäger eaten as the last villager once never got the shot that could
+      ;; take the last wolf with him (6716042). A Bürgermeister's succession
+      ;; still open is no death, and cannot change who won; nor is the pack's
+      ;; victim still queued after he walked out before dawn.
+      (and (some? (:winner state)) (not= :village (:winner state))
+           (or (some #(get-in state [:players (:player %) :alive?]) (:pending-deaths state))
+               (some (comp #{:reaction/jaeger-shot :reaction/lover-follows} :type)
+                     (:reactions state))))
+      (conj {:violation :won-with-a-death-owed
+             :detail (select-keys state [:winner :pending-deaths :reactions])})
+
+      ;; The day's ballot weighs only the living, for the living. Three
+      ;; departed players' ballots once condemned the Seherin against the two
+      ;; living wolves (ee352fe).
+      (when-let [{:keys [on open]} (phases/day-ballot state)]
+        (let [voters (e/living-ids state)]
+          (or (some #(not (contains? (set voters) %)) (keys on))
+              (> (+ open (reduce + 0 (vals on)))
+                 (+ (count voters) (if (some #{(:mayor state)} voters) 1 0))))))
+      (conj {:violation :ballot-counts-the-dead
+             :detail (select-keys state [:votes :mayor])})
+
       ;; A finished game must have a winner, and an unfinished one must not.
       (and (= :game-over (:phase state)) (nil? (:winner state)))
       (conj {:violation :game-over-without-winner})
@@ -391,7 +462,7 @@
             :turns turns :state state :history (vec (take-last 20 history)) :log log}
 
            :else
-           (let [[s' state' cmd evs] (step state s)]
+           (let [[s' state' cmd evs] (step state s opts)]
              (cond
                (nil? cmd)
                {:ok? false :reason :deadlock :seed seed :players n :turns turns
