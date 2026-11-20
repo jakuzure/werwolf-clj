@@ -792,6 +792,30 @@
             ^{:key (str r)}
             [:option {:value (name r)} (str (i18n/icon-of r) " " (role-name r))])])])))
 
+(defn- sprite
+  "A pixel sprite from art/sprites.edn, drawn by `bb sprites`. Decoration
+   only: the name or the role it shows is always written next to it."
+  [id class]
+  [:img {:src (str "/img/sprites/" (name id) ".svg") :alt "" :aria-hidden true
+         :draggable false :class class}])
+
+(defn- avatar
+  "Who sits in this seat, as far as this player may know: the Spielleiter,
+   the grave once they are dead, the card when it is known to them, and a
+   figure in shadow otherwise. The office of Bürgermeister changes no card,
+   so it is a badge on whatever the seat shows."
+  [{:keys [sl? alive? role mayor? talking? dim?]}]
+  [:div {:class (str "relative w-8 h-12 shrink-0 rounded-md "
+                     (when talking? "ring-2 ring-emerald-400 ")
+                     (when dim? "opacity-50 "))}
+   [sprite (cond sl? :spielleiter
+                 (not alive?) :grab
+                 role role
+                 :else :unbekannt)
+    "w-8 h-12"]
+   (when mayor?
+     [sprite :amtskette "absolute -top-1 -right-2 w-4 h-4"])])
+
 (defn- initial
   "The first letter of a name, for the round badge on a player's card. The
    first code point rather than the first char, so a name starting with an
@@ -879,12 +903,15 @@
       ;; has answered what the phase asks. Words for it made every card a row
       ;; of tags.
       [:div {:class "relative shrink-0"}
-       [:div {:class (str "w-8 h-8 rounded-full grid place-items-center font-bold "
-                          (if alive? "bg-slate-700 text-slate-100" "bg-slate-800 text-slate-500")
-                          (when (and alive? (false? connected?)) " opacity-50")
-                          (when talking? " ring-2 ring-emerald-400 "))
-              :aria-hidden true}
-        (initial pname)]
+       (if lobby?
+         [:div {:class (str "w-8 h-8 rounded-full grid place-items-center font-bold "
+                            (if alive? "bg-slate-700 text-slate-100" "bg-slate-800 text-slate-500")
+                            (when (and alive? (false? connected?)) " opacity-50")
+                            (when talking? " ring-2 ring-emerald-400 "))
+                :aria-hidden true}
+          (initial pname)]
+         [avatar {:sl? sl? :alive? alive? :role role :mayor? (= id (:mayor view))
+                  :talking? talking? :dim? (and alive? (false? connected?))}])
        (when done?
          [:span {:class "absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-emerald-600
                          text-white text-[10px] leading-none grid place-items-center"
@@ -1219,13 +1246,14 @@
   (let [me @(rf/subscribe [::sub/me-view])
         players @(rf/subscribe [::sub/players])
         phase @(rf/subscribe [::sub/phase])
+        mayor (:mayor @(rf/subscribe [::sub/view]))
         role (:role me)]
     (if (:narrator? me)
       ;; No card to show, so say what the seat IS. Same place and weight as a
       ;; role card: "who am I in this game" is still the first question.
       [:div {:class "rounded-xl p-4 border-2 border-violet-700 bg-violet-950/40"}
        [:div {:class "flex items-center gap-3"}
-        [:div {:class "text-4xl"} "📜"]
+        [sprite :spielleiter "w-16 h-24 shrink-0"]
         [:div {:class "min-w-0"}
          [:div {:class "text-xs uppercase tracking-wide text-slate-400"} (t :game/your-role)]
          [:div {:data-testid "my-role"
@@ -1236,7 +1264,10 @@
                          "border-emerald-700 bg-emerald-950/40"
                          "border-rose-800 bg-rose-950/30"))}
      [:div {:class "flex items-center gap-3"}
-      [:div {:class "text-4xl"} (i18n/icon-of role)]
+      [:div {:class "relative shrink-0"}
+       [sprite (if (:alive? me) (or role :unbekannt) :grab) "w-16 h-24"]
+       (when (= (:id me) mayor)
+         [sprite :amtskette "absolute -top-1 -right-3 w-6 h-6"])]
       [:div {:class "min-w-0"}
        [:div {:class "text-xs uppercase tracking-wide text-slate-400"} (t :game/your-role)]
        ;; The one test hook in the client. A browser test has to learn which role
