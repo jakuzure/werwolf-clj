@@ -309,6 +309,11 @@
    (do (fs/delete-tree "resources/public/js")
        (shell "npx shadow-cljs release app"))}
 
+  sprites
+  {:doc  "Draw the pixel sprites in art/sprites.edn as SVGs under
+          resources/public/img/sprites. Run after changing a sprite and commit both."
+   :task (shell "bb build/sprites.clj")}
+
   build:css
   {:doc     "Compile minified CSS"
    :depends [npm-install]
