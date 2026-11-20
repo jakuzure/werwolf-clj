@@ -93,29 +93,29 @@
       "hash": "sha256-LVp6g6ymqHa1ZOMHYD0CRaNxZ4osT0xoEH7dC5sLv7s="
     },
     {
-      "mvn-path": "ch/qos/logback/logback-classic/1.6.7/logback-classic-1.6.7.jar",
+      "mvn-path": "ch/qos/logback/logback-classic/1.6.8/logback-classic-1.6.8.jar",
       "mvn-repo": "https://repo1.maven.org/maven2/",
-      "hash": "sha256-I8Ijh8DOx+86j+dfyaRDuHqciKV7MNRB+S8gqENiatg="
+      "hash": "sha256-P7Yjo90gvMAHkGFhZaDVO0Czp0B9eOVtmFrTp70dLvA="
     },
     {
-      "mvn-path": "ch/qos/logback/logback-classic/1.6.7/logback-classic-1.6.7.pom",
+      "mvn-path": "ch/qos/logback/logback-classic/1.6.8/logback-classic-1.6.8.pom",
       "mvn-repo": "https://repo1.maven.org/maven2/",
-      "hash": "sha256-3Ea+q0lxZrG+JmKsKV9wVj62Uqu6caKRyaEh4O2jyoo="
+      "hash": "sha256-kjEQB5Hown8WkEQmPmfEgrjnuogWMXmojlu8MKf847E="
     },
     {
-      "mvn-path": "ch/qos/logback/logback-core/1.6.7/logback-core-1.6.7.jar",
+      "mvn-path": "ch/qos/logback/logback-core/1.6.8/logback-core-1.6.8.jar",
       "mvn-repo": "https://repo1.maven.org/maven2/",
-      "hash": "sha256-F2Ljtss69pMa5qn87AX7EXbARJk+fLQjo2XYQv1J5Pg="
+      "hash": "sha256-3FmnMsP8tguaXfAcRZpwX8z32+O0hYJnJl/8cnBmhfo="
     },
     {
-      "mvn-path": "ch/qos/logback/logback-core/1.6.7/logback-core-1.6.7.pom",
+      "mvn-path": "ch/qos/logback/logback-core/1.6.8/logback-core-1.6.8.pom",
       "mvn-repo": "https://repo1.maven.org/maven2/",
-      "hash": "sha256-PiDSPNehf9VzjLdSroGQ9fdLK/vdSPKzct2shJB35Ic="
+      "hash": "sha256-r+vpSYb9GVhYst4lMDwpaqp5maJIll8fh45AFJfTu90="
     },
     {
-      "mvn-path": "ch/qos/logback/logback-parent/1.6.7/logback-parent-1.6.7.pom",
+      "mvn-path": "ch/qos/logback/logback-parent/1.6.8/logback-parent-1.6.8.pom",
       "mvn-repo": "https://repo1.maven.org/maven2/",
-      "hash": "sha256-zgv77XNJ1W4GRTXIQxniy/2BeQL+IeTyEejeGDJcx0Q="
+      "hash": "sha256-HKtphCHbcBJ/f0Nm44/wv9DHOV2K4Ip4KikaUWGlMtI="
     },
     {
       "mvn-path": "cheshire/cheshire/5.13.0/cheshire-5.13.0.jar",
@@ -1408,6 +1408,16 @@
       "hash": "sha256-a4Xep1oJ8esIyMwYobMSCj/QSKY0N1ehtr6Xmrb5EM8="
     },
     {
+      "mvn-path": "org/clojure/clojure/1.12.7/clojure-1.12.7.jar",
+      "mvn-repo": "https://repo1.maven.org/maven2/",
+      "hash": "sha256-l90aZ52WxCYTO05LfTnuGtjEmtfvXF16r2kbVuavjwo="
+    },
+    {
+      "mvn-path": "org/clojure/clojure/1.12.7/clojure-1.12.7.pom",
+      "mvn-repo": "https://repo1.maven.org/maven2/",
+      "hash": "sha256-jAP2w60niAFaqC7BgrM96qyvQzcHkea1DlujhMMatys="
+    },
+    {
       "mvn-path": "org/clojure/clojurescript/1.12.145/clojurescript-1.12.145.jar",
       "mvn-repo": "https://repo1.maven.org/maven2/",
       "hash": "sha256-zIeVo/egI41Ke2lBO5acsS7YzLepmR6eBtEHdD+NVec="
@@ -1618,6 +1628,11 @@
       "hash": "sha256-CZNnaHYIH0kbpa+C+mtaA3o77joSWgLW1eJ6op81Z4c="
     },
     {
+      "mvn-path": "org/clojure/pom.contrib/1.4.5/pom.contrib-1.4.5.pom",
+      "mvn-repo": "https://repo1.maven.org/maven2/",
+      "hash": "sha256-f+SLpI3Une7Fch7xKznpewLLK87De2s5BLKQ3+zkZLM="
+    },
+    {
       "mvn-path": "org/clojure/spec.alpha/0.2.194/spec.alpha-0.2.194.jar",
       "mvn-repo": "https://repo1.maven.org/maven2/",
       "hash": "sha256-z2iZ+YUpjGSxPqEplGrZAo3uja3w6rmuGORVAn04JJw="
@@ -1728,14 +1743,14 @@
       "hash": "sha256-E15H98p5wKoYG2kJPML50aYyKt1qgli2aXxQCNIwv00="
     },
     {
-      "mvn-path": "org/clojure/tools.logging/1.3.1/tools.logging-1.3.1.jar",
+      "mvn-path": "org/clojure/tools.logging/1.3.2/tools.logging-1.3.2.jar",
       "mvn-repo": "https://repo1.maven.org/maven2/",
-      "hash": "sha256-E/uX6iRyBW6gZg1Pjoi09mSGws//OAuChZqzzTNZKTU="
+      "hash": "sha256-JGjKnl2fpTakyYJs88VyiX1Sj2ZkRNdrh5ge00Jku/w="
     },
     {
-      "mvn-path": "org/clojure/tools.logging/1.3.1/tools.logging-1.3.1.pom",
+      "mvn-path": "org/clojure/tools.logging/1.3.2/tools.logging-1.3.2.pom",
       "mvn-repo": "https://repo1.maven.org/maven2/",
-      "hash": "sha256-A/4nG3X8Tivpwf/mwLRWTb8DHEIn6zTs9TyjorHqHqE="
+      "hash": "sha256-Rw777O9YI/8Kt5AK3/nHkPBldnToiX2NtkhdstLI6MA="
     },
     {
       "mvn-path": "org/clojure/tools.namespace/1.5.0/tools.namespace-1.5.0.jar",
