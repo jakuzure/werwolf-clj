@@ -121,6 +121,23 @@
     (is (false? (get-in s [:players 2 :alive?])) "the grieving lover follows")
     (is (some #(= :liebe (:cause %)) (:log s)) "logged as death by love")))
 
+(deftest the-seherin-does-not-look-at-her-own-lover
+  (let [s (tu/game-with {0 :amor 1 :seherin 2 :dorfbewohner 3 :werwolf
+                         4 :dorfbewohner 5 :dorfbewohner})
+        s (exec! s {:type :amor-link :player 0 :a 1 :b 2})]
+    (is (= :seherin (:night-cursor s)))
+    (is (= :dorfbewohner (get (:known-roles (engine/view-for s 1)) 2))
+        "the arrow showed her his card already, so she knows it")
+    (is (not-any? #{2} (phases/legal-targets s 1 :seherin-inspect))
+        "and a look at him would be a night given away")
+    (is (some #{4} (phases/legal-targets s 1 :seherin-inspect)) "anybody else is still hers to see")
+    (is (= :invalid-target (:error (second (try-exec s {:type :seherin-inspect :player 1 :target 2})))))
+    (testing "a Seherin who is not in love may look at either lover"
+      (let [s (-> (tu/game-with {0 :amor 1 :seherin 2 :dorfbewohner 3 :werwolf
+                                 4 :dorfbewohner 5 :dorfbewohner})
+                  (exec! {:type :amor-link :player 0 :a 2 :b 4}))]
+        (is (every? (set (phases/legal-targets s 1 :seherin-inspect)) [2 4]))))))
+
 (deftest grief-can-trigger-a-jaeger
   (testing "two different reaction types chaining: grief -> Jäger shot"
     (let [s (tu/game-with {0 :amor 1 :jaeger 2 :dorfbewohner 3 :werwolf

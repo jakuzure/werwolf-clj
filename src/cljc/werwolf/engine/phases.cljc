@@ -1372,8 +1372,13 @@
   (let [living (e/living-ids state)
         others (vec (remove #{pid} living))]
     (case action
-      ;; No point re-inspecting someone she already knows.
-      :seherin-inspect (vec (remove #(contains? (get-in state [:players pid :knows] {}) %) others))
+      ;; No point re-inspecting someone she already knows, and that includes
+      ;; her own lover: Amor's arrow shows each of the two the other's card.
+      ;; A look at him was a night given away, which the bots never did.
+      :seherin-inspect (let [knows (get-in state [:players pid :knows] {})
+                             ls    (set (:lovers state))
+                             lover (when (contains? ls pid) (first (disj ls pid)))]
+                         (vec (remove #(or (contains? knows %) (= lover %)) others)))
       ;; Wolves cannot eat their own.
       :werewolf-vote   (vec (remove #(= :werewolf (e/team-of-player state %)) living))
       ;; She can only heal someone actually dying tonight — not a victim who
