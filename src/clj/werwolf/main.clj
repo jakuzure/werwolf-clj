@@ -6,6 +6,7 @@
      db -> rooms -> timer
                  -> handler -> server
                  -> metrics
+     sockets -> handler, heartbeat
 
    The log comes first because it is the truth; rooms are a fold over it; the
    clock and the sockets are both merely things that poke at rooms."
@@ -36,7 +37,10 @@
    ::rooms   {:db (ig/ref ::db) :game game :max-rooms (:max-rooms server)}
    ::timer   {:rooms (ig/ref ::rooms)}
    ::media   {:config media}
-   ::handler (merge {:rooms (ig/ref ::rooms) :tokens tokens :media (ig/ref ::media)}
+   ::sockets {}
+   ::heartbeat {:sockets (ig/ref ::sockets)}
+   ::handler (merge {:rooms (ig/ref ::rooms) :tokens tokens :media (ig/ref ::media)
+                     :sockets (ig/ref ::sockets)}
                     ;; :unseated-grace-ms only from tests, which cannot wait 30 s.
                     (select-keys server [:max-sockets :max-sockets-per-address :unseated-grace-ms
                                          :frames-per-sec :frame-burst]))
@@ -77,6 +81,17 @@
 
 (defmethod ig/halt-key! ::timer [_ handle]
   (timer/stop! handle))
+
+(defmethod ig/init-key ::sockets [_ _]
+  ;; Every open WebSocket: the handler opens and closes them, the heartbeat
+  ;; pings them and closes the ones that went silent. See http/heartbeat!.
+  (atom {}))
+
+(defmethod ig/init-key ::heartbeat [_ {:keys [sockets]}]
+  (http/start-heartbeat! sockets {}))
+
+(defmethod ig/halt-key! ::heartbeat [_ handle]
+  (http/stop-heartbeat! handle))
 
 (defmethod ig/init-key ::media [_ {:keys [config]}]
   ;; A misconfigured voice provider must not stop a game that can be played

@@ -58,6 +58,12 @@
 
 (defn open? [sock] (ws/open? sock))
 
+(defn ping!
+  "Send a protocol ping, which a browser answers by itself. Swallows a ping
+   on a socket that has closed meanwhile, like `send!`."
+  [sock]
+  (try (ws/ping sock) true (catch Exception _ false)))
+
 (defn close!
   ([sock] (try (ws/close sock) (catch Exception _ nil)))
   ([sock code reason] (try (ws/close sock code reason) (catch Exception _ nil))))
