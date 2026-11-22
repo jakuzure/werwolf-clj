@@ -214,6 +214,11 @@ async function playDay(pages, { lynch, roles, election = false }) {
     if (r.seat === lynch) await tryAct(r.page, ACT.voteAbstain);
     else await tryAct(r.page, ACT.vote, lynch);
   }
+  // Every ballot is in and the table waits on him alone, which both sides
+  // are told: his console calls it his cue, a voter's card names him.
+  await expect(sl.getByTestId('narrator-cue')).toBeVisible({ timeout: 10_000 });
+  const voter = roles.find((r) => r.seat !== lynch);
+  await expect(voter.page.getByTestId('now')).toContainText('Alle haben abgestimmt', { timeout: 10_000 });
   await pace(sl, STEP.closeVote);
 }
 

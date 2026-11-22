@@ -334,6 +334,12 @@
      ;; Whether this room runs a clock at all, so the lobby switch and the GM
      ;; console can say which way it is set.
      :timer?      (phases/timed? state)
+     ;; Whether the Spielleiter calls each step himself, and the day's step
+     ;; the table waits on him for. Public, since narrator and clock are, and
+     ;; the second follows from the ballots everybody sees; the stage and the
+     ;; Jetzt card say whose word ends the vote. See `phases/awaits-narrator`.
+     :paced?      (phases/paced? state)
+     :awaits-narrator (phases/awaits-narrator state)
      :deadline    (:deadline state)
      ;; So the countdown can say "PAUSIERT" rather than silently freeze, which
      ;; reads as a broken client.

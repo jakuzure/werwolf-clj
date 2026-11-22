@@ -932,6 +932,21 @@
 
       :else nil)))
 
+(defn awaits-narrator
+  "The day's step the whole table is waiting on the Spielleiter for, or nil:
+   :close-vote once every ballot is cast, :close-day once everybody is done
+   talking on a day without one.
+
+   In a paced room nothing closes the day but his button, and the table used
+   to read \"Warte auf die anderen…\" under a row of ticks while the stage
+   promised that the vote ends once everybody has voted. Public, because it
+   follows from the ballots and ticks everybody can see. Never at night:
+   there it would say when each role's turn had ended, which the night plan
+   keeps from the players of a narrated room."
+  [state]
+  (when (= :discussion (:phase state))
+    (#{:close-vote :close-day} (:step (next-step state)))))
+
 (defn advance-events
   "What `:advance-phase` does right now, or nil when it has nothing to do;
    `next-step` names the cases.
