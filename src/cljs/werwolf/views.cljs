@@ -1055,21 +1055,25 @@
        ;; the night notes under the whole board, or show only as the card
        ;; lit up after "Heiltrank benutzen"; it belongs here, read first.
        (when (contains? actions :hexe-pass)
-         (let [{:keys [pending-deaths healed]} @(rf/subscribe [::sub/night-info])
+         (let [{:keys [pending-deaths healed poisoned]} @(rf/subscribe [::sub/night-info])
                victims (keep #(when (= :werwolf (:cause %)) (:player %)) pending-deaths)
                me (:id @(rf/subscribe [::sub/me-view]))]
-           [:div {:class "text-sm font-semibold text-rose-200" :data-testid "hexe-victim"}
-            (cond
-              ;; Saved: say so, rather than that nobody was chosen.
-              (some? healed)
-              [:span {:class "text-emerald-200"}
-               (if (= healed me) (t :hexe/healed-you) (t :hexe/healed (get-in players [healed :name])))]
-              (= [me] victims) (t :hexe/victim-you)
-              (seq victims) (t :hexe/victim (str/join ", " (map #(get-in players [% :name]) victims)))
-              ;; Not "the wolves chose nobody": they may have, and the
-              ;; Beschützer stood in front of them. What she knows is only
-              ;; that nobody is dying of them.
-              :else (t :hexe/no-victim))]))
+           [:div {:class "text-sm font-semibold text-rose-200 space-y-1" :data-testid "hexe-victim"}
+            [:div
+             (cond
+               ;; Saved: say so, rather than that nobody was chosen.
+               (some? healed)
+               [:span {:class "text-emerald-200"}
+                (if (= healed me) (t :hexe/healed-you) (t :hexe/healed (get-in players [healed :name])))]
+               (= [me] victims) (t :hexe/victim-you)
+               (seq victims) (t :hexe/victim (str/join ", " (map #(get-in players [% :name]) victims)))
+               ;; Not "the wolves chose nobody": they may have, and the
+               ;; Beschützer stood in front of them. What she knows is only
+               ;; that nobody is dying of them.
+               :else (t :hexe/no-victim))]
+            ;; Her poison, said back to her like her heal.
+            (when (some? poisoned)
+              [:div {:data-testid "hexe-poisoned"} (t :hexe/poisoned (get-in players [poisoned :name]))])]))
        ;; Cast, and still open to change: the buttons stay, but this is no
        ;; longer what the table is waiting for.
        (when voted?
@@ -1110,8 +1114,11 @@
            ;; choice and wait for a player to be picked. Without it an immediate
            ;; "I'm done" and a two-step "Accuse…" looked identical, so a tap that
            ;; only changed the board's mode read as a tap that did nothing.
-           ;; The Hexe's "no potion" after she has just used one is "Fertig".
-           [btn (str (if (and (= :hexe-pass a) (some? (:healed @(rf/subscribe [::sub/night-info]))))
+           ;; The Hexe's "no potion" after she has just used one is "Fertig",
+           ;; either one: after the poison it still offered "Keinen Trank".
+           [btn (str (if (and (= :hexe-pass a)
+                              (let [{:keys [healed poisoned]} @(rf/subscribe [::sub/night-info])]
+                                (or (some? healed) (some? poisoned))))
                        (t :hexe/done)
                        (action-name a))
                      (when (needs-target? a) " …"))

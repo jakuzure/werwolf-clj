@@ -45,6 +45,18 @@
     (is (empty? (:pending-deaths info)) "the victim is off the list")
     (is (nil? (get-in (view/view-for s 3) [:night-info :healed])) "and nobody else learns it")))
 
+(deftest the-hexe-is-told-whom-she-poisoned
+  (let [s (tu/game-with {0 :dorfbewohner 1 :werwolf 2 :hexe 3 :seherin 4 :jaeger})
+        s (exec! s {:type :seherin-inspect :player 3 :target 1})
+        s (exec! s {:type :werewolf-vote :player 1 :target 0})
+        _ (is (nil? (get-in (view/view-for s 2) [:night-info :poisoned])))
+        s (exec! s {:type :hexe-poison :player 2 :target 1})
+        info (:night-info (view/view-for s 2))]
+    (is (= :hexe (:night-cursor s)) "the heal is still hers to use")
+    (is (= 1 (:poisoned info)) "her own act, said back to her")
+    (is (nil? (get-in (view/view-for s 3) [:night-info :poisoned])) "and nobody else learns it")
+    (is (nil? (get-in (view/view-for s 1) [:night-info :poisoned])) "not even the wolf she poisoned")))
+
 (deftest walking-out-of-a-game-is-leaving-not-absence
   (let [s (tu/game-with {0 :dorfbewohner 1 :werwolf 2 :hexe 3 :seherin 4 :jaeger})
         s (exec! s {:type :leave :player 4})]

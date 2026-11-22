@@ -434,6 +434,7 @@
    :hexe/no-victim "🐺 Heute Nacht stirbt niemand durch die Werwölfe."
    :hexe/healed (fn [who] (str "✓ Du hast " who " gerettet."))
    :hexe/healed-you "✓ Du hast dich selbst gerettet."
+   :hexe/poisoned (fn [who] (str "☠ Du hast " who " vergiftet."))
    :hexe/done "Fertig"
    :ballot/title     "Abstimmung"
    ;; Die Schwelle und wovon sie die Mehrheit ist: bei fünf Lebenden und einem
