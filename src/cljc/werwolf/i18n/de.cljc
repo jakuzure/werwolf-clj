@@ -371,6 +371,9 @@
    :stage/interrupted "unterbrochen"
    :sound/turn-off    "Signalton bei Nacht und Tag ausschalten"
    :sound/turn-on     "Signalton bei Nacht und Tag einschalten"
+   ;; An, aber stumm, bis die Seite einmal angetippt wurde (Browser-Regel).
+   :sound/waiting     "Signalton wartet auf einen Tipp"
+   :sound/tap-to-hear "Tippe einmal irgendwo, damit du die Signale hörst."
    :explain/setup       "Die Karten sind verteilt. Schau dir deine Rolle an — gleich beginnt die Nacht."
    :explain/setup-narrator "Die Karten sind verteilt. Prüfe die Verteilung, dann beginne die Nacht."
    :explain/night       "Alle schlafen. Wer gerufen wird, wacht auf und handelt, ohne sich zu verraten."
