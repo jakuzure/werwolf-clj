@@ -369,6 +369,9 @@
                    :reveal-to-dead?   (boolean (:reveal-to-dead? state))
                    :mayor?            (phases/mayor? state)}
      :votes-needed (phases/votes-needed state)
+     ;; And what it is a majority of, the Bürgermeister counted twice, so the
+     ;; ballot can say "4 von 6" instead of a 4 nobody could check.
+     :votes-total  (phases/votes-total state)
      ;; The open ballot as the verdict counts it: the bar, the card pills and
      ;; the bots read this sum instead of adding up `:votes` themselves, which
      ;; is how the bar came to count ballots the verdict no longer did.

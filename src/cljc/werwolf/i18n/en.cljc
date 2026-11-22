@@ -31,7 +31,7 @@
    :guide/night-title "The night"
    :guide/night       "Everyone is asleep. The roles are called one after another, and whoever is called acts in secret on their own screen: the Seherin looks at a card, the werewolves agree on a victim, the Hexe may save them."
    :guide/day-title   "The day"
-   :guide/day         "In the morning you learn who did not survive the night, and see their card. On the first day you elect a mayor first. Then you talk and vote at the same time on who is condemned — every day, the first one included. That takes a majority of the living; until everyone has voted, you can change your vote."
+   :guide/day         "In the morning you learn who did not survive the night, and see their card. On the first day you elect a mayor first. Then you talk and vote at the same time on who is condemned, every day, the first one included. Only someone who gets more than half of all the votes of the living is condemned; abstaining or not voting counts against it. Until the vote closes, you can change your vote."
    :guide/win-title   "Who wins"
    :guide/win         "The village wins once no werewolf is left alive. The werewolves win when nobody but them is left. Two lovers from opposite sides win together if they are the last two alive. If both are on the same side, their side wins. The dead talk only to the dead."
    :guide/roles-title "The roles"
@@ -358,9 +358,9 @@
    :explain/day-reveal  "Dawn breaks. You are about to learn what the night has done."
    :explain/election    "Elect a mayor. Their vote counts twice in every ballot."
    :explain/discussion  "Talk it over: who do you not trust? Once you have said enough, tap “I'm done”."
-   :explain/trial       (fn [_] "Talk it over and vote on who is condemned. You can change your vote until everyone has voted.")
+   :explain/trial       (fn [_] "Talk it over and vote on who is condemned. Abstaining counts against a condemnation. You can change your vote until everyone has voted.")
    :explain/first-discussion "Nobody votes today. Talk about the night and about whom you trust. Once you have said enough, tap “I'm done” – when everyone is, night falls."
-   :explain/trial-paced (fn [_] "Talk it over and vote on who is condemned. You can change your vote until the narrator closes it.")
+   :explain/trial-paced (fn [_] "Talk it over and vote on who is condemned. Abstaining counts against a condemnation. You can change your vote until the narrator closes it.")
    :explain/first-discussion-paced "Nobody votes today. Talk about the night and about whom you trust. Once you have said enough, tap “I'm done”. When everyone is, the narrator calls the night."
    :explain/day-resolve "The verdict is in. See whom it struck – then night falls."
    :explain/day-resolve-narrator "The verdict is in. Announce whom it struck, then let night fall with “Move on”."
@@ -415,9 +415,12 @@
    :hexe/healed-you "✓ You saved yourself."
    :hexe/done "Done"
    :ballot/title     "The vote"
-   :ballot/needed    (fn [n] (str "Condemned at " n " votes"))
+   :ballot/needed    (fn [n total] (if total
+                                     (str "Condemned at " n " of " total " votes")
+                                     (str "Condemned at " n " votes")))
    :ballot/none      "Nobody has a vote yet."
    :ballot/mayor     "The mayor's vote counts twice"
+   :ballot/mayor-mark (fn [who] (str "👑 " who " ×2"))
    :ballot/abstained (fn [n] (str n (if (= 1 n) " abstention" " abstentions")))
    :badge/votes       "votes"
    :badge/vote        "vote"
@@ -488,6 +491,12 @@
    :vote/yours        (fn [n] (str "Your vote: " n " — you can still change it"))
    :vote/yours-abstained "You abstained — you can still change your vote"
    :log/no-majority   "No majority — the village condemns nobody"
+   :log/no-majority-of (fn [n got needed] (str "No majority: " n " had " got " of the " needed " votes it takes, nobody is condemned"))
+   :log/tie-between   (fn [ns] (str "A tie between "
+                                    (if (next ns)
+                                      (str (apply str (interpose ", " (butlast ns))) " and " (last ns))
+                                      (first ns))
+                                    ": nobody dies"))
    ;; The election. Public, because the entire point of the office is that the
    ;; table knows whose vote counts twice.
    :log/mayor-elected   (fn [n] (str n " was elected mayor"))

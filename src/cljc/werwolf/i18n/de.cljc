@@ -28,7 +28,7 @@
    :guide/night-title "Die Nacht"
    :guide/night       "Alle schlafen. Die Rollen werden nacheinander gerufen, und wer gerufen wird, handelt heimlich auf dem eigenen Bildschirm: die Seherin schaut sich eine Karte an, die Werwölfe einigen sich auf ein Opfer, die Hexe darf es retten."
    :guide/day-title   "Der Tag"
-   :guide/day         "Am Morgen erfahrt ihr, wer die Nacht nicht überlebt hat, und seht seine Karte. Am ersten Tag wählt ihr zuerst einen Bürgermeister. Dann redet ihr und stimmt zugleich ab, wer verurteilt wird — jeden Tag, den ersten eingeschlossen. Dafür braucht es eine Mehrheit der Lebenden; bis alle abgestimmt haben, könnt ihr umstimmen."
+   :guide/day         "Am Morgen erfahrt ihr, wer die Nacht nicht überlebt hat, und seht seine Karte. Am ersten Tag wählt ihr zuerst einen Bürgermeister. Dann redet ihr und stimmt zugleich ab, wer verurteilt wird, jeden Tag, den ersten eingeschlossen. Verurteilt ist nur, wer mehr als die Hälfte aller Stimmen der Lebenden bekommt; wer sich enthält oder nicht abstimmt, zählt dagegen. Bis die Abstimmung schließt, könnt ihr umstimmen."
    :guide/win-title   "Wer gewinnt"
    :guide/win         "Das Dorf gewinnt, sobald kein Werwolf mehr lebt. Die Werwölfe gewinnen, wenn außer ihnen niemand mehr übrig ist. Ein Liebespaar aus zwei Lagern gewinnt gemeinsam, wenn nur noch die beiden leben. Gehören beide zum selben Lager, gewinnt ihr Lager. Tote reden nur noch mit Toten."
    :guide/roles-title "Die Rollen"
@@ -377,11 +377,11 @@
    :explain/day-reveal  "Der Morgen graut. Gleich zeigt sich, was die Nacht angerichtet hat."
    :explain/election    "Wählt einen Bürgermeister. Seine Stimme zählt bei jeder Abstimmung doppelt."
    :explain/discussion  "Redet miteinander: Wem traut ihr nicht? Wer genug geredet hat, tippt auf „Ich bin fertig“."
-   :explain/trial       (fn [_] "Redet miteinander und stimmt ab, wer verurteilt wird. Ihr könnt umstimmen, bis alle abgestimmt haben.")
+   :explain/trial       (fn [_] "Redet miteinander und stimmt ab, wer verurteilt wird. Wer sich enthält, zählt gegen eine Verurteilung. Ihr könnt umstimmen, bis alle abgestimmt haben.")
    :explain/first-discussion "Heute stimmt noch niemand ab. Sprecht über die Nacht und darüber, wem ihr traut. Wer genug geredet hat, tippt auf „Ich bin fertig“ – sind alle so weit, bricht die Nacht herein."
    ;; Dieselben zwei Sätze für den Raum, den der Spielleiter taktet: dort
    ;; endet der Tag mit seinem Wort, nicht mit der letzten Antwort.
-   :explain/trial-paced (fn [_] "Redet miteinander und stimmt ab, wer verurteilt wird. Ihr könnt umstimmen, bis der Spielleiter die Abstimmung schließt.")
+   :explain/trial-paced (fn [_] "Redet miteinander und stimmt ab, wer verurteilt wird. Wer sich enthält, zählt gegen eine Verurteilung. Ihr könnt umstimmen, bis der Spielleiter die Abstimmung schließt.")
    :explain/first-discussion-paced "Heute stimmt noch niemand ab. Sprecht über die Nacht und darüber, wem ihr traut. Wer genug geredet hat, tippt auf „Ich bin fertig“. Sind alle so weit, ruft der Spielleiter die Nacht."
    :explain/day-resolve "Das Urteil ist gefallen. Seht euch an, wen es getroffen hat – dann bricht die Nacht herein."
    :explain/day-resolve-narrator "Das Urteil ist gefallen. Verkünde, wen es getroffen hat, und lass dann mit „Weiter“ die Nacht hereinbrechen."
@@ -436,9 +436,16 @@
    :hexe/healed-you "✓ Du hast dich selbst gerettet."
    :hexe/done "Fertig"
    :ballot/title     "Abstimmung"
-   :ballot/needed    (fn [n] (str "Verurteilt ab " n " Stimmen"))
+   ;; Die Schwelle und wovon sie die Mehrheit ist: bei fünf Lebenden und einem
+   ;; Bürgermeister sind es sechs Stimmen, und „ab 4“ allein sah falsch aus.
+   :ballot/needed    (fn [n total] (if total
+                                     (str "Verurteilt ab " n " von " total " Stimmen")
+                                     (str "Verurteilt ab " n " Stimmen")))
    :ballot/none      "Noch hat niemand eine Stimme bekommen."
    :ballot/mayor     "Die Stimme des Bürgermeisters zählt doppelt"
+   ;; Sichtbar an der Zeile, auf der seine Stimme liegt. Eine Krone allein
+   ;; las sich als „der hier ist Bürgermeister“.
+   :ballot/mayor-mark (fn [who] (str "👑 " who " ×2"))
    :ballot/abstained (fn [n] (str n (if (= 1 n) " Enthaltung" " Enthaltungen")))
    :badge/votes       "Stimmen"
    :badge/vote        "Stimme"
@@ -510,6 +517,13 @@
    :vote/yours        (fn [n] (str "Deine Stimme: " n " — du kannst noch umstimmen"))
    :vote/yours-abstained "Du hast dich enthalten — du kannst noch umstimmen"
    :log/no-majority   "Keine Mehrheit — das Dorf verurteilt niemanden"
+   ;; Mit dem Stand, sobald das Log ihn trägt (phases/verdict).
+   :log/no-majority-of (fn [n got needed] (str "Keine Mehrheit: " n " hatte " got " von " needed " nötigen Stimmen, niemand wird verurteilt"))
+   :log/tie-between   (fn [ns] (str "Gleichstand zwischen "
+                                    (if (next ns)
+                                      (str (apply str (interpose ", " (butlast ns))) " und " (last ns))
+                                      (first ns))
+                                    ": niemand stirbt"))
    ;; Die Wahl. Öffentlich, denn der ganze Sinn des Amtes ist, dass der Tisch
    ;; weiß, wessen Stimme doppelt zählt.
    :log/mayor-elected   (fn [n] (str n " wurde zum Bürgermeister gewählt"))

@@ -328,9 +328,13 @@
    decides. The bar used to add up `:votes` itself and kept counting the
    ballot of a voter who had died or walked out after the verdict had
    stopped. Only the sorting and the names happen here."
-  [{:keys [ballot votes mayor votes-needed players]}]
+  [{:keys [ballot votes mayor votes-needed votes-total players]}]
   (when ballot
     {:needed    votes-needed
+     ;; What the threshold is a majority of, and whose vote weighs two:
+     ;; both from the server, only laid out here.
+     :total     votes-total
+     :mayor     (when mayor (get-in players [mayor :name]))
      :rows      (->> (:on ballot)
                      (sort-by (fn [[id n]] [(- n) id]))
                      (mapv (fn [[id n]] {:id id :name (get-in players [id :name]) :count n

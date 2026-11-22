@@ -792,11 +792,15 @@
       (publish {:type :vote/cast :voter voter :target target})))
 
 (defmethod apply-event :vote/resolved
-  [state {:keys [target tie? no-majority?]}]
+  [state {:keys [target tie? no-majority?] :as ev}]
   (cond-> (-> state
               (assoc :vote-resolved? true)
-              (publish (cond-> {:type :vote/resolved :target target :tie? tie?}
-                         no-majority? (assoc :no-majority? true))))
+              ;; The count, where the event carries one (see phases/verdict),
+              ;; goes into the public line as it came. Events logged before it
+              ;; existed have none and publish exactly what they always did.
+              (publish (merge (cond-> {:type :vote/resolved :target target :tie? tie?}
+                                no-majority? (assoc :no-majority? true))
+                              (select-keys ev [:needed :leader :got :tied]))))
     ;; Kept, rather than recounted from the ballot later: the deaths that follow
     ;; change the count — a lynched Jäger who shoots the Bürgermeister moves
     ;; the double vote — so the same ballot need not name the same player again.

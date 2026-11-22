@@ -341,6 +341,28 @@
           s (reduce #(exec! %1 {:type :vote-abstain :player %2}) s [1 4])]
       (is (true? (get-in s [:players 4 :alive?]))))))
 
+(deftest a-day-that-condemns-nobody-logs-how-close-it-came
+  (let [day (tu/day-with {0 :dorfbewohner 1 :werwolf 2 :dorfbewohner 3 :dorfbewohner
+                          4 :dorfbewohner})
+        resolved #(last (filter (comp #{:vote/resolved} :type) (:log %)))]
+    (testing "no majority: the closest and how far short"
+      (let [s (reduce #(exec! %1 {:type :vote :player %2 :target 4}) day [0 1])
+            s (reduce #(exec! %1 {:type :vote-abstain :player %2}) s [2 3 4])]
+        (is (= {:type :vote/resolved :target nil :tie? false :no-majority? true
+                :needed 3 :leader 4 :got 2}
+               (resolved s)))))
+    (testing "a tie: who tied, and with how much"
+      (let [s (-> day
+                  (exec! {:type :vote :player 0 :target 1})
+                  (exec! {:type :vote :player 1 :target 0}))
+            s (reduce #(exec! %1 {:type :vote-abstain :player %2}) s [2 3 4])]
+        (is (= {:type :vote/resolved :target nil :tie? true :needed 3 :got 1 :tied [0 1]}
+               (resolved s)))))
+    (testing "a condemnation carries the threshold it met"
+      (let [s (reduce #(exec! %1 {:type :vote :player %2 :target 4}) day [0 1 2])
+            s (reduce #(exec! %1 {:type :vote-abstain :player %2}) s [3 4])]
+        (is (= {:type :vote/resolved :target 4 :tie? false :needed 3} (resolved s)))))))
+
 (deftest the-table-reads-the-count-the-verdict-makes
   (testing "a departed voter, a ballot for somebody who has left and the
             Bürgermeister's double vote: every view carries the verdict's sum"
@@ -360,6 +382,12 @@
       (is (every? #(= ballot (:ballot (engine/view-for s %))) (range 7))
           "public: the same sum in every view, the departed's included")
       (is (true? (:no-majority? (phases/verdict s))) "3 of the 4 it takes")
+      (is (= {:leader 2 :got 3 :needed 4}
+             (select-keys (phases/verdict s) [:leader :got :needed]))
+          "and the verdict says who came closest and by how much")
+      (is (= 7 (:votes-total (engine/view-for s 0)))
+          "every view says what the 4 is a majority of: five living, the
+           Bürgermeister twice")
       (let [s (exec! s {:type :vote :player 0 :target 2})]
         (is (= 4 (get-in (phases/day-ballot s) [:on 2])))
         (is (= 2 (:target (phases/verdict s))) "the count reaches what it takes, and so does the verdict"))))

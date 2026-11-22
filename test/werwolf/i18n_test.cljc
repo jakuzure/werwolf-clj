@@ -197,6 +197,24 @@
     (is (= 1 (count rows)) "the verdict names him; the death after it would only repeat it")
     (is (str/includes? (:text (first rows)) "Bob"))))
 
+(deftest a-verdict-without-a-condemnation-says-how-close-it-came
+  (testing "with the count the engine logs now"
+    (is (= "Keine Mehrheit: Cem hatte 2 von 3 nötigen Stimmen, niemand wird verurteilt"
+           (i18n/log-line :de players {:type :vote/resolved :target nil :tie? false
+                                       :no-majority? true :needed 3 :leader 2 :got 2})))
+    (is (= "Gleichstand zwischen Anna und Bob: niemand stirbt"
+           (i18n/log-line :de players {:type :vote/resolved :target nil :tie? true
+                                       :needed 3 :got 1 :tied [0 1]})))
+    (is (= "A tie between Anna, Bob and Cem: nobody dies"
+           (i18n/log-line :en players {:type :vote/resolved :target nil :tie? true
+                                       :needed 4 :got 1 :tied [0 1 2]}))))
+  (testing "an entry logged before the count existed reads as it always did"
+    (is (= (i18n/t :de :log/no-majority)
+           (i18n/log-line :de players {:type :vote/resolved :target nil :tie? false
+                                       :no-majority? true})))
+    (is (= (i18n/t :de :log/tie)
+           (i18n/log-line :de players {:type :vote/resolved :target nil :tie? true})))))
+
 (deftest the-table-switches-read-both-ways
   (testing "each switch logs its new position, and both positions need a line"
     (doseq [locale i18n/locales

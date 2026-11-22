@@ -325,6 +325,16 @@
                     (and (living voter) (or (nil? target) (living target)))))
           votes)))
 
+(defn votes-total
+  "Every vote the living hold today, the Bürgermeister's counting twice: what
+   `votes-needed` is a majority of. Published beside it, because \"ab 4
+   Stimmen\" at a table of five living players read as a count that had to
+   be wrong, and a table that saw 3 of 5 hands up and nobody hanged could
+   not tell why."
+  [state]
+  (let [mayor (:mayor state)]
+    (reduce + 0 (map #(vote-weight mayor %) (e/living-ids state)))))
+
 (defn votes-needed
   "How many votes condemn somebody today: a strict majority of every vote the
    living hold, the Bürgermeister's counting twice. Abstaining, or not voting
@@ -334,9 +344,7 @@
    eleven could hang a player while eight people abstained or looked away. A
    village that kills one of its own should at least mean it."
   [state]
-  (let [mayor (:mayor state)
-        total (reduce + 0 (map #(vote-weight mayor %) (e/living-ids state)))]
-    (inc (quot total 2))))
+  (inc (quot (votes-total state) 2)))
 
 (defn count-ballot
   "A ballot box as it stands, from the cast `votes`, the `living` ids and the
@@ -376,15 +384,29 @@
 
 (defn verdict
   "Who the village condemns: `tally`'s leader, if they reach `votes-needed`.
-   {:target id-or-nil :tie? bool :no-majority? bool}."
+   {:target id-or-nil :tie? bool :no-majority? bool}, with the count that
+   decided it: `:needed`, and where nobody is condemned who came closest,
+   `:leader` and his weight `:got` short of a majority, or the `:tied` and
+   the weight `:got` each of them had. \"Keine Mehrheit\" alone left a table
+   that had seen most hands go up for Bob unable to say why he lived."
   [state]
-  (let [votes (living-ballots state (:votes state {}))
-        mayor (:mayor state)
+  (let [votes  (living-ballots state (:votes state {}))
+        mayor  (:mayor state)
         {:keys [target tie?]} (tally votes mayor)
-        got (get-in (count-ballot votes (e/living-ids state) mayor) [:on target] 0)]
-    (if (and target (< got (votes-needed state)))
-      {:target nil :tie? false :no-majority? true}
-      {:target target :tie? tie? :no-majority? false})))
+        on     (:on (count-ballot votes (e/living-ids state) mayor))
+        got    (get on target 0)
+        needed (votes-needed state)]
+    (cond
+      (and target (< got needed))
+      {:target nil :tie? false :no-majority? true :needed needed :leader target :got got}
+
+      tie?
+      (let [best (apply max (vals on))]
+        {:target nil :tie? true :no-majority? false :needed needed :got best
+         :tied (vec (sort (keep (fn [[id n]] (when (= n best) id)) on)))})
+
+      :else
+      {:target target :tie? tie? :no-majority? false :needed needed})))
 
 (defn pack-ballots
   "The pack's ballots that count tonight: a wolf who has walked out, or a
@@ -771,9 +793,13 @@
           (:vote-resolved? state) (nightfall state)
 
           :else
-          (let [{:keys [target tie? no-majority?]} (verdict state)]
-            [(cond-> {:type :vote/resolved :target target :tie? tie?}
-               no-majority? (assoc :no-majority? true))]))
+          (let [{:keys [target tie? no-majority?] :as v} (verdict state)]
+            ;; The count rides along, so the Chronik can say how close it
+            ;; was. Optional fields: a log written before them replays to the
+            ;; same entries, and only says less.
+            [(merge (cond-> {:type :vote/resolved :target target :tie? tie?}
+                      no-majority? (assoc :no-majority? true))
+                    (select-keys v [:needed :leader :got :tied]))]))
 
         nil))))
 
