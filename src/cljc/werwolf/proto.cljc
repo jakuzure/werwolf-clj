@@ -146,7 +146,11 @@
    ;; A rule variant for :gm/set-rule and the value it should take. Which
    ;; rules exist is the engine's to check; the wire only bounds the shape.
    [:rule   {:optional true} :keyword]
-   [:on?    {:optional true} :boolean]])
+   [:on?    {:optional true} :boolean]
+   ;; The step the Spielleiter's :advance-phase was pressed for, as his
+   ;; console read it from `phases/next-step`; with :role for a call. The
+   ;; handler refuses a step that has already passed, see :advance-phase.
+   [:step   {:optional true} :keyword]])
 
 (def ClientMessage
   [:multi {:dispatch :type}

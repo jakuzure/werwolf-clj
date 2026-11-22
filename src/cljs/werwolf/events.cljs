@@ -689,7 +689,11 @@
             ;; is over and there is nothing left to choose.
             (or (= (:deck view) (:deck/draft db))
                 (not= :lobby (:phase view)))
-            (assoc :deck/draft nil))))
+            (assoc :deck/draft nil)
+            ;; The Spielleiter's step button is free again: this view shows
+            ;; what his last tap did, see views/narrator-waits.
+            true
+            (update :form dissoc :step-sent))))
 
 (defmethod handle-server :room/chat [db msg]
   (update db :chat (fn [c] (vec (take-last 300 (conj (vec c) msg))))))
@@ -709,6 +713,9 @@
   #{:seat-gone :expired :bad-signature :wrong-room})
 
 (defmethod handle-server :server/error [db {:keys [code]}]
+  ;; Any refusal answers the Spielleiter's last step too, if he is waiting on
+  ;; one, so his button is free to try again.
+  (let [db (update db :form dissoc :step-sent)]
   (cond
     ;; A refusal to seat you somewhere because you are already seated, arriving
     ;; while you ARE seated, is about the seat on your screen. It happens when a
@@ -738,7 +745,7 @@
       ;; :view/seq goes with the rest of it — a discarded session must not leave
       ;; a sequence number behind to reject the next room's views.
       (fatal-errors code)
-      (assoc :screen :landing :me nil :view nil :view/seq nil :chat []))))
+      (assoc :screen :landing :me nil :view nil :view/seq nil :chat [])))))
 
 (defn- released?
   "Is this :server/left about the room this page is sitting in?

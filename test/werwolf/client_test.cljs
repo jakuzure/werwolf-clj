@@ -835,6 +835,17 @@
     (testing "only views ring"
       (is (nil? (chime-of at-dusk {:type :room/chat :text "hi"}))))))
 
+(deftest the-spielleiters-step-button-is-held-until-answered
+  (let [sent (assoc-in seated [:form :step-sent] 12345)]
+    (testing "the view that shows what the tap did frees it"
+      (is (nil? (get-in (apply* sent (view-msg 5 :night 1)) [:form :step-sent]))))
+    (testing "so does a refusal, the step having passed"
+      (is (nil? (get-in (apply* sent {:type :server/error :code :step-passed})
+                        [:form :step-sent]))))
+    (testing "a dropped, out-of-order view answers nothing"
+      (let [ahead (assoc-in (apply* seated (view-msg 9 :night 1)) [:form :step-sent] 12345)]
+        (is (= 12345 (get-in (apply* ahead (view-msg 6 :night 1)) [:form :step-sent])))))))
+
 (deftest a-turned-phase-brings-a-phone-back-to-the-stage
   (let [at-dusk (apply* seated (view-msg 4 :day-resolve 1))
         scroll  (fn [db msg] (:werwolf.events/scroll-top (ev/server-message-fx {:db db} [nil msg])))]

@@ -514,7 +514,14 @@
         actions @(rf/subscribe [::sub/actions])
         cursor  @(rf/subscribe [::sub/night-cursor])
         view    @(rf/subscribe [::sub/view])
-        armed   (:skip-confirm @(rf/subscribe [::sub/form]))
+        form    @(rf/subscribe [::sub/form])
+        armed   (:skip-confirm form)
+        ;; Held from a tap until the view that answers it, or a refusal,
+        ;; arrives (events: handle-server), and for a few seconds at most:
+        ;; the button takes the NEXT step once the first has landed, so a
+        ;; double tap on "Amor rufen" called her and then ended her turn.
+        sent    (:step-sent form)
+        held?   (boolean (and sent (< (- @(rf/subscribe [::sub/now]) sent) 4000)))
         ;; Keyed on where the table is, so a confirm left armed cannot fire on
         ;; the next role or phase.
         here    [(:phase view) (:night view) cursor]
@@ -525,11 +532,15 @@
         ;; the ballot are his, and the button names each. Anything else is
         ;; the override, worded as it always was.
         step    @(rf/subscribe [::sub/next-step])
+        ;; The step it is pressed for goes along, so the server refuses it
+        ;; once that step has passed (commands :advance-phase); the skip names
+        ;; its role for the same reason.
         fire!   (fn []
                   (rf/dispatch (if (= :gm/skip-role skip)
                                  [::ev/act-with :gm/skip-role {:role cursor}]
-                                 [::ev/act :advance-phase]))
-                  (rf/dispatch [::ev/form-set :skip-confirm nil]))
+                                 [::ev/act-with :advance-phase (select-keys step [:step :role])]))
+                  (rf/dispatch [::ev/form-set :skip-confirm nil])
+                  (rf/dispatch [::ev/form-set :step-sent (.getTime (js/Date.))]))
         label   (case (:step step)
                   :call       (t :narrator/call (str (i18n/icon-of (:role step)) " " (role-name (:role step))))
                   :morning    (t :narrator/morning)
@@ -557,13 +568,13 @@
      (when skip
        (if (and (seq owing) (= here armed))
          [:div {:class "flex flex-wrap gap-2"}
-          [btn (t :narrator/really (count owing)) fire! {:tone :danger}]
+          [btn (t :narrator/really (count owing)) fire! {:tone :danger :disabled? held?}]
           [btn (t :narrator/keep-waiting) #(rf/dispatch [::ev/form-set :skip-confirm nil])
            {:tone :ghost}]]
          ;; Drawn as the page's main button when it is his cue, quiet when
          ;; it is the override.
          [btn label (if (seq owing) #(rf/dispatch [::ev/form-set :skip-confirm here]) fire!)
-          {:tone (when-not cue? :quiet) :testid "narrator-skip"}]))]))
+          {:tone (when-not cue? :quiet) :testid "narrator-skip" :disabled? held?}]))]))
 
 (defn- wolf-votes
   "Where the pack stands tonight: a row per victim, its count first and its
@@ -1160,12 +1171,17 @@
         target (or (get-in gm [:target action]) (first targets))
         choice (or (get-in gm [:choice action]) (first choices))
         confirming? (= action (:confirm gm))
+        ;; The step "Phase weiter" is pressed for, as on the stage's button,
+        ;; so a double tap here cannot take the next one too. Nil for a host
+        ;; who plays: his console has no steps of the Spielleiter's to name.
+        step (when (= :advance-phase action)
+               (select-keys @(rf/subscribe [::sub/next-step]) [:step :role]))
         ;; Not `set!` — that is a special form in ClojureScript, and shadowing
         ;; it fails to compile rather than merely reading badly.
         put! (fn [path v] (rf/dispatch [::ev/form-set :gm (assoc-in gm path v)]))
         fire! (fn []
                 (rf/dispatch [::ev/act-with action
-                              (cond-> {}
+                              (cond-> (or step {})
                                 (seq targets) (assoc :target target)
                                 (seq choices) (assoc (proto/choice-key action) choice))])
                 (put! [:confirm] nil))]

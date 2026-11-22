@@ -363,17 +363,31 @@
   ;; has cast: a line for each call would also hand the table the turn
   ;; boundaries the night keeps from it (view/night-progress?), since the
   ;; Chronik is public and live.
-  [state {:keys [player]}]
-  (if-not (allowed? state player :advance-phase)
-    (err :not-allowed {:action :advance-phase})
-    (if-let [evs (phases/advance-events state)]
-      (if (and (= :end-turn (:step (phases/next-step state)))
-               (not (next-phase (:phase state))))
-        (into [{:type :gm/forced :actor player :action :advance-phase
-                :detail {:phase (:phase state)}}]
-              evs)
-        evs)
-      (err :cannot-advance {:phase (:phase state)}))))
+  ;;
+  ;; A command that names the step it was pressed for is refused once that
+  ;; step has passed. The same button takes the next step, so a double tap on
+  ;; "Amor rufen" called Amor and then cut her turn short with the second tap,
+  ;; and a tap replayed from the outbox after a reconnect could close a ballot
+  ;; or a whole day. Without :step, as a host who plays sends it, the command
+  ;; does what it always did.
+  [state {:keys [player step role]}]
+  (let [now (phases/next-step state)]
+    (cond
+      (not (allowed? state player :advance-phase))
+      (err :not-allowed {:action :advance-phase})
+
+      (and step (or (not= step (:step now)) (and role (not= role (:role now)))))
+      (err :step-passed {:step step :role role :now (:step now)})
+
+      :else
+      (if-let [evs (phases/advance-events state)]
+        (if (and (= :end-turn (:step now))
+                 (not (next-phase (:phase state))))
+          (into [{:type :gm/forced :actor player :action :advance-phase
+                  :detail {:phase (:phase state)}}]
+                evs)
+          evs)
+        (err :cannot-advance {:phase (:phase state)})))))
 
 ;; ---- GM overrides -------------------------------------------------------
 ;; Every override is logged with its actor, so it is auditable in the public
