@@ -2476,15 +2476,18 @@
    like the menu: a new room starts on Jetzt."
   []
   (let [form @(rf/subscribe [::sub/form])
-        room (:room-id @(rf/subscribe [::sub/me]))
+        me   @(rf/subscribe [::sub/me])
+        room (:room-id me)
         tab  (if (= room (:tab-room form)) (:tab form :now) :now)
-        n    (count @(rf/subscribe [::sub/chat]))]
+        msgs @(rf/subscribe [::sub/chat])
+        seen @(rf/subscribe [::sub/chat-seen])]
     {:tab tab
-     :unread (if (= :chat tab) 0 (max 0 (- n (:chat-seen form 0))))
+     :unread (if (= :chat tab) 0 (sub/unread-chat msgs seen (:player-id me)))
      :go! (fn [k]
             ;; Leaving or entering the chat marks it read; what arrives while
             ;; it is open is read as it arrives.
-            (when (or (= :chat k) (= :chat tab)) (rf/dispatch [::ev/form-set :chat-seen n]))
+            (when (or (= :chat k) (= :chat tab))
+              (rf/dispatch [::ev/chat-seen (:at (peek msgs))]))
             (rf/dispatch [::ev/form-set :tab-room room])
             (rf/dispatch [::ev/form-set :tab k])
             (js/window.scrollTo 0 0))}))

@@ -1335,3 +1335,25 @@
                                               :host? true :token "t"})}
                                 [::ev/leave]))]
       (is (= "aaa" (:bundle/loaded db'))))))
+
+(deftest unread-chat-counts-by-time-not-by-length
+  (let [line (fn [at from] {:type :room/chat :at at :from from :name "x" :text "hi"})
+        msgs [(line 100 1) (line 200 2) (line 300 0) (line 400 1)]]
+    (is (= 4 (sub/unread-chat msgs nil 5)) "nothing read yet")
+    (is (= 2 (sub/unread-chat msgs 200 5)) "everything after the newest line read")
+    (is (= 1 (sub/unread-chat msgs 200 0)) "your own line is not news to you")
+    (testing "a rematch empties the chat: the next line counts at once"
+      (is (= 1 (sub/unread-chat [(line 500 2)] 400 0))))
+    (testing "a reload brings the history back: what was read stays read"
+      (is (zero? (sub/unread-chat msgs 400 0))))
+    (testing "a room keeps 300 lines: the window moves, the count does not stop"
+      (let [full (mapv #(line % 1) (range 1000 1300))]
+        (is (= 1 (sub/unread-chat (conj (subvec full 1) (line 1300 1)) 1299 0)))))))
+
+(deftest reading-the-chat-is-remembered-and-never-goes-back
+  (let [db (assoc seated :chat/seen 300)
+        fx (ev/chat-seen-fx {:db db} [nil 400])]
+    (is (= 400 (get-in fx [:db :chat/seen])))
+    (is (= 400 (:werwolf.events/store-chat-seen fx)) "and kept for a reload of this tab")
+    (is (nil? (ev/chat-seen-fx {:db db} [nil 200])) "an older line read later moves nothing")
+    (is (nil? (ev/chat-seen-fx {:db db} [nil nil])) "nor does an empty chat")))

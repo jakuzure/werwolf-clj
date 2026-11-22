@@ -27,6 +27,17 @@
 (rf/reg-sub ::error       (fn [db _] (:error db)))
 (rf/reg-sub ::now         (fn [db _] (:now db)))
 (rf/reg-sub ::form        (fn [db _] (:form db)))
+;; The server time of the newest chat line this tab has read; see
+;; events ::chat-seen and `unread-chat`.
+(rf/reg-sub ::chat-seen   (fn [db _] (:chat/seen db)))
+
+(defn unread-chat
+  "How many chat lines came after the newest one read, not counting your own.
+   By the server's time on each line, so a rematch that empties the chat, a
+   reload that brings the whole history back and the 300 lines a room keeps
+   all leave the count right."
+  [msgs seen me]
+  (count (filter #(and (> (:at % 0) (or seen 0)) (not= me (:from %))) msgs)))
 (rf/reg-sub
  ::form-field
  :<- [::form]
