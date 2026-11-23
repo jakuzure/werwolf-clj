@@ -640,6 +640,7 @@
    :error/no-deadline      "Es läuft gerade keine Zeit"
    :error/not-night        "Das geht nur nachts"
    :error/cannot-advance   "Diese Phase lässt sich nicht weiterschalten"
+   :error/step-passed      "Dieser Schritt ist schon geschehen"
    :error/no-game-in-progress "Dafür muss das Spiel erst laufen"
    :error/already-that-role "Diese Rolle hat der Mitspieler schon"
    :error/invalid-choice   "Diese Wahl ist nicht erlaubt"

@@ -80,7 +80,10 @@
                  {:type :gm/auto-deck}
                  {:type :gm/add-bot}
                  {:type :gm/set-rule :rule :mayor? :on? false}
-                 {:type :gm/set-duration :phase :night :secs 60}]]
+                 {:type :gm/set-duration :phase :night :secs 60}
+                 ;; His step button names the step it was pressed for.
+                 {:type :advance-phase :step :call :role :seherin}
+                 {:type :advance-phase :step :close-vote}]]
       (is (proto/valid-client-message? (as-wire cmd)) (pr-str cmd)))
     (doseq [a [:begin-night :gm/toggle-narrated :gm/toggle-timer
                :gm/set-deck :gm/auto-deck :gm/add-bot :gm/set-rule :gm/set-duration]]

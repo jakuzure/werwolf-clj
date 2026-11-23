@@ -108,6 +108,29 @@
         (is (= [:night 2] [(:phase s) (:night s)]))
         (is (zero? (tu/count-log s :gm/forced)))))))
 
+(deftest a-step-that-has-passed-is-refused
+  (testing "a second tap on a call: the call is made once, the turn stays hers"
+    (let [s (exec! (fallen) {:type :advance-phase :player 0 :step :call :role :seherin})]
+      (is (= :seherin (:night-cursor s)))
+      (let [[s' err] (tu/try-exec s {:type :advance-phase :player 0 :step :call :role :seherin})]
+        (is (= :step-passed (:error err)))
+        (is (= :seherin (:night-cursor s')) "her turn was not cut short")
+        (is (zero? (tu/count-log s' :gm/forced))))))
+  (testing "a call for a role that is not next"
+    (let [[_ err] (tu/try-exec (fallen) {:type :advance-phase :player 0 :step :call :role :hexe})]
+      (is (= :step-passed (:error err)))))
+  (testing "a ballot closed twice: the second tap would have called the night
+            over the verdict the table is still reading"
+    (let [s (advance! (morning-hold))
+          s (reduce #(exec! %1 {:type :vote :player %2 :target 5}) s [1 2 3])
+          s (exec! s {:type :vote-abstain :player 5})
+          s (exec! s {:type :advance-phase :player 0 :step :close-vote})
+          [s' err] (tu/try-exec s {:type :advance-phase :player 0 :step :close-vote})]
+      (is (= :step-passed (:error err)))
+      (is (= :day-resolve (:phase s')))))
+  (testing "without a step, as the console sends it, it does what it always did"
+    (is (= :seherin (:night-cursor (exec! (fallen) {:type :advance-phase :player 0}))))))
+
 (deftest the-table-is-told-when-it-waits-on-him
   (testing "a day with a ballot: only once every ballot is in"
     (let [s (advance! (morning-hold))

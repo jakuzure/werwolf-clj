@@ -611,6 +611,7 @@
    :error/no-deadline      "No clock is running"
    :error/not-night        "That only works at night"
    :error/cannot-advance   "This phase cannot be advanced"
+   :error/step-passed      "That step has already been taken"
    :error/no-game-in-progress "The game has to be running for that"
    :error/already-that-role "That player already has this role"
    :error/invalid-choice   "That choice is not allowed"
