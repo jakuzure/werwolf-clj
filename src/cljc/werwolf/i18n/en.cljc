@@ -258,6 +258,7 @@
    :narrator/desc     "You are not playing. You see every role, call the night and move the phases along."
    :narrator/owing        "Still waiting for"
    :narrator/owing-none   "Nobody owes a move right now."
+   :narrator/cue          "Everyone is ready. It's your move."
    :narrator/skip-role    (fn [role] (str "Skip " role))
    :narrator/advance      "Move on without waiting"
    :narrator/advance-free "Move on"
@@ -328,6 +329,11 @@
    :turn/calling (fn [role] (str "The Spielleiter calls: " role))
    :turn/narrating "You are running the game"
    :turn/nightfall "Night is about to fall"
+   :turn/all-voted "Everyone has voted"
+   :turn/all-ready "Everyone is done"
+   :turn/narrator-closes (fn [who] (str who " will close the vote in a moment."))
+   :turn/narrator-nightfall (fn [who] (str who " will let night fall in a moment."))
+   :turn/may-change "Until then you can change your vote."
 
    ;; ------------------------------------------------------------ stage ---
    ;;
@@ -354,6 +360,8 @@
    :explain/discussion  "Talk it over: who do you not trust? Once you have said enough, tap “I'm done”."
    :explain/trial       (fn [_] "Talk it over and vote on who is condemned. You can change your vote until everyone has voted.")
    :explain/first-discussion "Nobody votes today. Talk about the night and about whom you trust. Once you have said enough, tap “I'm done” – when everyone is, night falls."
+   :explain/trial-paced (fn [_] "Talk it over and vote on who is condemned. You can change your vote until the narrator closes it.")
+   :explain/first-discussion-paced "Nobody votes today. Talk about the night and about whom you trust. Once you have said enough, tap “I'm done”. When everyone is, the narrator calls the night."
    :explain/day-resolve "The verdict is in. See whom it struck – then night falls."
    :explain/day-resolve-narrator "The verdict is in. Announce whom it struck, then let night fall with “Move on”."
    :explain/reaction    "Someone who just died has one last move. Everyone waits for them."

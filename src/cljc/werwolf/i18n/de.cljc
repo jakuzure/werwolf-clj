@@ -264,6 +264,9 @@
    :narrator/desc     "Du spielst nicht mit. Du siehst alle Rollen, rufst die Nacht aus und schaltest die Phasen weiter."
    :narrator/owing        "Wartet noch auf"
    :narrator/owing-none   "Niemand muss gerade etwas tun."
+   ;; Im getakteten Raum: niemand ist mehr offen, und der nächste Schritt
+   ;; ist seiner. Der ganze Tisch wartet jetzt auf ihn.
+   :narrator/cue          "Alle sind so weit, jetzt bist du dran."
    :narrator/skip-role    (fn [role] (str role " überspringen"))
    :narrator/advance      "Weiter, ohne zu warten"
    :narrator/advance-free "Weiter"
@@ -341,6 +344,12 @@
    ;; Nach dem Urteil wartet niemand auf irgendwen: der Tisch schaut sich an,
    ;; wen es getroffen hat, und dann wird es Nacht.
    :turn/nightfall "Gleich bricht die Nacht herein"
+   ;; Alle haben geantwortet, und den Tag beendet nur noch der Spielleiter.
+   :turn/all-voted "Alle haben abgestimmt"
+   :turn/all-ready "Alle sind fertig"
+   :turn/narrator-closes (fn [who] (str who " schließt gleich die Abstimmung."))
+   :turn/narrator-nightfall (fn [who] (str who " lässt gleich die Nacht hereinbrechen."))
+   :turn/may-change "Bis dahin kannst du umstimmen."
 
    ;; ------------------------------------------------------------ stage ---
    ;;
@@ -370,6 +379,10 @@
    :explain/discussion  "Redet miteinander: Wem traut ihr nicht? Wer genug geredet hat, tippt auf „Ich bin fertig“."
    :explain/trial       (fn [_] "Redet miteinander und stimmt ab, wer verurteilt wird. Ihr könnt umstimmen, bis alle abgestimmt haben.")
    :explain/first-discussion "Heute stimmt noch niemand ab. Sprecht über die Nacht und darüber, wem ihr traut. Wer genug geredet hat, tippt auf „Ich bin fertig“ – sind alle so weit, bricht die Nacht herein."
+   ;; Dieselben zwei Sätze für den Raum, den der Spielleiter taktet: dort
+   ;; endet der Tag mit seinem Wort, nicht mit der letzten Antwort.
+   :explain/trial-paced (fn [_] "Redet miteinander und stimmt ab, wer verurteilt wird. Ihr könnt umstimmen, bis der Spielleiter die Abstimmung schließt.")
+   :explain/first-discussion-paced "Heute stimmt noch niemand ab. Sprecht über die Nacht und darüber, wem ihr traut. Wer genug geredet hat, tippt auf „Ich bin fertig“. Sind alle so weit, ruft der Spielleiter die Nacht."
    :explain/day-resolve "Das Urteil ist gefallen. Seht euch an, wen es getroffen hat – dann bricht die Nacht herein."
    :explain/day-resolve-narrator "Das Urteil ist gefallen. Verkünde, wen es getroffen hat, und lass dann mit „Weiter“ die Nacht hereinbrechen."
    :explain/reaction    "Ein Toter hat noch eine letzte Handlung. Alle warten auf ihn."

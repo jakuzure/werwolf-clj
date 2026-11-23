@@ -108,6 +108,36 @@
         (is (= [:night 2] [(:phase s) (:night s)]))
         (is (zero? (tu/count-log s :gm/forced)))))))
 
+(deftest the-table-is-told-when-it-waits-on-him
+  (testing "a day with a ballot: only once every ballot is in"
+    (let [s (advance! (morning-hold))
+          s (reduce #(exec! %1 {:type :vote :player %2 :target 5}) s [1 2 3])]
+      (is (true? (:paced? (view/view-for s 1))))
+      (is (nil? (:awaits-narrator (view/view-for s 1))) "a ballot is still out")
+      (let [s (exec! s {:type :vote-abstain :player 5})]
+        (is (= :close-vote (phases/awaits-narrator s)))
+        (doseq [pid [1 4 5]]
+          (is (= :close-vote (:awaits-narrator (view/view-for s pid)))
+              "every seat, the dead and the abstainer included"))
+        (is (nil? (:awaits-narrator (view/view-for (advance! s) 1)))
+            "and no longer once he has closed it"))))
+  (testing "the first day's talk, without a ballot"
+    (let [s (assoc (advance! (morning-hold)) :first-day-trial? false)
+          s (reduce #(exec! %1 {:type :ready :player %2}) s (alive s))]
+      (is (= :close-day (:awaits-narrator (view/view-for s 1))))))
+  (testing "never at night, though his own button names the next call"
+    (let [s (fallen)]
+      (is (= {:step :call :role :seherin} (phases/next-step s)))
+      (is (nil? (:awaits-narrator (view/view-for s 1))))
+      (is (nil? (:awaits-narrator (view/view-for s 0))))))
+  (testing "with a clock nobody waits on him: the last ballot closes the day"
+    (let [s (exec! (advance! (morning-hold)) {:type :gm/toggle-timer :player 0})
+          s (reduce #(exec! %1 {:type :vote :player %2 :target 5}) s [1 2 3])]
+      (is (false? (:paced? (view/view-for s 1))))
+      (let [s (exec! s {:type :vote-abstain :player 5})]
+        (is (not= :discussion (:phase s)))
+        (is (nil? (:awaits-narrator (view/view-for s 1))))))))
+
 (deftest the-election-resolves-by-itself
   (let [s (advance! (morning-hold {:election? true}))]
     (is (= :election (:phase s)))

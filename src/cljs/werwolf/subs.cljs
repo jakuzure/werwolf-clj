@@ -184,6 +184,11 @@
 ;; server (phases/next-step), so the label can name the deed without the
 ;; client knowing when a room waits for him.
 (rf/reg-sub ::next-step :<- [::narrator-info] (fn [n _] (:next-step n)))
+;; Whether the Spielleiter calls each step himself, and the day's step the
+;; whole table now waits on him for (:close-vote, :close-day or nil). Public
+;; facts from the server, see phases/awaits-narrator.
+(rf/reg-sub ::paced? :<- [::view] (fn [v _] (boolean (:paced? v))))
+(rf/reg-sub ::awaits-narrator :<- [::view] (fn [v _] (:awaits-narrator v)))
 
 ;; Which ROLE the narrator is calling right now, and which player holds it is
 ;; not in the view. Sent to whoever may watch the night move: the Spielleiter,

@@ -501,9 +501,14 @@
    the role being called at night, the phase by day.
 
    Two taps while somebody is still owed — skipping a player who is about to act
-   takes their move away — and one when nobody is."
+   takes their move away — and one when nobody is.
+
+   In a paced room an empty list is his cue, and it says so. It read \"Niemand
+   muss gerade etwas tun.\" above a grey button while the whole table sat
+   waiting for him to close the vote or call the next role."
   []
   (let [owing   @(rf/subscribe [::sub/owing])
+        paced?  @(rf/subscribe [::sub/paced?])
         players @(rf/subscribe [::sub/players])
         known   @(rf/subscribe [::sub/known-roles])
         actions @(rf/subscribe [::sub/actions])
@@ -531,7 +536,11 @@
                   :close-vote (t :narrator/close-vote)
                   (if (= :gm/skip-role skip)
                     (t :narrator/skip-role (str (i18n/icon-of cursor) " " (role-name cursor)))
-                    (t (if (seq owing) :narrator/advance :narrator/advance-free))))]
+                    (t (if (seq owing) :narrator/advance :narrator/advance-free))))
+        ;; Nobody owed and his button names a step of his own: the table is
+        ;; waiting for him. Only where he paces it; with a clock the clock
+        ;; takes the step, and his button is a shortcut, not a cue.
+        cue?    (and paced? (empty? owing) (some? (:step step)) (not= :end-turn (:step step)))]
     [:div {:class "mt-2 space-y-2"}
      (if (seq owing)
        [:div {:class "flex flex-wrap items-center gap-1.5 text-sm" :data-testid "owing"}
@@ -541,15 +550,20 @@
           [:span {:class "rounded-md bg-amber-500/90 text-slate-900 px-2 py-0.5 font-semibold"}
            (str (some-> (get known pid) i18n/icon-of (str " "))
                 (get-in players [pid :name] (str "#" pid)))])]
-       [:div {:class "text-sm opacity-80"} (t :narrator/owing-none)])
+       (if cue?
+         [:div {:class "text-sm font-semibold text-violet-50" :data-testid "narrator-cue"}
+          (t :narrator/cue)]
+         [:div {:class "text-sm opacity-80"} (t :narrator/owing-none)]))
      (when skip
        (if (and (seq owing) (= here armed))
          [:div {:class "flex flex-wrap gap-2"}
           [btn (t :narrator/really (count owing)) fire! {:tone :danger}]
           [btn (t :narrator/keep-waiting) #(rf/dispatch [::ev/form-set :skip-confirm nil])
            {:tone :ghost}]]
+         ;; Drawn as the page's main button when it is his cue, quiet when
+         ;; it is the override.
          [btn label (if (seq owing) #(rf/dispatch [::ev/form-set :skip-confirm here]) fire!)
-          {:tone :quiet :testid "narrator-skip"}]))]))
+          {:tone (when-not cue? :quiet) :testid "narrator-skip"}]))]))
 
 (defn- wolf-votes
   "Where the pack stands tonight: a row per victim, its count first and its
@@ -601,6 +615,8 @@
         waiting  @(rf/subscribe [::sub/waiting-for])
         me       @(rf/subscribe [::sub/me-view])
         plan     @(rf/subscribe [::sub/night-plan])
+        awaits   @(rf/subscribe [::sub/awaits-narrator])
+        view     @(rf/subscribe [::sub/view])
         deal-problem (:deal-problem @(rf/subscribe [::sub/narrator-info]))]
     (when turn
       (let [[tone headline detail]
@@ -635,6 +651,18 @@
                (when-let [r (sub/next-up plan)]
                  (t :turn/asleep-next (role-name r)))]
 
+              ;; Everybody has answered and the day waits for the Spielleiter's
+              ;; word. Under a row of ticks, "Warte auf die anderen…" named
+              ;; nobody, because nobody but him was left; and the vote is
+              ;; still open to change until he closes it.
+              (if awaits
+                (let [sl (get-in view [:players (:narrator view) :name])
+                      vote? (= :close-vote awaits)]
+                  ["border-violet-700 bg-violet-950/40 text-violet-100"
+                   (t (if vote? :turn/all-voted :turn/all-ready))
+                   (str (t (if vote? :turn/narrator-closes :turn/narrator-nightfall) sl)
+                        (when (and vote? (:alive? me)) (str " " (t :turn/may-change))))])
+
               ;; :voted and :waiting. Voted, and free to change it until
               ;; everybody has: not what the table is waiting for any more,
               ;; so not green.
@@ -654,7 +682,7 @@
                  (and (= :voted turn) (= :night phase)) (t :turn/pack-hint)
                  ;; A dead player is not being waited on and never will be, so do
                  ;; not imply their input is pending.
-                 (false? (:alive? me)) (t :game/dead-hint))])]
+                 (false? (:alive? me)) (t :game/dead-hint))]))]
         [:section {:class (str "rounded-xl border-2 px-4 py-3 space-y-2 " tone)
                    :data-testid "now"}
          [:div
@@ -1552,8 +1580,11 @@
         ;; The first day has no trial — see phases/trial-day? — and says so,
         ;; or the table waits for an accusation step that never comes.
         (cond
+          ;; Where the Spielleiter paces the day, his word ends it, not the
+          ;; last ballot or the last "fertig": the stage said otherwise and
+          ;; the table waited for an end that had already come.
           (and (= :discussion phase) (:trial? view))
-          (t :explain/trial (:votes-needed view))
+          (t (if (:paced? view) :explain/trial-paced :explain/trial) (:votes-needed view))
           ;; Which last move the table waits for: the dead player's card is
           ;; public by now, so naming the Jäger or the Bürgermeister tells
           ;; nobody anything new.
@@ -1562,7 +1593,8 @@
                :reaction/jaeger-shot       :explain/reaction-jaeger
                :reaction/mayor-succession  :explain/reaction-mayor
                :explain/reaction))
-          (= :discussion phase) (t :explain/first-discussion)
+          (= :discussion phase)
+          (t (if (:paced? view) :explain/first-discussion-paced :explain/first-discussion))
           ;; The Spielleiter has no card to look at; his part of the deal is
           ;; checking it and opening the night.
           (and (= :setup phase) narrator?) (t :explain/setup-narrator)
