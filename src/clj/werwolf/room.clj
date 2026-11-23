@@ -1017,6 +1017,46 @@
 (defn- idle-text [now-ms last-active phase]
   (str "(idle " (quot (- now-ms last-active) 60000) " min, phase " phase ")"))
 
+(defn- restore!
+  "Load one unfinished game from the log into memory. Returns the room id, or
+   nil if there was nothing to load or it had been abandoned, in which case it
+   is retired here.
+
+   `woken-ms`: the room is loaded because a player asked for it (`wake!`), at
+   that instant. That request is activity, so the room is not swept again
+   before the player's socket is attached; whether it was ALREADY abandoned is
+   still measured from the last time somebody played."
+  [ctx room-id now-ms woken-ms]
+  (when-let [{:keys [state active-at] n :seq} (store/load-game (:ds ctx) room-id)]
+    (let [phase    (:phase state)
+          ;; Somebody still seated when the process died was left by
+          ;; the server, not the other way round: the boot is their
+          ;; last activity, so a deploy cannot close the room they were
+          ;; sitting in. Otherwise a boot is NOT activity — a server
+          ;; restarting more often than the threshold would never
+          ;; retire, or even sweep, anything.
+          present? (some :connected? (vals (:players state)))
+          last-active (if present? now-ms (or active-at now-ms))]
+      (swap! (:rooms ctx) assoc room-id
+             (assoc (fresh-room room-id)
+                    :state state :seq n :last-activity (or woken-ms last-active)))
+      (if (and (not present?)
+               (abandoned? (:game ctx) now-ms phase last-active))
+        (do (log/info "retiring abandoned room" room-id
+                      (idle-text now-ms last-active phase))
+            (retire! ctx room-id)
+            nil)
+        ;; Stamped with the boot, not with whenever the old process
+        ;; died: time nobody could play through is not time, so an
+        ;; absence is measured from the moment they could have come back.
+        (let [drops (for [[pid p] (sort-by key (:players state))
+                          :when (:connected? p)]
+                      {:type :player/connection :player pid
+                       :connected? false :at now-ms})]
+          (with-room ctx room-id
+            (fn [r] (apply-server-events! ctx r (vec drops))))
+          room-id)))))
+
 (defn rehydrate!
   "Load unfinished games from the log on boot. Returns the room ids restored.
 
@@ -1031,38 +1071,26 @@
   ([ctx] (rehydrate! ctx (System/currentTimeMillis)))
   ([ctx now-ms]
    (into []
-         (keep
-          (fn [room-id]
-            (when-let [{:keys [state active-at] n :seq} (store/load-game (:ds ctx) room-id)]
-              (let [phase    (:phase state)
-                    ;; Somebody still seated when the process died was left by
-                    ;; the server, not the other way round: the boot is their
-                    ;; last activity, so a deploy cannot close the room they were
-                    ;; sitting in. Otherwise a boot is NOT activity — a server
-                    ;; restarting more often than the threshold would never
-                    ;; retire, or even sweep, anything.
-                    present? (some :connected? (vals (:players state)))
-                    last-active (if present? now-ms (or active-at now-ms))]
-                (swap! (:rooms ctx) assoc room-id
-                       (assoc (fresh-room room-id)
-                              :state state :seq n :last-activity last-active))
-                (if (and (not present?)
-                         (abandoned? (:game ctx) now-ms phase last-active))
-                  (do (log/info "retiring abandoned room" room-id
-                                (idle-text now-ms last-active phase))
-                      (retire! ctx room-id)
-                      nil)
-                  ;; Stamped with the boot, not with whenever the old process
-                  ;; died: time nobody could play through is not time, so an
-                  ;; absence is measured from the moment they could have come back.
-                  (let [drops (for [[pid p] (sort-by key (:players state))
-                                    :when (:connected? p)]
-                                {:type :player/connection :player pid
-                                 :connected? false :at now-ms})]
-                    (with-room ctx room-id
-                      (fn [r] (apply-server-events! ctx r (vec drops))))
-                    room-id))))))
+         (keep #(restore! ctx % now-ms nil))
          (store/unfinished-room-ids (:ds ctx)))))
+
+(defn wake!
+  "Make sure an unfinished game is in memory for a player resuming it. Returns
+   true if the room is there now.
+
+   The sweep drops a game nobody has been connected to for `:game-idle-ms`,
+   and before this only a boot brought it back: a table that paused for the
+   night found its game on disk and every seat answering :seat-gone. Waking
+   needs a token signed for a seat in that room, so like `rehydrate!` it does
+   not count against `:max-rooms`, which is a limit for strangers."
+  [ctx room-id now-ms]
+  (or (some? (room-of ctx room-id))
+      ;; Two players resuming at once must not load the room twice: the second
+      ;; load would replace the room the first one is already attached to.
+      (locking (:rooms ctx)
+        (or (some? (room-of ctx room-id))
+            (and (store/unfinished? (:ds ctx) room-id)
+                 (some? (restore! ctx room-id now-ms now-ms)))))))
 
 (defn deserted?
   "Has every person walked out of this room, leaving bots or nobody?

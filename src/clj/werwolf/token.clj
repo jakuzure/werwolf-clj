@@ -17,8 +17,11 @@
      rejected even though its signature is perfectly valid. Without this check
      a player could carry a seat number into a game they were never dealt into.
    - **Expiring.** Tokens outlive a disconnect, not a friendship. The TTL is a
-     config knob (default 12h — long enough that nobody is logged out
-     mid-game).
+     config knob, default two days. It has to outlast `:abandon-after-hours`
+     (a day) plus the evening before it: a table that pauses for the night
+     keeps its game until a day after anybody last played, and was locked out
+     of it at breakfast while the TTL was 12h. A token is renewed on every
+     resume, so the clock starts at the last reconnect, not at the deal.
    - **Never trusted for authorisation.** The token says *who* you are, not
      *what you may do*. Every capability question is answered by the engine
      from game state (`legal-actions`, `host-actions`). `:host?` rides along
@@ -34,6 +37,11 @@
   "The value shipped in config.edn. Present so the server can refuse to run
    with it in production rather than silently signing forgeable tokens."
   "dev-only-insecure-secret-change-me")
+
+(def ^:const default-ttl-mins
+  "Two days. See the namespace docstring for why it must outlast
+   `:abandon-after-hours`."
+  (* 2 24 60))
 
 (defn insecure-secret?
   [{:keys [secret]}]
@@ -55,7 +63,7 @@
                :pid  player-id
                :host (boolean host?)
                :iat  iat
-               :exp  (+ iat (* 60 (or ttl-mins 720)))}
+               :exp  (+ iat (* 60 (or ttl-mins default-ttl-mins)))}
               secret
               {:alg :hs256})))
 
