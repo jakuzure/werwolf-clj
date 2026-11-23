@@ -100,4 +100,10 @@
           s (exec! s {:type :leave :player 4})
           s (werwolf.engine.events/apply-all s [{:type :game/reset}])]
       (is (not (contains? (:players s) 4)))
-      (is (= #{0 1 2 3} (set (keys (:players s))))))))
+      (is (= #{0 1 2 3} (set (keys (:players s)))))
+      (testing "and his number is not the next arrival's: his old token names it"
+        (is (= 5 (werwolf.engine.events/next-seat s)))
+        (is (= 6 (werwolf.engine.events/next-seat
+                  (werwolf.engine.events/apply-all s [{:type :player/joined :player 5 :name "Neu" :locale :de}
+                                                      {:type :player/left :player 5}
+                                                      {:type :game/reset}]))))))))

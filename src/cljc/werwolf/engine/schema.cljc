@@ -89,6 +89,9 @@
    ;; fallbacks it triggers happen ONCE and the table has to be told.
    [:host-absent? {:optional true} :boolean]
    [:seed :int]                               ; RNG seed — replay determinism
+   ;; How many seat numbers had been issued when the last rematch started a
+   ;; fresh log. Absent before the first rematch. See events/next-seat.
+   [:seats-issued {:optional true} :int]
    [:min-players :int]
    [:max-players {:optional true} :int]
    ;; Rule variant: false (default) means no werewolf turn on night 1.
