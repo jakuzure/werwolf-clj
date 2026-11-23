@@ -800,6 +800,34 @@
   [fx]
   (assoc fx ::wake/hold (wake/wanted? (:db fx))))
 
+(defn- with-stage-in-view
+  "Back to the top of Jetzt when this view turned the phase, so the stage and
+   the Jetzt card are what a phone shows. The page kept its scroll across a
+   phase change: whoever had scrolled down to the board to vote saw the game
+   end as the middle of the Rückblick, the winner above the screen's edge.
+
+   Only on Jetzt, where the stage is; another tab is where its reader put it.
+   Not on the first view after a welcome (the chime's rule: it describes a
+   phase that began who knows when) and not with the sound switch, which is
+   about sound. Wide screens show every column at once and keep their place;
+   the effect decides that, because only the browser knows the width."
+  [fx db]
+  (let [old  (:view db)
+        new  (get-in fx [:db :view])
+        form (:form db)
+        tab  (if (= (get-in db [:me :room-id]) (:tab-room form)) (:tab form :now) :now)]
+    (cond-> fx
+      (and old new (not= (:phase old) (:phase new)) (= :now tab))
+      (assoc ::scroll-top true))))
+
+(rf/reg-fx
+ ::scroll-top
+ (fn [_]
+   (try
+     (when-not (.-matches (js/window.matchMedia "(min-width: 64rem)"))
+       (js/window.scrollTo 0 0))
+     (catch :default _ nil))))
+
 (defn server-message-fx
   "Named and public so the effects of a message, not only its db change, are
    testable — the same reason `leave-fx` is."
@@ -808,6 +836,10 @@
     ;; The phase chime, when this view turned the phase — see `with-chime`.
     (= :room/view (:type msg))
     (with-chime db)
+
+    ;; And the stage back in view on a phone, for the same turn.
+    (= :room/view (:type msg))
+    (with-stage-in-view db)
 
     ;; The screen lock, after anything that can start, end or leave a game.
     (#{:room/view :server/left :server/kicked :server/error} (:type msg))

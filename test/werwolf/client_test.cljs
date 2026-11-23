@@ -835,6 +835,27 @@
     (testing "only views ring"
       (is (nil? (chime-of at-dusk {:type :room/chat :text "hi"}))))))
 
+(deftest a-turned-phase-brings-a-phone-back-to-the-stage
+  (let [at-dusk (apply* seated (view-msg 4 :day-resolve 1))
+        scroll  (fn [db msg] (:werwolf.events/scroll-top (ev/server-message-fx {:db db} [nil msg])))]
+    (testing "the phase turns: back to the stage, whatever the sound switch says"
+      (is (true? (scroll at-dusk (view-msg 5 :night 2))))
+      (is (true? (scroll (assoc at-dusk :sound/on? false) (view-msg 5 :night 2)))))
+    (testing "a later view of the same phase leaves the page where it is"
+      (is (nil? (scroll at-dusk (view-msg 5 :day-resolve 1)))))
+    (testing "the first view after a welcome describes the past"
+      (let [rewelcomed (apply* at-dusk {:type :server/welcome :room-id "ABCD"
+                                        :player-id 0 :host? true :token "t"})]
+        (is (nil? (scroll rewelcomed (view-msg 5 :night 2))))))
+    (testing "a dropped, out-of-order view moves nothing"
+      (is (nil? (scroll (apply* at-dusk (view-msg 9 :night 2)) (view-msg 6 :day-resolve 1)))))
+    (testing "another tab stays where its reader put it, until they come back"
+      (let [on-chat (update at-dusk :form assoc :tab :chat :tab-room "ABCD")]
+        (is (nil? (scroll on-chat (view-msg 5 :night 2))))
+        (is (true? (scroll (update at-dusk :form assoc :tab :chat :tab-room "WXYZ")
+                           (view-msg 5 :night 2)))
+            "a tab chosen in another room is not this room's")))))
+
 (deftest the-chime-switch-defaults-on-and-remembers
   (is (true? (:sound/on? ev/initial-db)) "on unless somebody turned it off")
   (let [fx (ev/toggle-sound-fx {:db ev/initial-db} nil)]
@@ -1080,7 +1101,15 @@
     (is (= [died] (sub/dawn-news v nil)))
     (is (nil? (sub/dawn-news v "ABCD:2")) "read")
     (is (= [died] (sub/dawn-news v "ABCD:1")) "yesterday's reading does not count")
-    (is (nil? (sub/dawn-news (assoc v :phase :night) nil)) "only while the day is young")))
+    (is (nil? (sub/dawn-news (assoc v :phase :night) nil)) "only while the day is young")
+    (testing "a cast ballot counts as having read it, so the vote is not pushed
+              below the edge of a phone; who holds no vote keeps the card"
+      (let [ballot (assoc v :trial? true :me {:id 1} :votes {1 4})]
+        (is (nil? (sub/dawn-news ballot nil)) "voted")
+        (is (nil? (sub/dawn-news (assoc ballot :votes {1 nil}) nil)) "abstained")
+        (is (= [died] (sub/dawn-news (assoc ballot :votes {2 4}) nil)) "not yet voted")
+        (is (= [died] (sub/dawn-news (assoc ballot :me {:id 3 :alive? false}) nil))
+            "the dead never vote and keep the card until they close it")))))
 
 (deftest the-second-morning-tells-only-its-own-night
   (let [d1 {:type :player/died :player 1 :cause :werwolf :role :jaeger}

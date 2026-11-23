@@ -493,9 +493,17 @@
 (defn dawn-news
   "What the night did, for the morning card: the news since the night ended,
    while the day is young — the election or the talk — and until this player
-   has read it. Nil otherwise."
+   has read it. Nil otherwise.
+
+   A cast ballot counts as having read it. Left open, the card stayed on top
+   of a phone through the whole vote and pushed the ballot and the board
+   below the edge; whoever has voted has seen the morning, and the stage's
+   Zuletzt line keeps saying it. Who holds no vote, the Spielleiter and the
+   dead, keeps the card until \"Schließen\"."
   [{:keys [phase log] :as view} seen]
-  (when (and (#{:election :discussion} phase) (not= seen (dawn-id view)))
+  (when (and (#{:election :discussion} phase)
+             (not= seen (dawn-id view))
+             (not (voted? view)))
     (news-since log :night/ended)))
 
 (rf/reg-sub ::dawn-seen (fn [db _] (:dawn/seen db)))
