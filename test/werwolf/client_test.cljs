@@ -1006,7 +1006,7 @@
     (is (false? (sub/night-progress? [])))))
 
 (deftest the-ballot-lays-out-the-servers-count
-  (let [v {:phase :discussion :trial? true :votes-needed 3 :mayor 4
+  (let [v {:phase :discussion :trial? true :votes-needed 3 :votes-total 5 :mayor 4
            :players {1 {:name "Anna"} 2 {:name "Bert"} 3 {:name "Cem"} 4 {:name "Dana"}
                      5 {:name "Emil"}}
            ;; 5 has walked out after voting for Bert: the server's count
@@ -1014,11 +1014,14 @@
            :votes {1 2, 3 2, 4 3, 2 nil, 5 2}
            :ballot {:on {2 2, 3 2} :abstained 1 :open 0}}]
     (is (= {:needed 3
+            :total 5
+            :mayor "Dana"
             :rows [{:id 2 :name "Bert" :count 2 :mayor? false}
                    {:id 3 :name "Cem" :count 2 :mayor? true}]
             :abstained 1}
            (sub/ballot v))
-        "the weights as sent, heaviest first; the Bürgermeister's ballot marked")
+        "the weights as sent, heaviest first; the Bürgermeister's ballot marked
+         with his name, and the total the threshold is a majority of")
     (testing "only while the server sends a ballot"
       (is (nil? (sub/ballot (dissoc v :ballot)))))))
 

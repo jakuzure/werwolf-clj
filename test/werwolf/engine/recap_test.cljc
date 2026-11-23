@@ -184,9 +184,10 @@
     (is (= (zipmap (range 1 10) (repeat 5)) (:votes election))
         "ballots that were secret while the election ran")
     (is (= {:type :vote/resolved :target 1 :tie? false
-            :votes {1 nil 2 1 3 1 4 1 5 1 6 1 7 1 8 nil 9 1}}
+            :votes {1 nil 2 1 3 1 4 1 5 1 6 1 7 1 8 nil 9 1}
+            :needed 6}
            lynch)
-        "abstentions included")
+        "abstentions included, and the threshold the verdict met")
     (is (= {:type :player/died :player 1 :cause :lynch} died))))
 
 (deftest the-second-night-has-the-white-wolf-and-the-witch

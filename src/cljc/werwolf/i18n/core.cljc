@@ -289,9 +289,15 @@
       :player/revived      (t locale :log/revived (nm player))
       :role/revealed       (t locale :log/role-revealed (nm player) (role-name locale role))
       :jaeger/shot         (t locale :log/jaeger-shot (nm player) (nm target))
+      ;; With the count where the entry carries one (see phases/verdict):
+      ;; who came closest and how far short, or who tied. Older logs have
+      ;; no count and read as they always did.
       :vote/resolved       (cond
                              target                  (t locale :log/lynched (nm target))
+                             (and (:no-majority? entry) (:leader entry))
+                             (t locale :log/no-majority-of (nm (:leader entry)) (:got entry) (:needed entry))
                              (:no-majority? entry)   (t locale :log/no-majority)
+                             (seq (:tied entry))     (t locale :log/tie-between (mapv nm (:tied entry)))
                              :else                   (t locale :log/tie))
       :player/nominated    (t locale :log/nominated (nm target))
       :phase/timed-out     (t locale :log/timed-out (phase-name locale phase))

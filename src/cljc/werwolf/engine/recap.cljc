@@ -141,9 +141,11 @@
       :player/nominated [{:type :player/nominated :by (:by ev) :target target}]
       :day/no-accusation [{:type :day/no-accusation}]
       :day/no-trial      [{:type :day/no-trial}]
-      :vote/resolved [(cond-> {:type :vote/resolved :target target :tie? (boolean (:tie? ev))
-                                :votes (or (:votes before) {})}
-                        (:no-majority? ev) (assoc :no-majority? true))]
+      ;; The count as the Chronik told it, where the event carries one.
+      :vote/resolved [(merge (cond-> {:type :vote/resolved :target target :tie? (boolean (:tie? ev))
+                                       :votes (or (:votes before) {})}
+                               (:no-majority? ev) (assoc :no-majority? true))
+                             (select-keys ev [:needed :leader :got :tied]))]
 
       ;; The last line of a game nobody finished: the story stops where they
       ;; left it, and the recap says so rather than end mid-sentence.

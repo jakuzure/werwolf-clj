@@ -2478,14 +2478,19 @@
 (defn- ballot-panel
   "The day's vote at a glance: a bar for everybody with votes, filling towards
    the majority it takes, so the table sees who is close and how close. The
-   card badges said \"3 Stimmen\" and left the reader to know the threshold."
+   card badges said \"3 Stimmen\" and left the reader to know the threshold.
+
+   The threshold names what it is a majority of, and the row the
+   Bürgermeister's ballot lies on says so in words. In a playtest three of
+   five living players voted for the same man, it took four, and nothing on
+   screen said why; a bare crown beside a name read as \"he is the mayor\"."
   []
-  (when-let [{:keys [needed rows abstained]} @(rf/subscribe [::sub/ballot])]
+  (when-let [{:keys [needed total mayor rows abstained]} @(rf/subscribe [::sub/ballot])]
     [:section {:class "rounded-xl border border-amber-800/60 bg-amber-950/20 p-3 space-y-2"
                :data-testid "ballot"}
      [:div {:class "flex items-baseline justify-between gap-2"}
       [:h3 {:class "text-sm font-bold text-amber-200"} (str "⚖️ " (t :ballot/title))]
-      [:span {:class "text-xs text-amber-200/80"} (t :ballot/needed needed)]]
+      [:span {:class "text-xs text-amber-200/80"} (t :ballot/needed needed total)]]
      (if (empty? rows)
        [:p {:class "text-sm text-slate-400"} (t :ballot/none)]
        [:ul {:class "space-y-1.5"}
@@ -2493,8 +2498,14 @@
               :let [enough? (>= count needed)]]
           ^{:key id}
           [:li {:data-testid (str "ballot-" id)}
-           [:div {:class "flex justify-between text-sm"}
-            [:span {:class "truncate"} name (when mayor? [:span {:title (t :ballot/mayor)} " 👑"])]
+           [:div {:class "flex justify-between gap-2 text-sm"}
+            [:span {:class "flex min-w-0 items-baseline gap-1.5"}
+             [:span {:class "truncate"} name]
+             (when mayor?
+               [:span {:class "shrink-0 rounded bg-amber-900/60 px-1.5 text-xs text-amber-200"
+                       :title (t :ballot/mayor)}
+                (t :ballot/mayor-mark mayor)
+                [:span {:class "sr-only"} (str ", " (t :ballot/mayor))]])]
             [:span {:class (str "font-mono " (if enough? "text-rose-300" "text-slate-300"))}
              (str count " / " needed)]]
            [:div {:class "h-2 rounded-full bg-slate-800 overflow-hidden"}
