@@ -87,11 +87,12 @@
    ;; why `unseat` leaves it alone. Overwritten from storage by ::init.
    :sound/on?   true})
 
-(declare stored-dawn)
+(declare stored-dawn stored-chat-seen)
 
 (rf/reg-event-fx ::init (fn [_ [_ invited]]
                           {:db (cond-> (assoc initial-db :sound/on? (chime/stored-on?)
-                                              :dawn/seen (stored-dawn))
+                                              :dawn/seen (stored-dawn)
+                                              :chat/seen (stored-chat-seen))
                                  ;; Arrived by a shared link: the code is filled
                                  ;; in, and the start page leads with joining.
                                  ;; A plain write: no field is mounted yet to
@@ -444,6 +445,30 @@
  ;; The morning card is read. Named by room and night, so the next morning —
  ;; or another room's — shows its own, and a reload does not bring it back.
  (fn [{:keys [db]} [_ id]] {:db (assoc db :dawn/seen id) ::store-dawn id}))
+
+(def ^:private chat-seen-key "werwolf/chat-seen")
+
+(defn stored-chat-seen
+  "The server time of the newest chat line this tab has read, or nil. Per tab
+   like the morning card: a reload keeps it, another device reads its own."
+  []
+  (try (some-> (.getItem js/sessionStorage chat-seen-key) js/parseInt
+               (as-> n (when-not (js/isNaN n) n)))
+       (catch :default _ nil)))
+
+(rf/reg-fx ::store-chat-seen
+  (fn [at] (try (.setItem js/sessionStorage chat-seen-key (str at)) (catch :default _ nil))))
+
+(defn chat-seen-fx
+  "Read up to the line sent at `at`. A time rather than a count: the count of
+   lines read went silent after a rematch emptied the chat, counted the whole
+   history as unread after a reload, and stopped at the 300 lines a room
+   keeps. Never backwards, so an older line read later moves nothing."
+  [{:keys [db]} [_ at]]
+  (when (and at (> at (:chat/seen db 0)))
+    {:db (assoc db :chat/seen at) ::store-chat-seen at}))
+
+(rf/reg-event-fx ::chat-seen chat-seen-fx)
 
 (defn send-chat-fx
   "Named and public so the clearing behaviour is testable without a browser —
