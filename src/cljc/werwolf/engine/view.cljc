@@ -293,7 +293,14 @@
         ;; tells her nothing she did not already know.
         (and alive? (= :hexe role-id) (= :hexe cursor)
              (some? (get-in state [:night-actions :hexe-heal])))
-        (assoc :healed (get-in state [:night-actions :hexe-heal]))))))
+        (assoc :healed (get-in state [:night-actions :hexe-heal]))
+
+        ;; And whom she poisoned, for the same reason: after the poison her
+        ;; card said nothing about it, and her way out still read "Keinen
+        ;; Trank benutzen", as if she had not.
+        (and alive? (= :hexe role-id) (= :hexe cursor)
+             (some? (get-in state [:night-actions :hexe-poison])))
+        (assoc :poisoned (get-in state [:night-actions :hexe-poison]))))))
 
 ;; --------------------------------------------------------------- view ---
 

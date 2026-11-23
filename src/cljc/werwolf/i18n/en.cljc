@@ -413,6 +413,7 @@
    :hexe/no-victim "🐺 Nobody is dying of the werewolves tonight."
    :hexe/healed (fn [who] (str "✓ You saved " who "."))
    :hexe/healed-you "✓ You saved yourself."
+   :hexe/poisoned (fn [who] (str "☠ You poisoned " who "."))
    :hexe/done "Done"
    :ballot/title     "The vote"
    :ballot/needed    (fn [n total] (if total
