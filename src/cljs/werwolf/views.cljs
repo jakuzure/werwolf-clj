@@ -1641,6 +1641,67 @@
 
 ;; -------------------------------------------------------------------- chat ---
 
+(defn- chat-line
+  "One message: its channel in a word, its sender, its text."
+  [m]
+  ;; A long word or a link breaks rather than running off the panel.
+  [:div {:class "[overflow-wrap:anywhere]"}
+   ;; The channel in a word, not only a colour: a wolves' whisper and a
+   ;; public line differed in hue alone.
+   (when-let [k (case (:channel m) :wolves :chat/tag-wolves :dead :chat/tag-dead
+                                   :narrator :chat/tag-narrator nil)]
+     [:span {:class (str "mr-1 rounded px-1 text-[10px] font-bold uppercase tracking-wide "
+                         (case (:channel m)
+                           :wolves   "bg-rose-950 text-rose-300"
+                           :dead     "bg-slate-800 text-slate-400"
+                           "bg-violet-950 text-violet-300"))}
+      (t k)])
+   [:span {:class (case (:channel m)
+                    :wolves   "text-rose-400 font-semibold"
+                    :dead     "text-slate-500 font-semibold"
+                    :narrator "text-violet-300 font-semibold"
+                    "text-indigo-300 font-semibold")}
+    (:name m) ": "]
+   [:span {:class (when (= :dead (:channel m)) "text-slate-500")} (:text m)]])
+
+(defn- chat-log
+  "The messages, following the newest as it comes while the reader is at the
+   bottom. The list never scrolled by itself, so the newest accusation landed
+   below the edge of a full panel for everybody who was not scrolling it.
+
+   Whoever has scrolled up to read back stays where they are, until they send
+   something themselves. Opening the phone's Gespräch tab always starts at the
+   end: the panel is hidden on the other tabs, and a hidden list cannot be
+   scrolled, so whatever came meanwhile was waiting below the edge."
+  [_msgs _tab _me]
+  (let [node    (atom nil)
+        stuck?  (atom true)
+        to-end! #(when-let [n @node] (set! (.-scrollTop n) (.-scrollHeight n)))]
+    (r/create-class
+     {:display-name "chat-log"
+      :component-did-mount (fn [_] (to-end!))
+      :component-did-update
+      (fn [this [_ _ old-tab]]
+        (let [[_ msgs tab me] (r/argv this)]
+          (when (or @stuck?
+                    (and (= :chat tab) (not= :chat old-tab))
+                    (= (:from (peek msgs)) me))
+            (reset! stuck? true)
+            (to-end!))))
+      :reagent-render
+      (fn [msgs _tab _me]
+        ;; A test hook: the one scrolling element here, which a browser test
+        ;; has to read the scroll position of, and it has no role or text.
+        [:div {:class "flex-1 overflow-y-auto px-4 py-2 space-y-1 text-sm"
+               :data-testid "chat-log"
+               :ref #(reset! node %)
+               :on-scroll (fn [e]
+                            (let [n (.-currentTarget e)]
+                              (reset! stuck? (< (- (.-scrollHeight n) (.-scrollTop n) (.-clientHeight n))
+                                                40))))}
+         (for [[i m] (map-indexed vector msgs)]
+           ^{:key i} [chat-line m])])})))
+
 (defn chat-panel []
   (let [msgs @(rf/subscribe [::sub/chat])
         actions @(rf/subscribe [::sub/actions])
@@ -1656,28 +1717,7 @@
     [:div {:class "flex flex-col h-[65dvh] lg:h-80 rounded-xl border border-slate-700 bg-slate-900/80 overflow-hidden"}
      [:div {:class "px-4 py-2 bg-slate-800 text-sm font-bold uppercase tracking-wide"}
       (t :game/chat)]
-     [:div {:class "flex-1 overflow-y-auto px-4 py-2 space-y-1 text-sm"}
-      (for [[i m] (map-indexed vector msgs)]
-        ^{:key i}
-        ;; A long word or a link breaks rather than running off the panel.
-        [:div {:class "[overflow-wrap:anywhere]"}
-         ;; The channel in a word, not only a colour: a wolves' whisper and a
-         ;; public line differed in hue alone.
-         (when-let [k (case (:channel m) :wolves :chat/tag-wolves :dead :chat/tag-dead
-                                         :narrator :chat/tag-narrator nil)]
-           [:span {:class (str "mr-1 rounded px-1 text-[10px] font-bold uppercase tracking-wide "
-                               (case (:channel m)
-                                 :wolves   "bg-rose-950 text-rose-300"
-                                 :dead     "bg-slate-800 text-slate-400"
-                                 "bg-violet-950 text-violet-300"))}
-            (t k)])
-         [:span {:class (case (:channel m)
-                          :wolves   "text-rose-400 font-semibold"
-                          :dead     "text-slate-500 font-semibold"
-                          :narrator "text-violet-300 font-semibold"
-                          "text-indigo-300 font-semibold")}
-          (:name m) ": "]
-         [:span {:class (when (= :dead (:channel m)) "text-slate-500")} (:text m)]])]
+     [chat-log msgs (:tab (tab-state)) (:id me)]
      [:div {:class "border-t border-slate-700 p-2 space-y-1"}
       (when (and allowed? channel)
         ;; The label is derived from the same state the server routes on, so it
