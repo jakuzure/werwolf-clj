@@ -19,6 +19,29 @@
 (defonce ^:private url* (atom nil))
 (defonce ^:private retry (atom 0))
 (defonce ^:private outbox (atom []))
+;; When the server last said anything, and when we last asked it to. See check!.
+(defonce ^:private heard (atom 0))
+(defonce ^:private asked (atom 0))
+(defonce ^:private reconnect-timer (atom nil))
+(defonce ^:private probe-timer (atom nil))
+;; A socket given up on, closed only once its successor is open; see reconnect-now!.
+(defonce ^:private retired (atom nil))
+(defonce ^:private installed? (atom false))
+
+(def ^:private ping-ms
+  "How often an open socket is asked whether it is alive."
+  15000)
+
+(def ^:private answer-ms
+  "How long a ping may wait for its answer before the socket counts as dead."
+  10000)
+
+(def ^:private wake-answer-ms
+  "The same, right after the page comes back to the foreground, where the
+   player is looking at it and every second of an old screen counts."
+  3000)
+
+(defn- now-ms [] (.getTime (js/Date.)))
 
 (def ^:private max-backoff-ms 15000)
 (def ^:private storage-key "werwolf/seat")
@@ -73,7 +96,81 @@
   (let [n @retry
         ms (backoff-ms n)]
     (swap! retry inc)
-    (js/setTimeout #(connect! @url*) ms)))
+    (reset! reconnect-timer (js/setTimeout #(do (reset! reconnect-timer nil)
+                                                (connect! @url*))
+                                           ms))))
+
+(defn- reconnect-now!
+  "Give up on the socket there is and dial again at once, without the backoff.
+
+   The old socket's handlers go first: a socket whose network has gone can
+   take a minute to report its own close, and that late onclose would dial a
+   second time behind this one. It is closed only once the new one is open
+   and has re-claimed the seat: one that was merely slow to answer would
+   otherwise take the seat away for a moment, and the table would see the
+   player leave and come back."
+  []
+  (when-let [t @reconnect-timer] (js/clearTimeout t) (reset! reconnect-timer nil))
+  (when-let [^js old @socket]
+    (set! (.-onopen old) nil)
+    (set! (.-onmessage old) nil)
+    (set! (.-onclose old) nil)
+    (set! (.-onerror old) nil)
+    (reset! retired old))
+  (reset! socket nil)
+  (reset! retry 0)
+  (rf/dispatch [:werwolf.events/disconnected])
+  (connect! @url*))
+
+(defn check!
+  "Make sure the connection is alive, and reconnect at once if it is not.
+
+   A phone that is locked, or a laptop that sleeps, keeps a socket that looks
+   open and is dead, and nothing noticed: the page showed the state from
+   before, and when the close came, the backoff waited up to 15 seconds more
+   before it dialled again. Now an open socket is asked every `ping-ms`, and a
+   ping that goes unanswered for `answer-ms` replaces it. Waking the page up,
+   going online and coming back from the back/forward cache ask at once and
+   wait only `wake-answer-ms`, and redial a socket already closed without
+   waiting out its backoff; the timer alone never does that."
+  [{:keys [wake?]}]
+  (when @url*
+    (let [^js s @socket
+          state (some-> s .-readyState)
+          t (now-ms)]
+      (cond
+        ;; Closed: on a wake-up dial now. On the timer leave it to the
+        ;; backoff, which restarting here would cut short every 15 seconds
+        ;; through an outage, or against a server that is turning sockets away.
+        (or (nil? s) (= state js/WebSocket.CLOSED) (= state js/WebSocket.CLOSING))
+        (when wake? (reconnect-now!))
+
+        (= state js/WebSocket.OPEN)
+        (if (and (> @asked @heard) (> (- t @asked) answer-ms))
+          ;; The last ping is still unanswered: the line is dead.
+          (reconnect-now!)
+          (do (reset! asked t)
+              (.send s (transit/write writer {:type :client/ping}))
+              (when wake?
+                (when-let [p @probe-timer] (js/clearTimeout p))
+                (reset! probe-timer
+                        (js/setTimeout #(when (and (= s @socket) (< @heard t))
+                                          (reconnect-now!))
+                                       wake-answer-ms)))))
+
+        ;; CONNECTING: it is already on its way.
+        :else nil))))
+
+(defn install!
+  "Watch the connection: a ping on a timer, and a check whenever the page
+   comes back. Idempotent across hot reloads."
+  []
+  (when (compare-and-set! installed? false true)
+    (js/setInterval #(check! {}) ping-ms)
+    (.addEventListener js/document "visibilitychange"
+                       #(when (= "visible" (.-visibilityState js/document)) (check! {:wake? true})))
+    (.addEventListener js/window "online" #(check! {:wake? true}))
+    (.addEventListener js/window "pageshow" #(when (.-persisted %) (check! {:wake? true})))))
 
 (defn connect! [url]
   (reset! url* url)
@@ -82,6 +179,7 @@
     (set! (.-onopen sock)
           (fn [_]
             (reset! retry 0)
+            (reset! heard (now-ms))
             (rf/dispatch [:werwolf.events/connected])
             ;; Re-claim the seat BEFORE anything queued goes out: a command sent
             ;; on an unbound socket is answered with :not-in-room.
@@ -89,9 +187,14 @@
               (.send sock (transit/write writer {:type :client/resume
                                                  :room-id room-id
                                                  :token token})))
-            (flush-outbox!)))
+            (flush-outbox!)
+            ;; The seat is claimed on this socket now; the one it replaces may go.
+            (when-let [^js r @retired]
+              (reset! retired nil)
+              (try (.close r) (catch :default _ nil)))))
     (set! (.-onmessage sock)
           (fn [e]
+            (reset! heard (now-ms))
             (rf/dispatch [:werwolf.events/server-message
                           (transit/read reader (.-data e))])))
     (set! (.-onclose sock)

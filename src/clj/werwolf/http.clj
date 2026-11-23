@@ -14,7 +14,8 @@
             [werwolf.metrics :as metrics]
             [werwolf.protocol :as protocol]
             [werwolf.store :as store]
-            [werwolf.ws :as ws]))
+            [werwolf.ws :as ws])
+  (:import (java.util.concurrent Executors ScheduledExecutorService ThreadFactory TimeUnit)))
 
 (defn health
   "Whether this server can serve a game, for Caddy's active health check.
@@ -183,6 +184,63 @@
           victim       (-> open (dissoc victim) (assoc sock {:addr addr :at now}))
           :else        open)))
 
+;; --------------------------------------------------------------- heartbeat ---
+
+(def ^:private default-silent-ms
+  "How long a socket may say nothing, not even a pong, before it counts as
+   gone. Three heartbeats, so one lost ping is no verdict."
+  45000)
+
+(def ^:private default-heartbeat-ms 15000)
+
+(defn- heard!
+  "Note that `sock` said something at `now`: a frame or a pong."
+  [open sock now]
+  (swap! open (fn [m] (cond-> m (contains? m sock) (assoc-in [sock :heard] now)))))
+
+(defn heartbeat!
+  "One beat: close every open socket that has answered nothing, neither a
+   frame nor a pong, for `silent-ms`, and ping the rest.
+
+   A phone that loses its signal, or a laptop that sleeps, leaves a socket
+   that looks open until TCP gives up, often many minutes later, and its seat
+   counted as connected all that time: nobody showed as absent, the night
+   waited on a dark wolf, and the Spielleiter's grace period never started.
+   Closed, the socket goes the way every other does, through `on-close`, so
+   the seat is away until the next connection brings it back.
+
+   `ping!` and `close!` can be handed in, so the rule is testable without a
+   socket."
+  [sockets now {:keys [silent-ms ping! close!]
+                :or   {silent-ms default-silent-ms
+                       ping!     ws/ping!
+                       close!    #(ws/close! % 1001 "no answer")}}]
+  (doseq [[sock {:keys [at heard]}] @sockets]
+    (if (> (- now (or heard at)) silent-ms)
+      (close! sock)
+      (ping! sock))))
+
+(defn start-heartbeat!
+  "Beat every `period-ms` until `stop-heartbeat!`. Returns the handle. A
+   daemon thread, and a catch-all for the same reason as the phase timer's:
+   a schedule that throws once is cancelled for good."
+  [sockets {:keys [period-ms] :as opts}]
+  (let [^ScheduledExecutorService ex
+        (Executors/newSingleThreadScheduledExecutor
+         (reify ThreadFactory
+           (newThread [_ r] (doto (Thread. ^Runnable r "werwolf-heartbeat") (.setDaemon true)))))
+        period (or period-ms default-heartbeat-ms)]
+    (.scheduleWithFixedDelay ex
+                             (fn []
+                               (try (heartbeat! sockets (System/currentTimeMillis) opts)
+                                    (catch Throwable t (log/error t "heartbeat failed"))))
+                             period period TimeUnit/MILLISECONDS)
+    {:executor ex}))
+
+(defn stop-heartbeat! [{:keys [^ScheduledExecutorService executor]}]
+  (when executor (.shutdownNow executor))
+  nil)
+
 (defn ws-handler
   "Upgrade to a WebSocket and hand every frame to the protocol layer.
 
@@ -222,8 +280,9 @@
    work, and no person tapping a phone comes near the limit. The bucket lives
    in the socket's own listener, so it needs no map either."
   [{:keys [max-sockets max-sockets-per-address unseated-grace-ms
-           frames-per-sec frame-burst] :as deps}]
-  (let [open    (atom {})
+           frames-per-sec frame-burst sockets] :as deps}]
+  ;; `sockets`, when given, is the map the heartbeat reads (see `heartbeat!`).
+  (let [open    (or sockets (atom {}))
         limits  {:max-sockets max-sockets
                  :max-sockets-per-address (or max-sockets-per-address
                                               default-max-sockets-per-address)}
@@ -263,6 +322,7 @@
                                                           :too-many-sockets))
                                     (ws/close! sock 1013 "too many connections")))))
               :on-message (fn [sock raw]
+                            (heard! open sock (System/currentTimeMillis))
                             (when-not (:closed? @bucket)
                               (if-let [b (spend @bucket (System/currentTimeMillis) per-sec burst)]
                                 (let [_        (reset! bucket b)
@@ -272,6 +332,8 @@
                                 (do (reset! bucket {:closed? true})
                                     (metrics/refused! :rate-limited)
                                     (ws/close! sock 1008 "too many messages")))))
+              ;; The browser's answer to the heartbeat's ping.
+              :on-pong    (fn [sock _] (heard! open sock (System/currentTimeMillis)))
               :on-close   (fn [sock _code _reason]
                             (swap! open dissoc sock)
                             (protocol/on-close deps sock))

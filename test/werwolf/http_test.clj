@@ -108,3 +108,16 @@
       (finally
         (doseq [suffix ["" "-wal" "-shm"]]
           (.delete (java.io.File. (str (.getAbsolutePath f) suffix))))))))
+
+(deftest the-heartbeat-closes-what-went-silent-and-pings-the-rest
+  (let [sockets (atom {:talking {:addr "a" :at 0 :heard 50000}
+                       :dark    {:addr "a" :at 0}
+                       :new     {:addr "b" :at 40000}})
+        pinged  (atom #{})
+        closed  (atom #{})]
+    (http/heartbeat! sockets 60000 {:silent-ms 45000
+                                   :ping!  #(swap! pinged conj %)
+                                   :close! #(swap! closed conj %)})
+    (is (= #{:dark} @closed) "a minute without a frame or a pong: gone")
+    (is (= #{:talking :new} @pinged)
+        "heard ten seconds ago, or opened twenty seconds ago: asked again")))

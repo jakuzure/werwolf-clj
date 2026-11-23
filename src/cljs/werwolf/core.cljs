@@ -47,6 +47,9 @@
   ;; browser let go of while it was hidden.
   (wake/install!)
   (ws/connect! (config/websocket-url))
+  ;; And keep checking that it is alive: a locked phone's socket looks open
+  ;; and is dead, see ws/check!.
+  (ws/install!)
   (when-not @ticker
     ;; One timer for the whole app: countdowns render from :now, so a passing
     ;; second is one re-render rather than one per player card. The landing
