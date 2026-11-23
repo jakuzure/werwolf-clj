@@ -111,6 +111,9 @@
 (rf/reg-sub ::chronik-open? (fn [db _] (chronik-open? (:log/open? db))))
 
 (rf/reg-sub ::sound-on? (fn [db _] (:sound/on? db)))
+;; Switched on, but the browser will not play anything until this page has
+;; been tapped (werwolf.chime/::ready).
+(rf/reg-sub ::sound-waiting? (fn [db _] (and (:sound/on? db) (not (:sound/ready? db)))))
 
 (rf/reg-sub ::rooms (fn [db _] (or (:rooms db) [])))
 (rf/reg-sub ::invited (fn [db _] (:invited db)))

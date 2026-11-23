@@ -179,14 +179,20 @@
    because it is set once and forgotten."
   []
   (let [on? @(rf/subscribe [::sub/sound-on?])
-        label (t (if on? :sound/turn-off :sound/turn-on))]
-    [:button {:class "px-2 py-1 rounded text-xs bg-slate-800 hover:bg-slate-700 transition"
+        ;; On, but silent until the page is tapped: said on the bell too, so
+        ;; "on" is never a promise the phone does not keep.
+        waiting? @(rf/subscribe [::sub/sound-waiting?])
+        label (t (cond waiting? :sound/waiting on? :sound/turn-off :else :sound/turn-on))]
+    [:button {:class "relative px-2 py-1 rounded text-xs bg-slate-800 hover:bg-slate-700 transition"
               :title label
               :aria-label label
               :aria-pressed (boolean on?)
               :data-testid "sound-switch"
               :on-click #(rf/dispatch [::ev/toggle-sound])}
-     (if on? "🔔" "🔕")]))
+     (if on? "🔔" "🔕")
+     (when waiting?
+       [:span {:class "absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-amber-400"
+               :aria-hidden true}])]))
 
 (defn- connection-banner []
   (let [status @(rf/subscribe [::sub/conn-status])]
@@ -699,6 +705,11 @@
          [:div
           [:div {:class "font-bold"} headline]
           (when detail [:div {:class "text-sm opacity-90"} detail])]
+         ;; The chimes are this card's voice when nobody is looking. A
+         ;; reloaded page has none until it is touched, and nothing said so.
+         (when @(rf/subscribe [::sub/sound-waiting?])
+           [:div {:class "text-xs opacity-80" :data-testid "sound-waiting"}
+            (str "🔔 " (t :sound/tap-to-hear))])
          (when (and narrator? (not= :setup phase)) [narrator-waits])
          ;; The pack's tally where a wolf is looking. It sat only in the
          ;; night notes under the Mitspieler tab, which on a phone is not

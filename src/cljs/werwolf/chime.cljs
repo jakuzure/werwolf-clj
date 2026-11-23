@@ -106,6 +106,21 @@
 
 (defonce ^:private ctx* (atom nil))
 
+(rf/reg-event-db
+ ::ready
+ ;; Whether this page can sound right now: a context that exists and runs.
+ ;; After a reload mid-game there is none until the first tap, and iOS
+ ;; suspends a running one in the background; either way the switch said
+ ;; "on" over a phone that stayed silent. The page says so now, and the next
+ ;; tap, which `unlock!` hears, fixes it.
+ (fn [db [_ ok?]] (assoc db :sound/ready? (boolean ok?))))
+
+(defn- watch!
+  "Report the context's state now and on every change of it."
+  [^js ctx]
+  (set! (.-onstatechange ctx) #(rf/dispatch [::ready (= "running" (.-state ctx))]))
+  (rf/dispatch [::ready (= "running" (.-state ctx))]))
+
 (defn- audio-context-class
   "The constructor, or nil. Looked up by string through goog.object so the
    advanced build cannot rename it, and so Node — which has no such global —
@@ -135,7 +150,8 @@
           (set! (.-buffer src) (.createBuffer ctx 1 1 22050))
           (.connect src (.-destination ctx))
           (.start src 0)
-          (reset! ctx* ctx))))
+          (reset! ctx* ctx)
+          (watch! ctx))))
     (catch :default _ nil))
   nil)
 

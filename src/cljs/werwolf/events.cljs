@@ -85,7 +85,10 @@
    :deck/draft  nil
    ;; The phase chime. A preference of this device, not of any room — which is
    ;; why `unseat` leaves it alone. Overwritten from storage by ::init.
-   :sound/on?   true})
+   :sound/on?   true
+   ;; Whether the page can actually sound: false until the first tap creates
+   ;; an audio context, see werwolf.chime/::ready.
+   :sound/ready? false})
 
 (declare stored-dawn stored-chat-seen)
 

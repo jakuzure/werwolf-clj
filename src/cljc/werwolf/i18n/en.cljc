@@ -352,6 +352,8 @@
    :stage/interrupted "interrupted"
    :sound/turn-off    "Turn off the nightfall and daybreak chime"
    :sound/turn-on     "Turn on the nightfall and daybreak chime"
+   :sound/waiting     "The chime is waiting for a tap"
+   :sound/tap-to-hear "Tap anywhere once to hear the chimes."
    :explain/setup       "The cards are dealt. Look at your role — the night begins shortly."
    :explain/setup-narrator "The cards are dealt. Check the deal, then begin the night."
    :explain/night       "Everyone is asleep. Whoever is called wakes up and acts without giving themselves away."
