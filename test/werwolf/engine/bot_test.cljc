@@ -438,6 +438,14 @@
         (engine/over? s)
         {:ok? true :winner (:winner s) :seed seed :players n :turns turn :log log :state s}
 
+        ;; Twice as many nights as seats: no finished game here has needed more
+        ;; than eight. What gets this far is the host, who never moves, left
+        ;; with one villager: the pack eats nobody, and one ballot of two
+        ;; condemns nobody. Played out to the turn limit, each of those took
+        ;; ten seconds on the JVM, most of this namespace's time.
+        (> (:night s 0) (* 2 n))
+        {:ok? false :reason :stalemate :seed seed :players n :turn turn :state s}
+
         (> turn 2000)
         {:ok? false :reason :livelock :seed seed :players n :turn turn :phase (:phase s)}
 
@@ -473,7 +481,10 @@
   ;; The sixteen-player unnarrated game here once ran for ever: the pack and
   ;; the Weißer Werwolf were all that was left, and he was the absent host
   ;; and the Bürgermeister. See phases/winner for why it ends now.
-  (doseq [n (range 5 19) narrated? [true false]
+  ;; Every table size on both platforms, both ways of running it on the JVM;
+  ;; Node plays one per size, as the sims play a share (h/volume).
+  (doseq [n (range 5 19)
+          narrated? (if (>= h/volume 1) [true false] [(odd? n)])
           :let [r (play-bots n (+ 500 (* 13 n)) {:narrated? narrated?})]]
     (is (:ok? r) (pr-str (dissoc r :log :state)))
     (is (some? (:winner r)) (str n " players, narrated " narrated? ": no winner"))
@@ -481,6 +492,13 @@
       (is (nil? (h/replay-mismatch r)) "the log replays to the same state"))))
 
 (deftest both-sides-win-against-bots
-  (let [winners (frequencies (map #(:winner (play-bots 9 % {})) (range 1 41)))]
+  (let [results (map #(play-bots 9 % {}) (range 1 (inc (h/games 40))))
+        winners (frequencies (map :winner results))]
     (is (pos? (get winners :village 0)) (pr-str winners))
-    (is (pos? (get winners :werewolf 0)) (pr-str winners))))
+    (is (pos? (get winners :werewolf 0)) (pr-str winners))
+    (testing "a game that stalls is the host's, who never moves here"
+      (doseq [r (remove :ok? results)]
+        (is (= :stalemate (:reason r)) (pr-str (dissoc r :state)))
+        (is (= [0] (filter #(= :werewolf (e/team-of-player (:state r) %))
+                           (engine/living-ids (:state r))))
+            (str "seed " (:seed r) ": the host is the last wolf"))))))
